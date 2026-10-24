@@ -10,10 +10,11 @@
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_ALREADY_EXISTS, ERROR_MORE_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE,
+    CloseHandle, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_MORE_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE,
 };
 use windows::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_NONE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile};
 use windows::Win32::System::Pipes::{
@@ -24,6 +25,8 @@ use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 use windows::Win32::System::Threading::{CreateMutexW, GetCurrentProcessId};
 use windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
 use windows::core::HSTRING;
+
+use crate::clock::trace;
 
 /// What a launch asks the resident process to open.
 #[derive(Clone, Debug, Default)]
@@ -75,8 +78,9 @@ const OK: &[u8] = b"ok";
 const OUTDATED: &[u8] = b"outdated";
 
 static BUILD: OnceLock<u64> = OnceLock::new();
-/// The instance mutex, held while this process is the resident one.
-static MUTEX: OnceLock<usize> = OnceLock::new();
+/// The instance mutex's handle (0: none), held while this process is the
+/// resident one.
+static MUTEX: AtomicUsize = AtomicUsize::new(0);
 
 /// This build's identity: the executable's last-write time, read once at
 /// startup (before a rebuild could rename the running file).
@@ -111,15 +115,18 @@ pub fn claim() -> bool {
                 let _ = unsafe { CloseHandle(handle) };
                 return false;
             }
-            let _ = MUTEX.set(handle.0 as usize);
+            MUTEX.store(handle.0 as usize, Ordering::SeqCst);
             true
         }
+        // An elevated resident (an older build) owns it; `send` explains.
+        Err(e) if e.code() == ERROR_ACCESS_DENIED.to_hresult() => false,
         Err(_) => true,
     }
 }
 
-fn release() {
-    if let Some(&handle) = MUTEX.get() {
+pub fn release() {
+    let handle = MUTEX.swap(0, Ordering::SeqCst);
+    if handle != 0 {
         let _ = unsafe { CloseHandle(HANDLE(handle as *mut _)) };
     }
 }
@@ -128,10 +135,26 @@ fn release() {
 /// since this process (just launched by the user) is allowed to.
 pub fn send(request: &Request) -> Result<Handoff, String> {
     let name = pipe_name();
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(3);
+    trace(format_args!("send: build {}", request.build));
+    let mut last_error = None;
     let pipe = loop {
-        match unsafe { CreateFileW(&name, GENERIC_READ.0 | GENERIC_WRITE.0, FILE_SHARE_NONE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) } {
+        let opened = unsafe { CreateFileW(&name, GENERIC_READ.0 | GENERIC_WRITE.0, FILE_SHARE_NONE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) };
+        if let Err(e) = &opened {
+            if last_error != Some(e.code()) {
+                trace(format_args!("send: +{:.0} ms open failed: {e}", started.elapsed().as_secs_f64() * 1000.0));
+                last_error = Some(e.code());
+            }
+        }
+        match opened {
             Ok(pipe) => break pipe,
+            // Only a resident running as administrator refuses us (older
+            // builds became resident elevated; see elevation.rs). Waiting
+            // won't change that.
+            Err(e) if e.code() == ERROR_ACCESS_DENIED.to_hresult() => {
+                return Err("A Flick started as administrator is running; quit it from its tray icon.".into());
+            }
             Err(e) if Instant::now() > deadline => return Err(format!("resident Flick did not answer: {e}")),
             Err(e) if e.code() == ERROR_PIPE_BUSY.to_hresult() => {
                 let _ = unsafe { WaitNamedPipeW(&name, 500) };
@@ -149,6 +172,7 @@ pub fn send(request: &Request) -> Result<Handoff, String> {
         let _ = FlushFileBuffers(pipe);
         let reply = written.ok().and_then(|()| read_message(pipe));
         let _ = CloseHandle(pipe);
+        trace(format_args!("send: +{:.0} ms connected to {server}, reply {reply:?}", started.elapsed().as_secs_f64() * 1000.0));
         reply
     };
     match reply.as_deref().map(str::as_bytes) {
@@ -177,12 +201,18 @@ pub fn serve(on_request: impl Fn(Request) + Send + 'static, on_superseded: impl 
                 CreateNamedPipeW(&name, PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 64 * 1024, 0, None)
             };
             if pipe.is_invalid() {
+                let error = windows::core::Error::from_thread();
+                trace(format_args!("serve: create failed: {error}"));
+                if error.code() == ERROR_ACCESS_DENIED.to_hresult() {
+                    return; // the name belongs to an elevated process: never ours
+                }
                 std::thread::sleep(Duration::from_millis(200));
                 continue;
             }
             let connected = unsafe { ConnectNamedPipe(pipe, None) }.is_ok() || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
             let request = if connected { read_message(pipe).as_deref().and_then(Request::decode) } else { None };
             let newer = request.as_ref().is_some_and(|r| r.build > build_id());
+            trace(format_args!("serve: connected {connected}, request build {:?} (mine {}), newer {newer}", request.as_ref().map(|r| r.build), build_id()));
             if newer {
                 // Release first, so the launcher can claim as soon as it reads the reply.
                 release();

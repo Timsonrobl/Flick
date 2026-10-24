@@ -20,6 +20,7 @@ mod chrome;
 mod clock;
 mod debug;
 mod decode;
+mod elevation;
 mod folder;
 mod gpu;
 mod icon;
@@ -447,9 +448,16 @@ fn report(text: &str) {
     unsafe { MessageBoxW(None, &windows::core::HSTRING::from(text), windows::core::w!("Flick"), MB_ICONERROR | MB_OK) };
 }
 
-fn parse_args() -> Result<(Request, bool), String> {
+/// What the command line asks for besides the request.
+struct Flags {
+    standalone: bool,
+    /// Started by [`elevation::relaunch_unelevated`].
+    relaunched: bool,
+}
+
+fn parse_args() -> Result<(Request, Flags), String> {
     let mut request = Request::default();
-    let mut standalone = false;
+    let mut flags = Flags { standalone: false, relaunched: false };
     let mut it = std::env::args_os().skip(1);
     while let Some(arg) = it.next() {
         match arg.to_str() {
@@ -462,14 +470,31 @@ fn parse_args() -> Result<(Request, bool), String> {
                 let path = PathBuf::from(it.next().ok_or("--timeline-out needs a path")?);
                 request.timeline_out = Some(std::path::absolute(&path).unwrap_or(path));
             }
-            Some("--standalone") => standalone = true,
+            Some("--standalone") => flags.standalone = true,
+            Some(elevation::RELAUNCHED) => flags.relaunched = true,
             _ => request.file = std::path::absolute(&arg).unwrap_or_else(|_| PathBuf::from(&arg)),
         }
     }
     if request.file.as_os_str().is_empty() {
         return Err("usage: flick <image> [--size WxH] [--timeline-out file] [--standalone]".into());
     }
-    Ok((request, standalone))
+    Ok((request, flags))
+}
+
+/// This launch would become the resident instance while elevated: start
+/// Flick unelevated instead (elevation.rs). True if that worked and this
+/// process should exit.
+fn hand_to_unelevated(request: &Request) -> bool {
+    instance::release();
+    match elevation::relaunch_unelevated(request) {
+        Ok(()) => true,
+        Err(e) => {
+            clock::trace(format_args!("{e}; staying elevated"));
+            // Couldn't: be the resident as before.
+            instance::claim();
+            false
+        }
+    }
 }
 
 fn main() {
@@ -480,18 +505,25 @@ fn main() {
     }
     let mut timeline = Timeline::default();
     timeline.mark("main");
-    let (mut request, standalone) = match parse_args() {
+    let (mut request, flags) = match parse_args() {
         Ok(parsed) => parsed,
         Err(e) => return report(&e),
     };
+    let standalone = flags.standalone;
     request.build = instance::build_id();
 
     // A warm open: Flick is already resident, so hand the file over and go
     // (unless the resident one is an older build: then this launch takes over).
+    // An elevated launch never stays as the resident one (elevation.rs).
+    let elevated = !standalone && !flags.relaunched && elevation::is_elevated();
     let mut resident = !standalone && instance::claim();
+    if resident && elevated && hand_to_unelevated(&request) {
+        return;
+    }
     if !standalone && !resident {
         match instance::send(&request) {
             Ok(instance::Handoff::Delivered) => return,
+            Ok(instance::Handoff::BecomeResident) if elevated && hand_to_unelevated(&request) => return,
             Ok(instance::Handoff::BecomeResident) => resident = true,
             Err(e) => report(&format!("{e}\nOpening in a separate window.")),
         }

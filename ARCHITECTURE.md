@@ -563,6 +563,17 @@ lose by accident.
   the file itself. `tools\build.ps1` renames a running `flick.exe` (and its
   hard-linked twin in `deps\`) before building, so the registered path
   (`tools\register.ps1`, HKCU only) always holds the newest build.
+- **Elevated launches** (found 2026-10-24: Everything runs as
+  administrator, so Flick opened from it did too). An elevated resident
+  can't be reached by normal launches: its pipe answers "access denied"
+  (no writing up an integrity level). So Flick never stays resident while
+  elevated: an elevated launch that finds a resident hands its file over
+  (writing down is allowed: warm opens unchanged), and one that would become
+  resident restarts itself through Explorer's ShellExecute at the
+  desktop's level and exits (once per resident start). Image decoding
+  therefore never runs as administrator either (`elevation.rs`). A
+  resident left elevated by an older build makes launches fail at once
+  with a message to quit it, instead of retrying for 3 s.
 - **Reopen after trimming: measured** (milestone 3a). A warm open after the
   30 s trim takes ~137 ms instead of ~120 ms, while the resident's idle
   working set drops from ~71 MB to ~0. Kept at 30 s.
