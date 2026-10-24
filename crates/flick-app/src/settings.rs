@@ -1,4 +1,5 @@
-//! The right-click menu's choices (view mode, render filter, sort order),
+//! The right-click menu's choices (view mode, render filter, sort order,
+//! and the Tab info panel),
 //! last chosen in any window, kept in `%LOCALAPPDATA%\Flick\settings` so new
 //! windows and the next run start with them. Each open window keeps its own
 //! (viewer.rs): the rule for every setting unless one says otherwise.
@@ -13,6 +14,8 @@ pub struct Prefs {
     pub mode: Mode,
     pub filter: Filter,
     pub sort: Sort,
+    /// The info panel (Tab): file details and EXIF.
+    pub info: bool,
 }
 
 fn path() -> Option<PathBuf> {
@@ -57,6 +60,7 @@ pub fn load() -> (Prefs, Global) {
             "filter" => prefs.filter = find(&FILTERS, value).unwrap_or(prefs.filter),
             "sort" => prefs.sort.key = find(&SORTS, value).unwrap_or(prefs.sort.key),
             "descending" => prefs.sort.descending = value == "1",
+            "info" => prefs.info = value == "1",
             "tabs" => global.tabs = value != "0",
             "multirow" => global.multirow = value != "0",
             _ => {}
@@ -71,12 +75,13 @@ pub fn save(prefs: Prefs, global: Global) {
         let _ = std::fs::create_dir_all(dir);
     }
     let text = format!(
-        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ntabs={}\nmultirow={}\n",
+        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\ntabs={}\nmultirow={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
         name(&FILTERS, prefs.filter),
         name(&SORTS, prefs.sort.key),
         u8::from(prefs.sort.descending),
+        u8::from(prefs.info),
         u8::from(global.tabs),
         u8::from(global.multirow),
     );

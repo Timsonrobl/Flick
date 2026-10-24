@@ -135,6 +135,61 @@ impl View {
         if self.mode.stretch_small { fit } else { fit.min(1.0) }
     }
 
+    /// Fit to Window's scale, whatever the mode: the whole picture, enlarged
+    /// past 100 % only with Stretch Small Images.
+    pub fn window_fit_scale(&self) -> f32 {
+        let fit = f32::min(self.window.0 / self.image.0, self.window.1 / self.image.1);
+        (if self.mode.stretch_small { fit } else { fit.min(1.0) }).clamp(MIN_SCALE, MAX_SCALE)
+    }
+
+    /// The whole picture, centred (in Fit to Window mode: the mode again,
+    /// so it keeps fitting as the window is resized).
+    pub fn fit_window(&mut self) {
+        if self.mode.fit == Fit::Window {
+            return self.apply_mode();
+        }
+        self.scale = self.window_fit_scale();
+        self.center = (self.image.0 / 2.0, self.image.1 / 2.0);
+        self.follows_mode = false;
+        self.clamp();
+    }
+
+    /// The zoom as set by hand: scale, and the centre as a fraction of the
+    /// picture (so it carries over to the next picture in a tab).
+    pub fn custom_zoom(&self) -> (f32, (f32, f32)) {
+        (self.scale, (self.center.0 / self.image.0, self.center.1 / self.image.1))
+    }
+
+    pub fn set_custom_zoom(&mut self, (scale, (x, y)): (f32, (f32, f32))) {
+        self.scale = scale.clamp(MIN_SCALE.min(self.fit_scale()), MAX_SCALE);
+        self.center = (x * self.image.0, y * self.image.1);
+        self.follows_mode = false;
+        self.clamp();
+    }
+
+    /// Middle click: a zoom set by hand → Fit to Window → 100 % around
+    /// `cursor` → that zoom again (`custom`, remembered when leaving it; if
+    /// there is none, Fit to Window) → … Returns whether the view changed.
+    pub fn cycle_zoom(&mut self, cursor: (f32, f32), custom: &mut Option<(f32, (f32, f32))>) -> bool {
+        let near = |a: f32, b: f32| (a / b - 1.0).abs() < 0.002;
+        let fit_scale = self.window_fit_scale();
+        let (fit, original) = (near(self.scale, fit_scale), near(self.scale, 1.0));
+        let back = custom.filter(|&(scale, _)| !near(scale, fit_scale) && !near(scale, 1.0));
+        if !fit && !original {
+            *custom = Some(self.custom_zoom());
+            self.fit_window();
+        } else if fit && !original {
+            self.zoom_at(cursor, 1.0 / self.scale);
+        } else if let Some(back) = back {
+            self.set_custom_zoom(back);
+        } else if !fit {
+            self.fit_window();
+        } else {
+            return false; // Fit to Window is 100 %, and no zoom to go back to
+        }
+        true
+    }
+
     /// Sizes and places the picture as its mode says.
     pub fn apply_mode(&mut self) {
         self.scale = self.mode_scale().clamp(MIN_SCALE, MAX_SCALE);
@@ -193,21 +248,22 @@ impl View {
     /// pressed point rather than from the window's centre.
     pub fn zoom_anchored(&mut self, anchor: (f32, f32), cursor: (f32, f32), scale: f32) {
         self.scale = scale.clamp(MIN_SCALE.min(self.fit_scale()), MAX_SCALE);
-        let axis = |anchor: f32, cursor: f32, image: f32, window: f32| {
-            let half = window / 2.0 / self.scale;
-            let center = anchor - (cursor - window / 2.0) / self.scale;
-            center.clamp(half.min(image - half), half.max(image - half))
-        };
-        self.center = (
-            axis(anchor.0, cursor.0, self.image.0, self.window.0),
-            axis(anchor.1, cursor.1, self.image.1, self.window.1),
-        );
+        let center = |anchor: f32, cursor: f32, window: f32| anchor - (cursor - window / 2.0) / self.scale;
+        self.center = (center(anchor.0, cursor.0, self.window.0), center(anchor.1, cursor.1, self.window.1));
         self.follows_mode = false;
+        self.clamp();
     }
 
-    /// Moves the picture by `delta` window pixels.
+    /// Moves the picture by `delta` window pixels, on the axes where it is
+    /// larger than the window (where it fits, nothing moves).
     pub fn pan(&mut self, delta: (f32, f32)) {
-        self.center = (self.center.0 - delta.0 / self.scale, self.center.1 - delta.1 / self.scale);
+        let larger = |image: f32, window: f32| image * self.scale > window;
+        if larger(self.image.0, self.window.0) {
+            self.center.0 -= delta.0 / self.scale;
+        }
+        if larger(self.image.1, self.window.1) {
+            self.center.1 -= delta.1 / self.scale;
+        }
         self.follows_mode = false;
         self.clamp();
     }
@@ -217,12 +273,14 @@ impl View {
         (self.center.0 + (p.0 - self.window.0 / 2.0) / self.scale, self.center.1 + (p.1 - self.window.1 / 2.0) / self.scale)
     }
 
-    /// Keeps the picture centred on axes where it is smaller than the window,
-    /// and stops it leaving the window on the others.
+    /// Where the picture is larger than the window, no border shows; where it
+    /// is smaller, it stays where it is, inside the window. (It starts
+    /// centred, and the view modes centre it again; a zoom around a point
+    /// can leave it off-centre, and nothing then snaps it back.)
     fn clamp(&mut self) {
         let axis = |center: f32, image: f32, window: f32, scale: f32| {
             let half = window / 2.0 / scale;
-            if image * scale <= window { image / 2.0 } else { center.clamp(half, image - half) }
+            center.clamp(half.min(image - half), half.max(image - half))
         };
         self.center = (
             axis(self.center.0, self.image.0, self.window.0, self.scale),
@@ -290,6 +348,36 @@ mod tests {
     }
 
     #[test]
+    fn middle_click_cycles_custom_fit_original() {
+        // 4000 × 2000 in 1000 × 500: Fit to Window is 25 %.
+        let mut view = View::new((4000, 2000), WINDOW, mode(Fit::Window, false));
+        let mut custom = None;
+        view.zoom_at((500.0, 250.0), 2.0); // 50 %, by hand
+        assert!(view.cycle_zoom((500.0, 250.0), &mut custom));
+        assert_eq!((view.scale, custom.map(|c| c.0)), (0.25, Some(0.5)), "custom → fit, remembered");
+        assert!(view.follows_mode, "fit in Fit to Window mode is the mode again");
+        assert!(view.cycle_zoom((750.0, 250.0), &mut custom));
+        assert_eq!(view.scale, 1.0, "fit → 100 %");
+        let under = view.to_image((750.0, 250.0));
+        assert!((under.0 - 3000.0).abs() < 1.0, "around the click: {under:?}");
+        assert!(view.cycle_zoom((500.0, 250.0), &mut custom));
+        assert_eq!(view.scale, 0.5, "100 % → the custom zoom");
+        assert!(view.cycle_zoom((500.0, 250.0), &mut custom));
+        assert_eq!(view.scale, 0.25, "and round again");
+
+        // Without a custom zoom, 100 % goes back to fit.
+        let mut view = View::new((4000, 2000), WINDOW, mode(Fit::Window, false));
+        let mut none = None;
+        view.cycle_zoom((500.0, 250.0), &mut none);
+        view.cycle_zoom((500.0, 250.0), &mut none);
+        assert_eq!(view.scale, 0.25);
+
+        // A small picture: fit is 100 %, nothing to cycle.
+        let mut view = View::new((100, 50), WINDOW, mode(Fit::Window, false));
+        assert!(!view.cycle_zoom((500.0, 250.0), &mut None));
+    }
+
+    #[test]
     fn drag_zoom_keeps_the_pressed_point_on_a_small_picture() {
         // 500 × 250 in a 1000 × 500 window: centred, with borders.
         let mut view = View::new((500, 250), WINDOW, mode(Fit::Window, false));
@@ -304,5 +392,23 @@ mod tests {
         view.zoom_anchored(anchor, pressed, 1.8);
         let left = view.window.0 / 2.0 - view.center.0 * view.scale;
         assert!(left >= 0.0 && left + 500.0 * 1.8 <= view.window.0 + 0.01, "left {left}");
+    }
+
+    #[test]
+    fn an_off_centre_small_picture_stays_put() {
+        // 500 × 250 in 1000 × 500, drag-zoomed to 1.2 around a point off the centre.
+        let mut view = View::new((500, 250), WINDOW, mode(Fit::Window, false));
+        let pressed = (700.0, 300.0);
+        view.zoom_anchored(view.to_image(pressed), pressed, 1.2);
+        let placed = view.center;
+        assert!((placed.0 - 250.0).abs() > 1.0, "off-centre: {placed:?}");
+        view.pan((40.0, -30.0));
+        assert_eq!(view.center, placed, "panning a picture that fits moves nothing (and snaps nothing)");
+        view.resize((1100, 550));
+        assert_eq!(view.center, placed, "nor does a resize");
+        view.zoom_at((500.0, 250.0), 1.0);
+        assert_eq!(view.center, placed, "nor a zoom that changes nothing");
+        view.set_mode(mode(Fit::Window, false));
+        assert_eq!(view.center, (250.0, 125.0), "the view mode centres it again");
     }
 }

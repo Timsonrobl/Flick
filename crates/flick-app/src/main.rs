@@ -17,6 +17,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod chrome;
+mod clipboard;
 mod clock;
 mod debug;
 mod decode;
@@ -27,6 +28,8 @@ mod gpu;
 mod icon;
 mod instance;
 mod menu;
+mod meta;
+mod osd;
 mod placement;
 mod pool;
 mod settings;
@@ -71,6 +74,10 @@ pub enum Event {
     FullDecoded { viewer: ViewerId, path: PathBuf, image: Result<Image, String>, at: f64 },
     /// An animated GIF's next frame (or its end), for one window.
     Anim { viewer: ViewerId, serial: u64, update: viewer::AnimUpdate },
+    /// The info panel's details for a file (`meta::read`).
+    Info { viewer: ViewerId, path: PathBuf, info: meta::Info },
+    /// Ctrl+C: the picture at full resolution, ready for the clipboard.
+    Copy { viewer: ViewerId, image: Result<Image, String> },
     /// A later launch's request, from the pipe.
     Open(Request),
     /// A newer build took over as the resident instance.
@@ -521,6 +528,16 @@ impl ApplicationHandler<Event> for App {
                     v.on_anim(serial, update, &self.shared);
                 }
             }
+            Event::Info { viewer, path, info } => {
+                if let Some(v) = self.viewers.get_mut(&viewer) {
+                    v.on_info(path, info);
+                }
+            }
+            Event::Copy { viewer, image } => {
+                if let Some(v) = self.viewers.get_mut(&viewer) {
+                    v.on_copy(image);
+                }
+            }
             Event::Open(request) => self.open(event_loop, request),
             Event::Superseded => {
                 // Keep open windows; exit when the last one closes.
@@ -595,6 +612,20 @@ impl App {
                 }
             }
             Ok(Action::MoveTab(to)) => self.move_tab(event_loop, id, to),
+            Ok(Action::Duplicate { file, new_window }) => {
+                let mut timeline = Timeline::default();
+                timeline.mark("request");
+                let request = Request { file, ..Default::default() };
+                let tab_id = self.new_id();
+                if new_window {
+                    // Decoded at once, beside this window (as Move to New Window).
+                    let new_id = self.next_id; // the id new_window gives it
+                    self.spawn_decode(new_id, tab_id, &request);
+                    self.new_window(event_loop, Tab::new(tab_id, request, timeline), Some(id));
+                } else if let Some(viewer) = self.viewers.get_mut(&id) {
+                    viewer.add_duplicate(Tab::waiting(tab_id, request, timeline));
+                }
+            }
             Ok(Action::Close) => {
                 clock::trace(format_args!("viewer {id}: close"));
                 self.close(event_loop, id)

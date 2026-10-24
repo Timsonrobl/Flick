@@ -32,7 +32,10 @@ macro_rules! item {
 /// Sections of the main menu, separated by lines.
 fn main_items() -> [Vec<Item>; 3] {
     [
-        vec![item!(w!("Stretch Small Images\tZ"), |p| p.mode.stretch_small, |p| p.mode.stretch_small = !p.mode.stretch_small)],
+        vec![
+            item!(w!("File Info\tTab"), |p| p.info, |p| p.info = !p.info),
+            item!(w!("Stretch Small Images\tZ"), |p| p.mode.stretch_small, |p| p.mode.stretch_small = !p.mode.stretch_small),
+        ],
         vec![
             item!(w!("Original Size (100%)\t0"), |p| p.mode.fit == Fit::Original, |p| p.mode.fit = Fit::Original),
             item!(w!("Fit in Window\t9"), |p| p.mode.fit == Fit::Window, |p| p.mode.fit = Fit::Window),

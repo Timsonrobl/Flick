@@ -628,7 +628,32 @@ change, debounced, so a crash or "stay resident" restart restores them as
   travel (right: in, left: out; 2× per 200 px) around where it started: the
   picture point pressed stays under the cursor (a picture smaller than the
   window grows from there, not from the centre, until it meets an edge); a
-  right click without moving opens the menu.
+  right click without moving opens the menu. A picture left off-centre by
+  a zoom around a point stays there: panning moves it only on axes where
+  it is larger than the window, and zooming or resizing only keeps it
+  inside; the view modes (and Fit to Window below) centre it again.
+  Middle click on the picture
+  cycles a zoom set by hand → Fit to Window → 100 % (around the click) →
+  that zoom again (if none, Fit to Window); the hand-set zoom is
+  remembered per tab, as scale and centre relative to the picture. Middle
+  click on a tab closes it.
+- **On-screen text** (`osd.rs`), just below the hover bar's first row (the
+  bar draws over it): the zoom level shows for 1.2 s, small and faint, at
+  the top right after any zoom by hand, as do "Copying…"/"Copied to
+  clipboard". `Tab` toggles the info
+  panel at the top left (a setting like the View menu's: per window,
+  latest wins, saved; also in the menu as File Info): file name and
+  position in the folder, picture size, format details (JPEG chroma
+  subsampling and progressive scan, 16-bit, animation frames), file size
+  and date, and EXIF camera, lens, exposure and date taken. Read through
+  WIC's photo metadata names on a worker thread (`meta.rs`) the first time
+  the panel shows a picture.
+- **Ctrl+C** copies the picture at full resolution, upright (EXIF
+  orientation applied), as a 32-bit DIBv5 with straight alpha; decoded on
+  a worker thread. **Ctrl+Enter** opens the folder in Explorer with the file
+  selected. **Ctrl+D** duplicates the tab into the background, right after
+  this one (the bar shows for a moment); **Ctrl+N** opens the file again in
+  a new window beside this one.
 - **Held keys page as fast as pictures appear** (as Honeyview): a key's
   auto-repeats are dropped while the previous picture is still decoding or
   the walk is still under way, so no "render debt" builds up and paging

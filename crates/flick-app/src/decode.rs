@@ -52,7 +52,35 @@ struct Source {
     gif: bool,
 }
 
-fn factory() -> windows::core::Result<IWICImagingFactory> {
+/// `image` (as stored) turned to how EXIF orientation `o` (1–8) displays it.
+pub fn oriented(image: Image, o: u16) -> Image {
+    if !(2..=8).contains(&o) {
+        return image;
+    }
+    let (w, h) = (image.width as usize, image.height as usize);
+    let (ow, oh) = if o >= 5 { (h, w) } else { (w, h) };
+    let mut pixels = vec![0u8; image.pixels.len()];
+    for y in 0..h {
+        for x in 0..w {
+            // Where stored pixel (x, y) lands, as view::orientation maps it.
+            let (dx, dy) = match o {
+                2 => (w - 1 - x, y),
+                3 => (w - 1 - x, h - 1 - y),
+                4 => (x, h - 1 - y),
+                5 => (y, x),
+                6 => (h - 1 - y, x),
+                7 => (h - 1 - y, w - 1 - x),
+                _ => (y, w - 1 - x),
+            };
+            let (s, d) = ((y * w + x) * 4, (dy * ow + dx) * 4);
+            pixels[d..d + 4].copy_from_slice(&image.pixels[s..s + 4]);
+        }
+    }
+    Image { width: ow as u32, height: oh as u32, pixels }
+}
+
+/// A WIC factory for this (worker) thread.
+pub fn factory() -> windows::core::Result<IWICImagingFactory> {
     unsafe {
         CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
         CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)
@@ -344,6 +372,21 @@ mod tests {
             let ms = started.elapsed().as_secs_f64() * 1000.0;
             println!("{name}: {frames} frames in {ms:.0} ms, {:.1} ms per frame; plays {:.1} ms per frame", ms / f64::from(frames), playing.as_secs_f64() * 1000.0 / f64::from(frames));
         }
+    }
+
+    /// Pixels land where `view::orientation` draws them.
+    #[test]
+    fn orients_pixels_as_drawn() {
+        // 2 × 1: red then green.
+        let image = || Image { width: 2, height: 1, pixels: [RED, GREEN].concat() };
+        let turned = oriented(image(), 6); // 90° clockwise: 1 × 2, red on top
+        assert_eq!((turned.width, turned.height), (1, 2));
+        assert_eq!((pixel(&turned, 0, 0), pixel(&turned, 0, 1)), (RED, GREEN));
+        let turned = oriented(image(), 8); // 90° anticlockwise: green on top
+        assert_eq!((pixel(&turned, 0, 0), pixel(&turned, 0, 1)), (GREEN, RED));
+        let turned = oriented(image(), 2); // mirrored
+        assert_eq!((pixel(&turned, 0, 0), pixel(&turned, 1, 0)), (GREEN, RED));
+        assert_eq!(oriented(image(), 1).pixels, image().pixels);
     }
 
     fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {

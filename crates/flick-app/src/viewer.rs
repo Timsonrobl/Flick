@@ -31,7 +31,10 @@ use crate::gpu::{Gpu, Sharpen, Surface};
 use crate::instance::Request;
 use crate::placement::{self, Placement};
 use crate::pool::Pool;
+use crate::clipboard;
 use crate::menu;
+use crate::meta;
+use crate::osd::Osd;
 use crate::settings::{Global, Prefs};
 use crate::view::{self, Affine, Filter, Fit, Mode, View};
 
@@ -86,6 +89,9 @@ pub enum Action {
     /// The menu closed on a right click elsewhere: open it in the window
     /// under the cursor (this one or another).
     ReopenMenu,
+    /// Ctrl+D (a background tab beside this one) or Ctrl+N (a new window):
+    /// the same file again.
+    Duplicate { file: PathBuf, new_window: bool },
 }
 
 /// A `Screen` level on the GPU. Cloning shares the texture.
@@ -137,6 +143,9 @@ struct Current {
     view: View,
     /// An animated GIF's playback (its first frame is `screen`).
     anim: Option<Anim>,
+    /// The info panel's details (`meta`), read when the panel first shows it.
+    info: Option<meta::Info>,
+    info_requested: bool,
 }
 
 impl Current {
@@ -144,13 +153,14 @@ impl Current {
         let view = View::new(view::oriented_size(screen.orientation, screen.full_size), window, mode);
         // An animation's frames are already full size: nothing to decode for zooming.
         let (full_requested, full_note) = if screen.animated() { (true, "animation frames are full size") } else { (false, "not needed yet") };
-        Current { path, screen, full: None, full_requested, full_note, view, anim: None }
+        Current { path, screen, full: None, full_requested, full_note, view, anim: None, info: None, info_requested: false }
     }
 
     /// The same picture, drawn as it is, while another tab's decodes.
     fn stand_in(&self) -> Current {
         let full_note = "the previous tab's picture, until this one decodes";
-        Current { path: self.path.clone(), screen: self.screen.clone(), full: None, full_requested: true, full_note, view: self.view, anim: None }
+        let (path, screen, view) = (self.path.clone(), self.screen.clone(), self.view);
+        Current { path, screen, full: None, full_requested: true, full_note, view, anim: None, info: None, info_requested: true }
     }
 }
 
@@ -306,6 +316,9 @@ pub struct Tab {
     parked: Option<Instant>,
     /// Its folder listing was asked for.
     listing: bool,
+    /// The last zoom set by hand (scale, centre as a fraction of the
+    /// picture), for the middle-click cycle.
+    custom_zoom: Option<(f32, (f32, f32))>,
 }
 
 impl Tab {
@@ -396,7 +409,14 @@ pub struct Viewer {
     /// Tab Lock's random order of the tabs (by id), for S/W and Up/Down;
     /// shuffled afresh when tabs come or go, kept when they are reordered.
     tab_shuffle: Vec<TabId>,
+    /// The info panel and notes, made when first shown.
+    osd: Option<Osd>,
+    /// A brief note (zoom level, "Copied to clipboard") and when it goes.
+    note: Option<(String, Instant)>,
 }
+
+/// How long a note stays.
+const NOTE_FOR: Duration = Duration::from_millis(1200);
 
 /// When a right-click menu (of any window) last closed.
 static MENU_CLOSED: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
@@ -459,6 +479,8 @@ impl Viewer {
             anim_serial: 0,
             locked: false,
             tab_shuffle: Vec::new(),
+            osd: None,
+            note: None,
         }
     }
 
@@ -520,6 +542,13 @@ impl Viewer {
         let at = (self.active_at + count).min(self.others.len());
         self.others.insert(at, tab);
         self.redraw();
+    }
+
+    /// Ctrl+D: the copy goes right after the active tab, in the background;
+    /// the bar shows for a moment so the new tab is seen arriving.
+    pub fn add_duplicate(&mut self, tab: Tab) {
+        self.add_background_tab(tab, 0);
+        self.chrome.reveal(REVEAL);
     }
 
     /// The active tab shows a picture but its folder was never listed (a
@@ -931,6 +960,10 @@ impl Viewer {
         if self.chrome.end_reveal() {
             self.redraw(); // the bar fades out
         }
+        if self.note.as_ref().is_some_and(|(_, until)| *until <= Instant::now()) {
+            self.note = None;
+            self.redraw();
+        }
         self.cool_tabs(shared);
         self.next_frame(shared);
         self.advance(shared)
@@ -956,7 +989,8 @@ impl Viewer {
         let frame = self.tab.current.as_ref().and_then(|c| c.anim.as_ref()).and_then(|a| a.due);
         let step = self.tab.folder.as_ref().filter(|f| f.index != self.tab.target).and_then(|_| self.tab.shown_at).map(|t| t + DWELL);
         let cool = self.others.iter().filter_map(|t| t.parked).min().map(|t| t + cool_after());
-        [frame, step, cool, self.chrome.reveal_deadline()].into_iter().flatten().min()
+        let note = self.note.as_ref().map(|(_, until)| *until);
+        [frame, step, cool, self.chrome.reveal_deadline(), note].into_iter().flatten().min()
     }
 
     /// If the current picture is animated, schedules its playback: frames
@@ -1198,6 +1232,114 @@ impl Viewer {
         }
     }
 
+    /// The info panel's lines for the picture on screen. Its details are read
+    /// on a worker thread the first time (`on_info`); until then, the file
+    /// name and size only.
+    fn info_lines(&mut self, shared: &Shared) -> Option<Vec<(&'static str, String)>> {
+        let position = self.tab.folder.as_ref().map(|f| format!("   [{}/{}]", f.index + 1, f.files.len())).unwrap_or_default();
+        let current = self.tab.current.as_mut()?;
+        if !current.info_requested {
+            current.info_requested = true;
+            let (viewer, path, proxy) = (self.id, current.path.clone(), shared.proxy.clone());
+            std::thread::spawn(move || {
+                let info = meta::read(&path);
+                let _ = proxy.send_event(Event::Info { viewer, path, info });
+            });
+        }
+        let (w, h) = view::oriented_size(current.screen.orientation, current.screen.full_size);
+        let mut image = format!("{w} × {h}");
+        if let Some(info) = &current.info {
+            image += &format!(", {}", info.format);
+        }
+        if current.screen.animated() {
+            image += &format!(", {} frames", current.screen.frames);
+        }
+        let mut lines = vec![("File", format!("{}{position}", file_name(&current.path))), ("Image", image)];
+        if let Some(info) = &current.info {
+            lines.extend(info.lines.iter().cloned());
+        }
+        Some(lines)
+    }
+
+    /// The info panel's details for `path`, read on a worker thread.
+    pub fn on_info(&mut self, path: PathBuf, info: meta::Info) {
+        if let Some(current) = self.tab.current.as_mut().filter(|c| c.path == path) {
+            current.info = Some(info);
+            self.redraw();
+        }
+    }
+
+    /// The file on screen (not one still decoding after a page turn).
+    fn shown_file(&self) -> Option<PathBuf> {
+        self.tab.current.as_ref().map(|c| c.path.clone())
+    }
+
+    /// Ctrl+C: the picture at full resolution and upright, decoded on a
+    /// worker thread, then put on the clipboard (`on_copy`).
+    fn copy(&mut self, shared: &Shared) -> Action {
+        let Some(current) = &self.tab.current else { return Action::None };
+        let (viewer, path, orientation, proxy) = (self.id, current.path.clone(), current.screen.orientation, shared.proxy.clone());
+        std::thread::spawn(move || {
+            let image = decode::decode_full(&path).map(|image| decode::oriented(image, orientation));
+            let _ = proxy.send_event(Event::Copy { viewer, image });
+        });
+        self.show_note("Copying…".into());
+        Action::None
+    }
+
+    pub fn on_copy(&mut self, image: Result<Image, String>) {
+        let hwnd = self.hwnd;
+        let result = image.and_then(|image| hwnd.ok_or_else(|| "no window".to_string()).and_then(|hwnd| clipboard::put(hwnd, &image)));
+        self.show_note(match result {
+            Ok(()) => "Copied to clipboard".into(),
+            Err(e) => format!("Couldn't copy: {}", e.rsplit(": ").next().unwrap_or(&e)),
+        });
+    }
+
+    /// Ctrl+Enter: Explorer opens the file's folder with the file selected.
+    fn show_in_explorer(&mut self) -> Action {
+        use std::os::windows::process::CommandExt;
+        if let Some(path) = self.shown_file() {
+            let _ = std::process::Command::new("explorer.exe").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
+        }
+        Action::None
+    }
+
+    /// Ctrl+D (a background tab) or Ctrl+N (a new window) with this file.
+    fn duplicate(&mut self, new_window: bool) -> Action {
+        self.shown_file().map_or(Action::None, |file| Action::Duplicate { file, new_window })
+    }
+
+    /// Middle click on the picture cycles its zoom: a zoom set by hand →
+    /// Fit to Window → 100 % (around the click) → that zoom again (if there
+    /// is one, else Fit to Window) → …
+    fn cycle_zoom(&mut self, at: (f32, f32)) {
+        let Some(current) = &mut self.tab.current else { return };
+        if current.view.cycle_zoom(at, &mut self.tab.custom_zoom) {
+            self.show_zoom();
+        }
+    }
+
+    fn on_middle_press(&mut self) -> Action {
+        // On the bar, middle click closes a tab (on release); elsewhere it zooms.
+        if self.chrome.hit(self.cursor_f32(), self.width()).is_none() {
+            self.cycle_zoom(self.cursor_f32());
+        }
+        Action::None
+    }
+
+    /// Shows `text` briefly at the bottom of the window.
+    fn show_note(&mut self, text: String) {
+        self.note = Some((text, Instant::now() + NOTE_FOR));
+        self.redraw();
+    }
+
+    /// The zoom level, as a brief note: after any zoom by hand.
+    fn show_zoom(&mut self) {
+        let Some(scale) = self.tab.current.as_ref().map(|c| c.view.scale * 100.0) else { return };
+        self.show_note(if scale >= 10.0 { format!("{scale:.0} %") } else { format!("{scale:.1} %") });
+    }
+
     pub fn render(&mut self, shared: &Shared) -> Result<(), String> {
         let debug_text = self.show_debug.then(|| self.debug_text(shared));
         let title = self.title();
@@ -1205,6 +1347,11 @@ impl Viewer {
         self.chrome.set_tabs(tabs.len());
         let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
         let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
+        let info = if self.prefs.info { self.info_lines(shared) } else { None };
+        let note = self.note.as_ref().filter(|(_, until)| *until > Instant::now()).map(|(text, _)| text.clone());
+        if (info.is_some() || note.is_some()) && self.osd.as_ref().is_none_or(|osd| osd.scale() != scale) {
+            self.osd = Osd::new(scale).ok();
+        }
         let Some(surface) = &mut self.surface else { return Ok(()) };
         let window = (surface.size.0 as f32, surface.size.1 as f32);
 
@@ -1258,7 +1405,7 @@ impl Viewer {
             Filter::Sharpen if picture.is_some() => surface.sharpen.take().or_else(|| Sharpen::new(&surface.context).ok()),
             _ => None,
         };
-        let (debug, notice, chrome) = (self.debug.as_ref(), self.tab.notice.as_deref(), &mut self.chrome);
+        let (debug, notice, osd, chrome) = (self.debug.as_ref(), self.tab.notice.as_deref(), self.osd.as_ref(), &mut self.chrome);
         let fading = chrome.animate();
         let grey = chrome::BACKGROUNDS[self.color % chrome::BACKGROUNDS.len()];
         let background = D2D1_COLOR_F { r: grey, g: grey, b: grey, a: 1.0 };
@@ -1280,6 +1427,12 @@ impl Viewer {
             }
             if let (Some(debug), Some(text)) = (debug, &debug_text) {
                 debug.draw(context, text, 48.0 * scale);
+            }
+            if let (Some(osd), Some(lines)) = (osd, &info) {
+                osd.draw_info(context, lines, window);
+            }
+            if let (Some(osd), Some(text)) = (osd, &note) {
+                osd.draw_note(context, text, window);
             }
             chrome.draw(context, window.0, &title, &tabs, active, maximized);
         })?;
@@ -1395,7 +1548,7 @@ impl Viewer {
         if let Some(current) = &mut self.tab.current {
             let at = at.unwrap_or((current.view.window.0 / 2.0, current.view.window.1 / 2.0));
             current.view.zoom_at(at, factor);
-            self.redraw();
+            self.show_zoom();
         }
     }
 
@@ -1439,7 +1592,7 @@ impl Viewer {
         };
         if double {
             current.view.toggle_zoom(cursor);
-            self.redraw();
+            self.show_zoom();
         } else {
             // Pans (nothing moves while the picture fits); only the title
             // bar moves the window.
@@ -1558,7 +1711,7 @@ impl Viewer {
         let target = scale * 2f32.powf(((self.cursor.0 - from.0) / per_doubling) as f32);
         if let Some(current) = &mut self.tab.current {
             current.view.zoom_anchored(anchor, (from.0 as f32, from.1 as f32), target);
-            self.redraw();
+            self.show_zoom();
         }
     }
 
@@ -1601,6 +1754,7 @@ impl Viewer {
         if prefs.mode != old.mode {
             if let Some(current) = &mut self.tab.current {
                 current.view.set_mode(prefs.mode);
+                self.show_zoom();
             }
         }
         if prefs.sort != old.sort {
@@ -1750,6 +1904,12 @@ impl Viewer {
                     Some(self.switch_tab((self.active_at + step) % count, shared))
                 }
                 (PhysicalKey::Code(KeyCode::KeyW), _) => Some(self.close_tab(self.active_at, shared)),
+                // Once per press, not per key repeat.
+                (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyN), _) | (_, Key::Named(NamedKey::Enter)) if event.repeat => Some(Action::None),
+                (PhysicalKey::Code(KeyCode::KeyC), _) => Some(self.copy(shared)),
+                (PhysicalKey::Code(KeyCode::KeyD), _) => Some(self.duplicate(false)),
+                (PhysicalKey::Code(KeyCode::KeyN), _) => Some(self.duplicate(true)),
+                (_, Key::Named(NamedKey::Enter)) => Some(self.show_in_explorer()),
                 (PhysicalKey::Code(code), _) => {
                     let digits = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9];
                     digits.iter().position(|&d| d == code).filter(|&i| i < count).map(|i| self.switch_tab(i, shared))
@@ -1801,6 +1961,9 @@ impl Viewer {
         match event.logical_key.as_ref() {
             // Closes the tab; the window's last one closes the window.
             Key::Named(NamedKey::Escape) => self.close_tab(self.active_at, shared),
+            // The info panel, on or off (a setting: saved, new windows follow).
+            Key::Named(NamedKey::Tab) if event.repeat => Action::None,
+            Key::Named(NamedKey::Tab) => self.set_prefs(Prefs { info: !self.prefs.info, ..self.prefs }),
             Key::Named(NamedKey::ArrowRight) if self.locked => self.step_tab(1, shared),
             Key::Named(NamedKey::ArrowLeft) if self.locked => self.step_tab(-1, shared),
             Key::Named(NamedKey::ArrowDown) if self.locked => self.random_tab(true, shared),
@@ -1904,6 +2067,7 @@ impl Viewer {
                 ElementState::Pressed => Action::None,
                 ElementState::Released => self.on_left_release(shared),
             },
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Middle, .. } => self.on_middle_press(),
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Middle, .. } => self.on_middle_release(shared),
             WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => match state {
                 ElementState::Pressed => {
