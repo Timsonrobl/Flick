@@ -498,6 +498,48 @@ ones. Raw data: `bench/results/pre3b-*.json`.
 - **Private commit while resident** is 16 MB above milestone 3a, all in
   the graphics driver's reserve (the working set is unchanged).
 
+## Milestone 3b: 20 tabs in one window (2026-10-24, first cut)
+
+Flick started on the first burst file, then 19 more opened the normal way
+(each a warm open, so each became the first tab of that window), then
+Ctrl+Tab through all 20. Memory from the process and the GPU's per-process
+counters (`Win32_PerfFormattedData_GPUPerformanceCounters_GPUProcessMemory`);
+times from `FLICK_TRACE`. Script: one run, by hand-off from a scratch script.
+
+| | 1 tab | 20 tabs | after Ctrl+Tab through all 20 |
+|---|---|---|---|
+| working set (RAM in use) | 71 MB | **99 MB** | 100 MB |
+| private commit | 166 MB | 473 MB | 589 MB |
+| GPU dedicated | 114 MB | 393 MB | 509 MB |
+
+| | |
+|---|---|
+| switch to a warm tab, key → frame presented | **0.60 ms median, 0.79 ms max** (20 switches) |
+| open into a tab, request → on screen | **83–93 ms** (19 opens; a warm open into a new window: ~102 ms by the same measure) |
+
+- **RAM:** 20 tabs use 99 MB working set against Honeyview's 153–416 MB
+  for one window. **Commit and GPU memory** grow ~17 MB per warm tab (its
+  2400×1792 screen level stays on the GPU so switching back is a texture
+  swap), plus the active tab's preload ring wherever it is; after cycling
+  through all 20, 589 MB private / 509 MB on the GPU.
+- Tabs left unviewed for 3 minutes drop their picture (cold): switching to
+  one then decodes again (~85 ms), like opening it.
+- **Eviction measured** with `FLICK_COOL_AFTER_S=20` (same 20 tabs): every
+  inactive tab cooled on schedule, and cooling now flushes Direct3D
+  (`release_unused`), which otherwise frees released textures only on its
+  next flush:
+
+  | | private | working set | GPU dedicated |
+  |---|---|---|---|
+  | 20 tabs, warm | 491 MB | 99 MB | 410 MB |
+  | 20 tabs, 19 cooled | **252 MB** | 99 MB | **172 MB** |
+  | after 5 switches to cooled tabs | 277 MB | 99 MB | 147 MB |
+
+  What remains is one window's worth: the active tab and its preload ring.
+  The 5 switches were still 0.5–0.7 ms, because the cooled tabs' pictures
+  were in the active tab's ring (all 20 tabs are neighbours in one folder);
+  a cooled tab from another folder decodes again on return.
+
 ## Disk cache of screen levels (2026-10-24)
 
 `flick-bench disk-cache --screen 3377x1440 bench/photos/burst`: decode each

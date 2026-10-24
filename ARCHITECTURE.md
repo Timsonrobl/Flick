@@ -428,6 +428,21 @@ allocation.
 Tabs replace Honeyview's one-image-per-window without adding cost to the
 goals above, because a tab owns no pixels.
 
+**Wanted behaviour (user, 2026-10-24; milestone 3b is the experiment that
+decides whether tabs stay, so these are the goal, not all built in 3b):**
+- Opening a file puts it in the **first tab of the last active window**;
+  that window's other tabs shift right.
+- A window with a single picture shows **no tab strip** at all.
+- Each window has its own **pastel colour** on its hover bar, so windows
+  are easy to tell apart. The right-click menu gains **Move to Window ▸**,
+  listing the other windows by colour plus one entry that makes a new
+  window.
+- Dragging the tab strip **moves the window**, like the title; **Ctrl-drag**
+  reorders tabs.
+- Built in 3b: the first two, tab switching and closing, per-tab memory
+  tiers; measured against the 3b exit criterion (§15). The rest follows if
+  tabs stay.
+
 **Model.** `Tab { id, folder: FolderCursor, image: ImageId, view: Transform,
 state: TabState, last_active: Instant }`. A window has `Vec<Tab>` and an
 active index. Opening a file: new tab in the focused window (default), new
@@ -568,7 +583,7 @@ change, debounced, so a crash or "stay resident" restart restores them as
 | 1 ✓* | One frameless window, one JPEG, zoom/pan, debug overlay, open path as in §3a | Cold open < 250 ms to the final picture, no blank or flicker frame (`ext-viewer`): **234 ms, 0/0, 91 MB**. *Mouse move/resize/snap/pan still to be checked by hand |
 | 2 ✓* | Folder paging with Screen levels, preload ring, cancellation | RAM flat ✓ (~70 MB working set while paging 22 files; Honeyview grows to 416 MB); every turn a preloaded swap ✓ (< 1 ms in Flick); cold open 249 ms ✓. *Key → screen still 7–90 ms (compositor, see §16); fast mouse-wheel spinning to be judged by hand |
 | 3a ✓ | Resident process + tray icon, single instance (named pipe, warm open), multiple windows sharing GPU/pool/cache, trim after 30 s idle, idle = 0 % CPU | Warm open **120 ms** ✓ (137 ms after trim), cold 241 ms unchanged, 0 blank/flicker; resident idle working set ~0 MB after trim ✓, 0 ms CPU ✓; memory levels off across opens (after the D3D11 flush fix) |
-| 3b | Tabs (with a minimal tab strip in the hover bar), tab cooldown (Warm/Cool/Cold, no disk tier) | 20 tabs < 1 Honeyview window; tab switch < 1 frame for warm tabs; open path unchanged |
+| 3b (first cut) | Tabs (with a minimal tab strip in the hover bar), tab cooldown (warm → cold after 3 min, no disk tier, no cap on warm tabs: user decision) | 20 tabs: working set **99 MB** (Honeyview: 153–416 MB for one window) ✓; GPU 410 MB warm → **172 MB** once cooled; warm tab switch **0.6 ms** to present ✓; open into a tab **83–93 ms** request → on screen (warm open into a new window ~102) ✓. Window colours, Move to Window, Ctrl-drag reorder: after the user's verdict on tabs |
 | 4 | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open |
 | 5 | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path |
 | 6 | Tags/rating read + write, inline editor | Two-keystroke tag edit, file updated atomically |

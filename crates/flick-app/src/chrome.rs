@@ -20,12 +20,18 @@ const APPEAR: f32 = 2.0;
 const FADE_IN_S: f32 = 0.10;
 const FADE_OUT_S: f32 = 0.20;
 
+/// Tab width in the strip at 100 % scaling: at most, and before squeezing.
+const TAB_MAX: f32 = 220.0;
+const MARGIN: f32 = 8.0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hit {
     Minimize,
     Maximize,
     Close,
     Title,
+    /// A tab in the strip, by position (only with two or more tabs).
+    Tab(usize),
 }
 
 pub struct Chrome {
@@ -36,11 +42,27 @@ pub struct Chrome {
     last_tick: Option<Instant>,
     hover: Option<Hit>,
     text: Option<(IDWriteTextFormat, f32)>,
+    /// Tabs in the strip; with one, there is no strip (just the title).
+    tabs: usize,
 }
 
 impl Chrome {
     pub fn new(scale: f32) -> Chrome {
-        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None }
+        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None, tabs: 1 }
+    }
+
+    pub fn set_tabs(&mut self, tabs: usize) {
+        self.tabs = tabs;
+    }
+
+    /// The strip's tab width and where it starts, if there is a strip.
+    fn tab_layout(&self, width: f32) -> Option<(f32, f32)> {
+        if self.tabs < 2 {
+            return None;
+        }
+        let left = MARGIN * self.scale;
+        let room = (width - 3.0 * BUTTON * self.scale - 2.0 * left).max(0.0);
+        Some((left, (room / self.tabs as f32).min(TAB_MAX * self.scale)))
     }
 
     pub fn set_scale(&mut self, scale: f32) {
@@ -77,12 +99,18 @@ impl Chrome {
         }
         let from_right = width - x;
         let button = BUTTON * self.scale;
+        let tab = self.tab_layout(width).and_then(|(left, tab)| {
+            let i = ((x - left) / tab).floor();
+            (x >= left && i < self.tabs as f32).then_some(i as usize)
+        });
         Some(if from_right < button {
             Hit::Close
         } else if from_right < 2.0 * button {
             Hit::Maximize
         } else if from_right < 3.0 * button {
             Hit::Minimize
+        } else if let Some(i) = tab {
+            Hit::Tab(i)
         } else {
             Hit::Title
         })
@@ -106,7 +134,9 @@ impl Chrome {
         self.last_tick.is_some()
     }
 
-    pub fn draw(&mut self, context: &ID2D1DeviceContext, width: f32, title: &str, maximized: bool) {
+    /// Draws the bar; with two or more `tabs` (labels in strip order) the
+    /// strip takes the title's place.
+    pub fn draw(&mut self, context: &ID2D1DeviceContext, width: f32, title: &str, tabs: &[String], active: usize, maximized: bool) {
         if self.opacity <= 0.0 {
             return;
         }
@@ -160,10 +190,39 @@ impl Chrome {
             let (cx, cy) = center(2.0); // minimize
             line(cx - r, cy, cx + r, cy);
 
-            if let Some((format, _)) = &self.text {
-                let wide: Vec<u16> = title.encode_utf16().collect();
-                let rect = D2D_RECT_F { left: 14.0 * s, top: 0.0, right: (width - 3.0 * button - 14.0 * s).max(14.0 * s), bottom: bar };
-                context.DrawText(&wide, format, &rect, &ink, D2D1_DRAW_TEXT_OPTIONS_CLIP, DWRITE_MEASURING_MODE_NATURAL);
+            let Some((format, _)) = &self.text else { return };
+            let text = |label: &str, rect: D2D_RECT_F, brush: &ID2D1SolidColorBrush| {
+                let wide: Vec<u16> = label.encode_utf16().collect();
+                context.DrawText(&wide, format, &rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, DWRITE_MEASURING_MODE_NATURAL);
+            };
+            match self.tab_layout(width) {
+                None => {
+                    let rect = D2D_RECT_F { left: 14.0 * s, top: 0.0, right: (width - 3.0 * button - 14.0 * s).max(14.0 * s), bottom: bar };
+                    text(title, rect, &ink);
+                }
+                Some((left, tab)) => {
+                    // The active tab lifts out of the bar; the others are quieter.
+                    let (Some(lifted), Some(quiet), Some(hover_fill), Some(rule)) =
+                        (brush(1.0, 1.0, 1.0, 1.0), brush(0.10, 0.10, 0.10, 0.62), brush(0.0, 0.0, 0.0, 0.06), brush(0.0, 0.0, 0.0, 0.12))
+                    else {
+                        return;
+                    };
+                    let pad = 4.0 * s;
+                    for (i, label) in tabs.iter().enumerate() {
+                        let x = left + tab * i as f32;
+                        let cell = D2D_RECT_F { left: x + 1.0 * s, top: pad, right: x + tab - 1.0 * s, bottom: bar - pad };
+                        if i == active {
+                            context.FillRectangle(&cell, &lifted);
+                        } else if self.hover == Some(Hit::Tab(i)) {
+                            context.FillRectangle(&cell, &hover_fill);
+                        }
+                        if i > 0 && i != active && i != active + 1 {
+                            context.FillRectangle(&D2D_RECT_F { left: x, top: 10.0 * s, right: x + 1.0 * s, bottom: bar - 10.0 * s }, &rule);
+                        }
+                        let rect = D2D_RECT_F { left: x + 10.0 * s, top: 0.0, right: x + tab - 10.0 * s, bottom: bar };
+                        text(if i == active { title } else { label }, rect, if i == active { &ink } else { &quiet });
+                    }
+                }
             }
         }
     }

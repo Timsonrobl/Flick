@@ -49,7 +49,7 @@ use folder::Folder;
 use gpu::Gpu;
 use instance::Request;
 use pool::Pool;
-use viewer::{Action, Screen, Shared, Viewer, ViewerId};
+use viewer::{Action, Screen, Shared, Tab, TabId, Viewer, ViewerId};
 
 const DECODE_THREADS: usize = 3;
 /// With no windows open, the resident process trims its memory after this.
@@ -57,11 +57,11 @@ const TRIM_AFTER: Duration = Duration::from_secs(30);
 
 pub enum Event {
     /// A window's first picture, decoded on its open path.
-    Decoded { viewer: ViewerId, picture: Result<Picture, String>, at: f64 },
+    Decoded { viewer: ViewerId, tab: TabId, picture: Result<Picture, String>, at: f64 },
     GpuReady(Result<Gpu, String>, Vec<(&'static str, f64)>),
     /// The compositor has shown a window's first picture (after `DwmFlush`).
-    OnScreen { viewer: ViewerId, at: f64 },
-    Listed { viewer: ViewerId, folder: Result<Folder, String> },
+    OnScreen { viewer: ViewerId, tab: TabId, at: f64 },
+    Listed { viewer: ViewerId, tab: TabId, folder: Result<Folder, String> },
     /// A screen level for some window's ring, from the decode pool.
     Preloaded { path: PathBuf, picture: Result<Picture, String>, decode_ms: f64 },
     FullDecoded { viewer: ViewerId, path: PathBuf, image: Result<Image, String>, at: f64 },
@@ -96,27 +96,44 @@ struct App {
 }
 
 impl App {
-    fn spawn_decode(&self, viewer: ViewerId, request: &Request) {
+    fn spawn_decode(&self, viewer: ViewerId, tab: TabId, request: &Request) {
         let (path, proxy) = (request.file.clone(), self.shared.proxy.clone());
         let target = request.size.unwrap_or(self.shared.target);
         std::thread::spawn(move || {
             let picture = decode::decode_screen(&path, target);
-            let _ = proxy.send_event(Event::Decoded { viewer, picture, at: ms_since_start() });
+            let _ = proxy.send_event(Event::Decoded { viewer, tab, picture, at: ms_since_start() });
         });
     }
 
-    /// Opens a window for `request` (a warm open: the GPU is usually ready).
-    fn open(&mut self, event_loop: &ActiveEventLoop, request: Request) {
-        let id = self.next_id;
+    fn new_id(&mut self) -> u64 {
         self.next_id += 1;
+        self.next_id - 1
+    }
+
+    /// Opens `request` (a warm open: the GPU is usually ready) as the first
+    /// tab of the window used last (ARCHITECTURE.md §10a), or in a new
+    /// window when there is none (and for `--size` benchmark runs).
+    fn open(&mut self, event_loop: &ActiveEventLoop, request: Request) {
         let mut timeline = Timeline::default();
         timeline.mark("request");
+        self.last_file = Some(request.file.clone());
+        self.idle_since = None;
+        let tab_id = self.new_id();
+        let last = self.focus_order.iter().copied().find(|id| self.viewers.get(id).is_some_and(Viewer::is_shown));
+        if let (Some(id), None) = (last, request.size) {
+            self.spawn_decode(id, tab_id, &request);
+            if let Some(viewer) = self.viewers.get_mut(&id) {
+                viewer.add_tab(Tab::new(tab_id, request, timeline));
+            }
+            self.plan();
+            return;
+        }
+        let id = self.new_id();
         // Cascade from the remembered placement while other windows are open.
         let open = self.viewers.len() as i32;
         let placement = self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) });
-        self.spawn_decode(id, &request);
-        self.last_file = Some(request.file.clone());
-        let mut viewer = Viewer::new(id, request, placement, self.prefs, timeline);
+        self.spawn_decode(id, tab_id, &request);
+        let mut viewer = Viewer::new(id, Tab::new(tab_id, request, timeline), placement, self.prefs);
         if let Err(e) = viewer.create_window(event_loop) {
             return report(&e);
         }
@@ -125,19 +142,31 @@ impl App {
         }
         self.viewers.insert(id, viewer);
         self.focus_order.insert(0, id);
-        self.idle_since = None;
     }
 
+    /// Shows a window whose first picture, GPU and window are all ready.
     fn try_show(&mut self, id: ViewerId) {
         let Some(viewer) = self.viewers.get_mut(&id) else { return };
-        match viewer.try_show(&mut self.shared) {
+        let (tab, shown) = (viewer.tab.id, viewer.try_show(&mut self.shared));
+        self.after_show(id, tab, shown);
+    }
+
+    /// A tab's first picture arrived (`Event::Decoded`).
+    fn on_decoded(&mut self, id: ViewerId, tab: TabId, picture: Picture) {
+        let Some(viewer) = self.viewers.get_mut(&id) else { return };
+        let shown = viewer.on_decoded(tab, picture, &mut self.shared);
+        self.after_show(id, tab, shown);
+    }
+
+    fn after_show(&mut self, id: ViewerId, tab: TabId, shown: Result<bool, String>) {
+        match shown {
             Ok(true) => {
                 // Nothing else may compete with the picture: wait until the
                 // compositor has put it on screen before listing the folder.
                 let proxy = self.shared.proxy.clone();
                 std::thread::spawn(move || {
                     let _ = unsafe { windows::Win32::Graphics::Dwm::DwmFlush() };
-                    let _ = proxy.send_event(Event::OnScreen { viewer: id, at: ms_since_start() });
+                    let _ = proxy.send_event(Event::OnScreen { viewer: id, tab, at: ms_since_start() });
                 });
             }
             Ok(false) => {}
@@ -156,12 +185,17 @@ impl App {
         self.remove_viewer(id);
     }
 
-    fn on_screen(&mut self, id: ViewerId, at: f64) {
+    fn on_screen(&mut self, id: ViewerId, tab: TabId, at: f64) {
         let Some(viewer) = self.viewers.get_mut(&id) else { return };
-        viewer.timeline.push("on_screen", at);
-        let (file, sort, proxy) = (viewer.request.file.clone(), viewer.sort(), self.shared.proxy.clone());
+        let sort = viewer.sort();
+        let Some(t) = viewer.tab_mut(tab) else { return };
+        t.timeline.push("on_screen", at);
+        if let Some(&(_, request)) = t.timeline.stages.iter().find(|(stage, _)| *stage == "request") {
+            clock::trace(format_args!("open into a tab: {:.0} ms from request to on screen", at - request));
+        }
+        let (file, proxy) = (t.request.file.clone(), self.shared.proxy.clone());
         std::thread::spawn(move || {
-            let _ = proxy.send_event(Event::Listed { viewer: id, folder: folder::list(&file, sort) });
+            let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
         });
         // Off the open path: listen for later launches, show the tray icon.
         if self.resident && !self.serving {
@@ -183,7 +217,7 @@ impl App {
         }
     }
 
-    fn on_listed(&mut self, id: ViewerId, listed: Result<Folder, String>) {
+    fn on_listed(&mut self, id: ViewerId, tab: TabId, listed: Result<Folder, String>) {
         let Ok(folder) = listed else { return }; // single-image mode
         if self.shared.pool.is_none() {
             let proxy = Mutex::new(self.shared.proxy.clone());
@@ -192,7 +226,7 @@ impl App {
             }));
         }
         if let Some(viewer) = self.viewers.get_mut(&id) {
-            viewer.on_listed(folder, &mut self.shared);
+            viewer.on_listed(tab, folder, &mut self.shared);
         }
         self.plan();
     }
@@ -226,7 +260,7 @@ impl App {
                     Ok(screen) => {
                         self.shared.cache.insert(path.clone(), screen.clone());
                         for viewer in self.viewers.values_mut() {
-                            viewer.last_decode_ms = Some(decode_ms);
+                            viewer.tab.last_decode_ms = Some(decode_ms);
                             viewer.on_preloaded(&path, &screen, &self.shared);
                         }
                     }
@@ -351,14 +385,15 @@ impl ApplicationHandler<Event> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            Event::Decoded { viewer, picture, at } => {
+            Event::Decoded { viewer, tab, picture, at } => {
                 let Some(v) = self.viewers.get_mut(&viewer) else { return };
-                v.timeline.push("decoded", at);
+                if let Some(t) = v.tab_mut(tab) {
+                    t.timeline.push("decoded", at);
+                }
                 match picture {
-                    Ok(picture) => {
-                        v.picture = Some(picture);
-                        self.try_show(viewer);
-                    }
+                    Ok(picture) => self.on_decoded(viewer, tab, picture),
+                    // A new tab in a shown window gets a notice, not a closed window.
+                    Err(e) if v.is_shown() => v.on_decode_failed(tab, &e),
                     Err(e) => self.fail_viewer(viewer, e),
                 }
             }
@@ -366,7 +401,7 @@ impl ApplicationHandler<Event> for App {
                 // The device is started with the first window; its timeline gets the stages.
                 if let Some(first) = self.viewers.values_mut().min_by_key(|v| v.id) {
                     for (stage, at) in stages {
-                        first.timeline.push(stage, at);
+                        first.tab.timeline.push(stage, at);
                     }
                 }
                 match gpu {
@@ -380,12 +415,12 @@ impl ApplicationHandler<Event> for App {
                     Err(e) => self.error = Some(e),
                 }
             }
-            Event::OnScreen { viewer, at } => self.on_screen(viewer, at),
-            Event::Listed { viewer, folder } => self.on_listed(viewer, folder),
+            Event::OnScreen { viewer, tab, at } => self.on_screen(viewer, tab, at),
+            Event::Listed { viewer, tab, folder } => self.on_listed(viewer, tab, folder),
             Event::Preloaded { path, picture, decode_ms } => self.on_preloaded(path, picture, decode_ms),
             Event::FullDecoded { viewer, path, image, at } => {
                 if let Some(v) = self.viewers.get_mut(&viewer) {
-                    v.timeline.push("full_decoded", at);
+                    v.tab.timeline.push("full_decoded", at);
                     v.on_full_decoded(path, image, &self.shared);
                 }
             }
@@ -554,11 +589,11 @@ fn main() {
     let target = request.size.unwrap_or_else(primary_display_size);
 
     // The two long poles, in parallel from the start.
-    let first: ViewerId = 1;
+    let (first, first_tab): (ViewerId, TabId) = (1, 2);
     let (path, decode_proxy) = (request.file.clone(), proxy.clone());
     std::thread::spawn(move || {
         let picture = decode::decode_screen(&path, target);
-        let _ = decode_proxy.send_event(Event::Decoded { viewer: first, picture, at: ms_since_start() });
+        let _ = decode_proxy.send_event(Event::Decoded { viewer: first, tab: first_tab, picture, at: ms_since_start() });
     });
     let gpu_proxy = proxy.clone();
     std::thread::spawn(move || {
@@ -573,9 +608,9 @@ fn main() {
     let last_file = Some(request.file.clone());
     let mut app = App {
         shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
-        viewers: HashMap::from([(first, Viewer::new(first, request, placement, prefs, timeline))]),
+        viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs))]),
         windows: HashMap::new(),
-        next_id: first + 1,
+        next_id: first_tab + 1,
         focus_order: vec![first],
         placement,
         prefs,
