@@ -52,6 +52,9 @@ use pool::Pool;
 use viewer::{Action, Screen, Shared, Tab, TabId, Viewer, ViewerId};
 
 const DECODE_THREADS: usize = 3;
+/// Files arriving to open within this of the previous one form a burst
+/// (a selection opened from Explorer): only the first is shown.
+const BURST: Duration = Duration::from_millis(500);
 /// With no windows open, the resident process trims its memory after this.
 const TRIM_AFTER: Duration = Duration::from_secs(30);
 
@@ -94,6 +97,10 @@ struct App {
     last_file: Option<PathBuf>,
     /// Set when the last window closed; the working set is trimmed later.
     idle_since: Option<Instant>,
+    /// When the last file arrived to open, and the window its burst goes to
+    /// with how many background tabs it has added so far.
+    last_open: Option<Instant>,
+    burst: Option<(ViewerId, usize)>,
     error: Option<String>,
 }
 
@@ -121,12 +128,27 @@ impl App {
         self.last_file = Some(request.file.clone());
         self.idle_since = None;
         let tab_id = self.new_id();
+        let tabs = request.size.is_none() && self.global.tabs;
+        // Explorer opens a selection of files with one launch per file, all
+        // at once. The first opens as usual; the rest of the burst become
+        // background tabs after it, decoded only when first viewed.
+        let now = Instant::now();
+        let in_burst = self.last_open.is_some_and(|t| now - t < BURST);
+        self.last_open = Some(now);
+        if let (true, Some((id, count))) = (tabs && in_burst, self.burst) {
+            if let Some(viewer) = self.viewers.get_mut(&id) {
+                viewer.add_background_tab(Tab::waiting(tab_id, request, timeline), count);
+                self.burst = Some((id, count + 1));
+                return;
+            }
+        }
         let last = self.focus_order.iter().copied().find(|id| self.viewers.get(id).is_some_and(Viewer::is_shown));
-        if let (Some(id), None, true) = (last, request.size, self.global.tabs) {
+        if let (Some(id), true) = (last, tabs) {
             self.spawn_decode(id, tab_id, &request);
             if let Some(viewer) = self.viewers.get_mut(&id) {
                 viewer.add_tab(Tab::new(tab_id, request, timeline));
             }
+            self.burst = Some((id, 0));
             self.plan();
             return;
         }
@@ -134,7 +156,24 @@ impl App {
         self.spawn_decode(id, tab_id, &request);
         // Tabs off: beside the window used last (benchmark runs keep their own placement).
         let beside = last.filter(|_| request.size.is_none());
-        self.new_window(event_loop, Tab::new(tab_id, request, timeline), beside);
+        let id = self.new_window(event_loop, Tab::new(tab_id, request, timeline), beside).unwrap_or(id);
+        self.burst = tabs.then_some((id, 0));
+    }
+
+    /// Lists the folder of every window's active tab that shows a picture
+    /// but was never listed (a background tab of a burst, viewed at last).
+    fn request_listings(&mut self) {
+        let sort_of = |v: &Viewer| v.sort();
+        let wanted: Vec<_> = self.viewers.values_mut().filter_map(|v| {
+            let sort = sort_of(v);
+            v.take_listing().map(|(tab, file)| (v.id, tab, file, sort))
+        }).collect();
+        for (id, tab, file, sort) in wanted {
+            let proxy = self.shared.proxy.clone();
+            std::thread::spawn(move || {
+                let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
+            });
+        }
     }
 
     /// A new (still hidden) window for `tab`, in the first colour no open
@@ -236,8 +275,9 @@ impl App {
         if let Some(&(_, request)) = t.timeline.stages.iter().find(|(stage, _)| *stage == "request") {
             clock::trace(format_args!("open into a tab: {:.0} ms from request to on screen", at - request));
         }
-        // A tab moved into a new window keeps the folder (and place) it has.
-        if !t.is_listed() {
+        // Listed once: not again for a tab moved into a new window (it keeps
+        // its folder and place) or one listed already.
+        if !t.mark_listing() {
             let (file, proxy) = (t.request.file.clone(), self.shared.proxy.clone());
             std::thread::spawn(move || {
                 let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
@@ -295,6 +335,8 @@ impl App {
             pool.set_queue(queue);
         }
         self.shared.cache.retain(|path, _| keep.contains(path));
+        // A background tab woken from the cache needs its folder listed too.
+        self.request_listings();
     }
 
     fn on_preloaded(&mut self, path: PathBuf, picture: Result<Picture, String>, decode_ms: f64) {
@@ -309,6 +351,8 @@ impl App {
                             viewer.tab.last_decode_ms = Some(decode_ms);
                             viewer.on_preloaded(&path, &screen, &self.shared);
                         }
+                        // A background tab that just got its first picture: list its folder.
+                        self.request_listings();
                     }
                     Err(e) => {
                         self.shared.failed.insert(path, e);
@@ -702,6 +746,10 @@ fn main() {
         serving: false,
         tray: None,
         last_file,
+        // A cold start can be the first of a burst too: the other launches
+        // wait for the pipe, then arrive together.
+        last_open: Some(Instant::now()),
+        burst: Some((first, 0)),
         idle_since: None,
         error: None,
     };

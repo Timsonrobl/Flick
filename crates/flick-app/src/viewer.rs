@@ -137,6 +137,12 @@ impl Current {
         let (full_requested, full_note) = if screen.animated { (true, "animation frames are full size") } else { (false, "not needed yet") };
         Current { path, screen, full: None, full_requested, full_note, view, anim: None }
     }
+
+    /// The same picture, drawn as it is, while another tab's decodes.
+    fn stand_in(&self) -> Current {
+        let full_note = "the previous tab's picture, until this one decodes";
+        Current { path: self.path.clone(), screen: self.screen.clone(), full: None, full_requested: true, full_note, view: self.view, anim: None }
+    }
 }
 
 /// What the animation thread sends (Event::Anim).
@@ -245,6 +251,8 @@ pub struct Tab {
     seed: u64,
     /// When it stopped being the window's active tab.
     parked: Option<Instant>,
+    /// Its folder listing was asked for.
+    listing: bool,
 }
 
 impl Tab {
@@ -257,8 +265,19 @@ impl Tab {
         file_name(self.wanted.as_deref().unwrap_or(&self.request.file))
     }
 
-    pub fn is_listed(&self) -> bool {
-        self.folder.is_some()
+    /// A tab opened in the background (the rest of a burst): its file is
+    /// decoded only when the tab is first viewed.
+    pub fn waiting(id: TabId, request: Request, timeline: Timeline) -> Tab {
+        let mut tab = Tab::new(id, request, timeline);
+        tab.wanted = Some(tab.request.file.clone());
+        tab
+    }
+
+    /// Marks its folder listing as asked for. Returns whether it already
+    /// was, or the tab already has its folder (e.g. moved in from another
+    /// window): then there's nothing to list.
+    pub fn mark_listing(&mut self) -> bool {
+        std::mem::replace(&mut self.listing, true) || self.folder.is_some()
     }
 }
 
@@ -297,6 +316,8 @@ pub struct Viewer {
     surface: Option<Surface>,
     /// The tab drawn in the window.
     pub tab: Tab,
+    /// The previous tab's picture, drawn while the active tab's decodes.
+    holdover: Option<Current>,
     /// The other tabs, in strip order; `tab` sits at `active_at` among them.
     others: Vec<Tab>,
     active_at: usize,
@@ -363,6 +384,7 @@ impl Viewer {
             surface: None,
             tab,
             others: Vec::new(),
+            holdover: None,
             active_at: 0,
             wheel: 0.0,
             modifiers: ModifiersState::default(),
@@ -417,12 +439,41 @@ impl Viewer {
         self.redraw();
     }
 
+    /// Before the drawn tab changes: keep its picture on screen until the
+    /// next tab's is decoded (a background or cooled tab), as paging does,
+    /// so a switch never shows an empty window.
+    fn hold_picture(&mut self) {
+        if let Some(stand_in) = self.tab.current.as_ref().or(self.holdover.as_ref()).map(Current::stand_in) {
+            self.holdover = Some(stand_in);
+        }
+    }
+
+    /// The rest of a burst of opened files: a background tab, the
+    /// `count`th after the active one; the active tab stays.
+    pub fn add_background_tab(&mut self, tab: Tab, count: usize) {
+        let at = (self.active_at + count).min(self.others.len());
+        self.others.insert(at, tab);
+        self.redraw();
+    }
+
+    /// The active tab shows a picture but its folder was never listed (a
+    /// background tab, now viewed): the app lists it.
+    pub fn take_listing(&mut self) -> Option<(TabId, PathBuf)> {
+        let tab = &mut self.tab;
+        if tab.current.is_none() || tab.listing || tab.folder.is_some() {
+            return None;
+        }
+        tab.listing = true;
+        Some((tab.id, tab.request.file.clone()))
+    }
+
     /// Makes the tab at strip position `at` the drawn one.
     fn activate(&mut self, at: usize, shared: &Shared) -> Action {
         if at > self.others.len() || at == self.active_at {
             return Action::None;
         }
         let started = Instant::now();
+        self.hold_picture();
         let mut tabs = std::mem::take(&mut self.others);
         tabs.insert(self.active_at, park(std::mem::take(&mut self.tab)));
         self.tab = tabs.remove(at);
@@ -466,6 +517,7 @@ impl Viewer {
         }
         if at == self.active_at {
             let next = if at < self.others.len() { at } else { at - 1 };
+            self.hold_picture();
             self.tab = self.others.remove(next);
             self.active_at = next;
             self.wake(shared);
@@ -506,6 +558,7 @@ impl Viewer {
             return (park(std::mem::take(&mut self.tab)), true);
         }
         let next = if self.active_at < self.others.len() { self.active_at } else { self.active_at - 1 };
+        self.hold_picture();
         let tab = std::mem::replace(&mut self.tab, self.others.remove(next));
         self.active_at = next;
         self.wake(shared);
@@ -1058,7 +1111,11 @@ impl Viewer {
         let Some(surface) = &mut self.surface else { return Ok(()) };
         let window = (surface.size.0 as f32, surface.size.1 as f32);
 
-        let picture = match &mut self.tab.current {
+        // The previous tab's picture stays until this tab has its own (or a notice).
+        if self.tab.current.is_some() || self.tab.notice.is_some() {
+            self.holdover = None;
+        }
+        let picture = match self.tab.current.as_mut().or(self.holdover.as_mut()) {
             Some(current) => {
                 let magnified = current.screen.magnified(current.view.scale);
                 if magnified && !current.full_requested {
@@ -1650,7 +1707,7 @@ impl Viewer {
             WindowEvent::Resized(size) => {
                 if let Some(surface) = &mut self.surface {
                     surface.resize((size.width, size.height))?;
-                    if let Some(current) = &mut self.tab.current {
+                    for current in self.tab.current.iter_mut().chain(self.holdover.iter_mut()) {
                         current.view.resize((size.width.max(1), size.height.max(1)));
                     }
                     self.redraw();

@@ -472,6 +472,14 @@ decides whether tabs stay, so these are the goal, not all built in 3b):**
 - Each window's background behind the picture is a slightly different dark
   grey (`chrome::BACKGROUNDS`, 0.055-0.135, paired with its pastel), so
   overlapping windows are told apart.
+- **Opening a selection from Explorer** (one launch per file, all at once):
+  files arriving within 500 ms of the previous one form a burst. The first
+  opens as usual; the others become background tabs after it, in arrival
+  order, and are decoded (and their folders listed) only when first viewed.
+  A cold start counts as the first of a burst.
+- Switching to a tab without its picture yet (a background or cooled tab)
+  keeps the previous tab's picture on screen until it decodes, as paging
+  does: no empty frame.
 - The menu's items are chosen with the left button only. Clicks that close
   the menu can leave a press without its release, or presses queued during
   its modal loop: Flick drops drag state when the menu closes, ignores
