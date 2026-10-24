@@ -540,6 +540,35 @@ times from `FLICK_TRACE`. Script: one run, by hand-off from a scratch script.
   were in the active tab's ring (all 20 tabs are neighbours in one folder);
   a cooled tab from another folder decodes again on return.
 
+## After milestone 3b: the overlay finding (2026-10-25)
+
+The baseline runs again after tabs, multi-row strip, Tab Lock and the
+black-on-resize fix (premultiplied swap chain, so DWM composes the window
+instead of putting it on a hardware overlay plane). Same burst file,
+`--size 3377x1440`. Raw data: `bench/results/post3b-*.json`.
+
+| | before 3b | now | budget |
+|---|---|---|---|
+| cold open, `--standalone` (10 runs) | 220 ms | **212 ms** (206–266) | ≤ 300 |
+| warm open (10 runs, see below) | 116 ms | **115–133 ms** | ≤ 150 |
+| page turn, key → screen (median / p90 / max) | 42 / 56 / 85 ms | **16 / 25 / 28 ms** | |
+| blank / flicker frames | 0 | **0 in every run** | 0 |
+
+- **Page turns are 2.5× faster, because of the overlay.** The unexplained
+  22–78 ms between "GPU done" and "visible" in milestone 2 was the overlay
+  path. A/B in one session, 20 turns each, twice: opaque swap chain (as
+  before) 56 / 50 ms median, p90 90 / 77 ms; premultiplied 16 / 16 ms, p90
+  25 / 28 ms (`post3b-paging-opaque.json`, `-premultiplied.json`).
+- **Warm opens: no regression in Flick, a slower machine today.** The first
+  runs gave 132 ms median, with memory creeping up over the 10 opens. The
+  pre-3b commit, built and run alternately in the same session, gave 121 /
+  126 ms and the same memory creep (working set 91–94 MB); the current build
+  115 / 117 ms (`post3b-warm-pre3b-build.json`, `-current-build.json`).
+  Flick's own timeline is steady (decode ~83, upload 4, draw 8 ms); what
+  varies is the compositor showing the first frame (`DwmFlush`, 2–54 ms).
+  Premultiplied vs. opaque on warm opens: 131–133 vs. 121–125 ms in one
+  A/B, within the noise of the build A/B above.
+
 ## Disk cache of screen levels (2026-10-24)
 
 `flick-bench disk-cache --screen 3377x1440 bench/photos/burst`: decode each

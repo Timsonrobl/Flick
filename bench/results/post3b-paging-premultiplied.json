@@ -1,0 +1,162 @@
+[
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 201.6524,
+    "image_ms": 211.3513,
+    "final_ms": 211.3513,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 165.60546875,
+    "working_set_mb": 71.5,
+    "peak_private_mb": 182.046875,
+    "capture_ms": 7.0015,
+    "pages": [
+      {
+        "image_ms": 7.6425,
+        "final_ms": 7.6425,
+        "private_mb": 182.29296875,
+        "working_set_mb": 71.65234375,
+        "pressed_wall": 13437353911051.857
+      },
+      {
+        "image_ms": 8.1546,
+        "final_ms": 8.1546,
+        "private_mb": 182.29296875,
+        "working_set_mb": 71.6796875,
+        "pressed_wall": 13437353911760.367
+      },
+      {
+        "image_ms": 7.6743999999999994,
+        "final_ms": 7.6743999999999994,
+        "private_mb": 182.29296875,
+        "working_set_mb": 71.69140625,
+        "pressed_wall": 13437353912469.406
+      },
+      {
+        "image_ms": 14.5662,
+        "final_ms": 14.5662,
+        "private_mb": 181.9375,
+        "working_set_mb": 71.4453125,
+        "pressed_wall": 13437353913178.535
+      },
+      {
+        "image_ms": 15.1075,
+        "final_ms": 15.1075,
+        "private_mb": 199.3515625,
+        "working_set_mb": 72.37109375,
+        "pressed_wall": 13437353913894.076
+      },
+      {
+        "image_ms": 14.5935,
+        "final_ms": 14.5935,
+        "private_mb": 199.3515625,
+        "working_set_mb": 72.37109375,
+        "pressed_wall": 13437353914610.229
+      },
+      {
+        "image_ms": 16.294900000000002,
+        "final_ms": 16.294900000000002,
+        "private_mb": 199.421875,
+        "working_set_mb": 72.43359375,
+        "pressed_wall": 13437353915326.154
+      },
+      {
+        "image_ms": 28.3919,
+        "final_ms": 28.3919,
+        "private_mb": 199.81640625,
+        "working_set_mb": 72.75390625,
+        "pressed_wall": 13437353916048.846
+      },
+      {
+        "image_ms": 15.1546,
+        "final_ms": 15.1546,
+        "private_mb": 199.81640625,
+        "working_set_mb": 72.75390625,
+        "pressed_wall": 13437353916779.379
+      },
+      {
+        "image_ms": 15.6877,
+        "final_ms": 15.6877,
+        "private_mb": 199.81640625,
+        "working_set_mb": 72.75390625,
+        "pressed_wall": 13437353917494.799
+      },
+      {
+        "image_ms": 15.814100000000002,
+        "final_ms": 15.814100000000002,
+        "private_mb": 199.81640625,
+        "working_set_mb": 72.75390625,
+        "pressed_wall": 13437353918216.793
+      },
+      {
+        "image_ms": 16.377200000000002,
+        "final_ms": 16.377200000000002,
+        "private_mb": 199.81640625,
+        "working_set_mb": 72.75390625,
+        "pressed_wall": 13437353918939.25
+      },
+      {
+        "image_ms": 18.2638,
+        "final_ms": 18.2638,
+        "private_mb": 199.75,
+        "working_set_mb": 72.6875,
+        "pressed_wall": 13437353919662.082
+      },
+      {
+        "image_ms": 16.3377,
+        "final_ms": 16.3377,
+        "private_mb": 199.84765625,
+        "working_set_mb": 72.78515625,
+        "pressed_wall": 13437353920384.547
+      },
+      {
+        "image_ms": 28.2893,
+        "final_ms": 28.2893,
+        "private_mb": 200.10546875,
+        "working_set_mb": 73.0078125,
+        "pressed_wall": 13437353921107.832
+      },
+      {
+        "image_ms": 15.6873,
+        "final_ms": 15.6873,
+        "private_mb": 200.10546875,
+        "working_set_mb": 73.0078125,
+        "pressed_wall": 13437353921837.299
+      },
+      {
+        "image_ms": 27.7684,
+        "final_ms": 27.7684,
+        "private_mb": 200.10546875,
+        "working_set_mb": 73.0078125,
+        "pressed_wall": 13437353922566.633
+      },
+      {
+        "image_ms": 16.0545,
+        "final_ms": 16.0545,
+        "private_mb": 200.10546875,
+        "working_set_mb": 73.0078125,
+        "pressed_wall": 13437353923295.846
+      },
+      {
+        "image_ms": 26.9905,
+        "final_ms": 26.9905,
+        "private_mb": 200.10546875,
+        "working_set_mb": 73.0078125,
+        "pressed_wall": 13437353924012.943
+      },
+      {
+        "image_ms": 15.9346,
+        "final_ms": 15.9346,
+        "private_mb": 200.10546875,
+        "working_set_mb": 73.0078125,
+        "pressed_wall": 13437353924741.402
+      }
+    ],
+    "page_error": "page turn 21: image did not settle within 15s (0 changes seen)",
+    "error": null
+  }
+]

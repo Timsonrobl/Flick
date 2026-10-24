@@ -119,7 +119,8 @@ impl Surface {
             // Premultiplied alpha, though every frame is opaque: it keeps the
             // compositor drawing the window. An opaque swap chain may be put on
             // a hardware overlay plane instead, and on an NVIDIA RTX 4080 that
-            // went black on screen (not in captures) while resizing.
+            // went black on screen (not in captures) while resizing, and made
+            // page turns ~35 ms slower to reach the screen (bench/README.md).
             let desc = DXGI_SWAP_CHAIN_DESC1 {
                 Width: size.0.max(1),
                 Height: size.1.max(1),
