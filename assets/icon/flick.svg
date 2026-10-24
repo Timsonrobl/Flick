@@ -7,6 +7,9 @@
       <stop offset="1" stop-color="#F472B6"/>
     </linearGradient>
   </defs>
+  <!-- Scaled to fill the canvas (outer edge at ~126 of 128): at 100 % the
+       circle looked smaller than other taskbar icons. -->
+  <g transform="translate(128 128) scale(1.2) translate(-128 -128)">
   <circle cx="128" cy="128" r="100" fill="url(#sweep)"/>
   <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round">
     <path d="M146 159.2 L107.5 225.9"/>
@@ -19,4 +22,5 @@
   <path d="M164 128 L146 159.2 L110 159.2 L92 128 L110 96.8 L146 96.8 Z" fill="#241A44" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/>
   <circle cx="138" cy="116" r="6" fill="#FFFFFF" fill-opacity="0.8"/>
   <circle cx="128" cy="128" r="100" fill="none" stroke="#241A44" stroke-width="10"/>
+  </g>
 </svg>

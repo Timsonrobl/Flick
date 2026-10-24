@@ -8,6 +8,8 @@
       <stop offset="1" stop-color="#F472B6"/>
     </linearGradient>
   </defs>
+  <!-- Scaled to fill the canvas, like flick.svg. -->
+  <g transform="translate(128 128) scale(1.08) translate(-128 -128)">
   <circle cx="128" cy="128" r="108" fill="url(#sweep)"/>
   <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round">
     <path d="M146 159.2 L107.5 225.9"/>
@@ -19,4 +21,5 @@
   </g>
   <path d="M164 128 L146 159.2 L110 159.2 L92 128 L110 96.8 L146 96.8 Z" fill="#241A44" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="round"/>
   <circle cx="128" cy="128" r="108" fill="none" stroke="#241A44" stroke-width="18"/>
+  </g>
 </svg>

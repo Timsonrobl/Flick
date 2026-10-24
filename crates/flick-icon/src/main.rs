@@ -12,7 +12,9 @@
 use std::path::{Path, PathBuf};
 
 const SMALL: &[u32] = &[16, 20, 24];
-const LARGE: &[u32] = &[32, 40, 48, 64, 256];
+// 30 and 36 are the taskbar's 24 px at 125 % and 150 %, so Windows draws
+// them 1:1 instead of shrinking the next larger size.
+const LARGE: &[u32] = &[30, 32, 36, 40, 48, 60, 64, 72, 96, 256];
 
 fn main() {
     if let Err(e) = run() {
