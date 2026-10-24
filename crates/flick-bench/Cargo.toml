@@ -20,7 +20,9 @@ memmap2 = "0.9.12"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 turbojpeg = { version = "1.5.1", optional = true, default-features = false, features = ["cmake", "require-simd"] }
+zune-core = "0.5"
 zune-jpeg = "0.5.15"
+zune-jpegxl = "0.5.2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
@@ -28,6 +30,7 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Imaging",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_Power",
     "Win32_System_ProcessStatus",
     "Win32_System_SystemInformation",

@@ -1,0 +1,127 @@
+[
+  {
+    "file": "C:\\Users\\me\\AppData\\Local\\Temp\\scratchpad\\stills\\alpha.heic",
+    "window_ms": 221.5983,
+    "image_ms": 236.7001,
+    "final_ms": 236.7001,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 105.3828125,
+    "working_set_mb": 73.5078125,
+    "peak_private_mb": 246.48046875,
+    "capture_ms": 6.97025,
+    "pages": [
+      {
+        "image_ms": 7.7761000000000005,
+        "final_ms": 7.7761000000000005,
+        "private_mb": 113.19140625,
+        "working_set_mb": 74.2109375,
+        "pressed_wall": 13437355082521.65
+      },
+      {
+        "image_ms": 7.823200000000001,
+        "final_ms": 7.823200000000001,
+        "private_mb": 212.5546875,
+        "working_set_mb": 161.28515625,
+        "pressed_wall": 13437355083230.986
+      },
+      {
+        "image_ms": 8.0377,
+        "final_ms": 8.0377,
+        "private_mb": 222.59375,
+        "working_set_mb": 160.7734375,
+        "pressed_wall": 13437355083938.887
+      },
+      {
+        "image_ms": 15.5923,
+        "final_ms": 15.5923,
+        "private_mb": 222.8359375,
+        "working_set_mb": 160.98828125,
+        "pressed_wall": 13437355084648.56
+      },
+      {
+        "image_ms": 14.5037,
+        "final_ms": 14.5037,
+        "private_mb": 227.75390625,
+        "working_set_mb": 157.1015625,
+        "pressed_wall": 13437355085364.473
+      },
+      {
+        "image_ms": 16.7716,
+        "final_ms": 16.7716,
+        "private_mb": 139.66015625,
+        "working_set_mb": 73.32421875,
+        "pressed_wall": 13437355086080.059
+      },
+      {
+        "image_ms": 14.603100000000001,
+        "final_ms": 14.603100000000001,
+        "private_mb": 139.8046875,
+        "working_set_mb": 73.42578125,
+        "pressed_wall": 13437355086803.824
+      },
+      {
+        "image_ms": 16.0169,
+        "final_ms": 16.0169,
+        "private_mb": 141.26953125,
+        "working_set_mb": 74.875,
+        "pressed_wall": 13437355087519.152
+      },
+      {
+        "image_ms": 14.6073,
+        "final_ms": 14.6073,
+        "private_mb": 141.7421875,
+        "working_set_mb": 75.28515625,
+        "pressed_wall": 13437355088235.805
+      },
+      {
+        "image_ms": 17.0206,
+        "final_ms": 17.0206,
+        "private_mb": 142.796875,
+        "working_set_mb": 76.5703125,
+        "pressed_wall": 13437355088950.467
+      },
+      {
+        "image_ms": 15.8312,
+        "final_ms": 15.8312,
+        "private_mb": 143.5703125,
+        "working_set_mb": 77.0390625,
+        "pressed_wall": 13437355089673.031
+      },
+      {
+        "image_ms": 14.8939,
+        "final_ms": 14.8939,
+        "private_mb": 140.0390625,
+        "working_set_mb": 75.1640625,
+        "pressed_wall": 13437355090389.102
+      },
+      {
+        "image_ms": 14.5644,
+        "final_ms": 14.5644,
+        "private_mb": 140.0390625,
+        "working_set_mb": 75.16796875,
+        "pressed_wall": 13437355091112.182
+      },
+      {
+        "image_ms": 14.8804,
+        "final_ms": 14.8804,
+        "private_mb": 140.0390625,
+        "working_set_mb": 75.16796875,
+        "pressed_wall": 13437355091834.268
+      },
+      {
+        "image_ms": 14.871,
+        "final_ms": 14.871,
+        "private_mb": 132.5859375,
+        "working_set_mb": 74.86328125,
+        "pressed_wall": 13437355092557.01
+      }
+    ],
+    "page_error": null,
+    "error": null
+  }
+]

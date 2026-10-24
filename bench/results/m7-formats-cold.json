@@ -1,0 +1,724 @@
+[
+  {
+    "file": "bench\\samples\\formats\\alpha.heic",
+    "window_ms": 256.0941,
+    "image_ms": 272.4906,
+    "final_ms": 272.4906,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 100.44140625,
+    "working_set_mb": 80.67578125,
+    "peak_private_mb": 240.62890625,
+    "capture_ms": 6.9178,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\alpha.heic",
+    "window_ms": 220.5178,
+    "image_ms": 233.81,
+    "final_ms": 233.81,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 101.55859375,
+    "working_set_mb": 75.30859375,
+    "peak_private_mb": 241.484375,
+    "capture_ms": 6.9604,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\alpha.jxl",
+    "window_ms": 189.6616,
+    "image_ms": 198.0634,
+    "final_ms": 198.0634,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 108.97265625,
+    "working_set_mb": 76.02734375,
+    "peak_private_mb": 254.1875,
+    "capture_ms": 6.9764,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\alpha.jxl",
+    "window_ms": 192.9176,
+    "image_ms": 205.3774,
+    "final_ms": 205.3774,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 108.625,
+    "working_set_mb": 76.25,
+    "peak_private_mb": 254.21875,
+    "capture_ms": 7.0101,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\apng-anim.png",
+    "window_ms": 188.2479,
+    "image_ms": 0.0,
+    "final_ms": 0.0,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      0,
+      0
+    ],
+    "private_mb": 0.0,
+    "working_set_mb": 0.0,
+    "peak_private_mb": 0.0,
+    "capture_ms": 0.0,
+    "pages": [],
+    "page_error": null,
+    "error": "image did not settle within 8s (95 changes seen)"
+  },
+  {
+    "file": "bench\\samples\\formats\\apng-anim.png",
+    "window_ms": 204.0588,
+    "image_ms": 0.0,
+    "final_ms": 0.0,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      0,
+      0
+    ],
+    "private_mb": 0.0,
+    "working_set_mb": 0.0,
+    "peak_private_mb": 0.0,
+    "capture_ms": 0.0,
+    "pages": [],
+    "page_error": null,
+    "error": "image did not settle within 8s (95 changes seen)"
+  },
+  {
+    "file": "bench\\samples\\formats\\avif-photo.avif",
+    "window_ms": 262.6584,
+    "image_ms": 271.4761,
+    "final_ms": 271.4761,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 98.515625,
+    "working_set_mb": 71.234375,
+    "peak_private_mb": 210.26953125,
+    "capture_ms": 6.926,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\avif-photo.avif",
+    "window_ms": 245.5005,
+    "image_ms": 254.351,
+    "final_ms": 254.351,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 102.4609375,
+    "working_set_mb": 75.484375,
+    "peak_private_mb": 209.37890625,
+    "capture_ms": 6.9159999999999995,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\bmp.bmp",
+    "window_ms": 190.7738,
+    "image_ms": 205.4814,
+    "final_ms": 205.4814,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 188.390625,
+    "working_set_mb": 162.421875,
+    "peak_private_mb": 364.55859375,
+    "capture_ms": 7.0549,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\bmp.bmp",
+    "window_ms": 191.6853,
+    "image_ms": 205.0178,
+    "final_ms": 205.0178,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 190.63671875,
+    "working_set_mb": 163.5234375,
+    "peak_private_mb": 373.96875,
+    "capture_ms": 7.0702,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\exr-hdr.exr",
+    "window_ms": 211.8115,
+    "image_ms": 224.9024,
+    "final_ms": 224.9024,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 186.66015625,
+    "working_set_mb": 161.390625,
+    "peak_private_mb": 398.9296875,
+    "capture_ms": 6.99995,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\exr-hdr.exr",
+    "window_ms": 196.3001,
+    "image_ms": 205.6698,
+    "final_ms": 205.6698,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 191.48046875,
+    "working_set_mb": 162.55078125,
+    "peak_private_mb": 399.30859375,
+    "capture_ms": 7.0745000000000005,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\gif-anim.gif",
+    "window_ms": 192.1488,
+    "image_ms": 0.0,
+    "final_ms": 0.0,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      0,
+      0
+    ],
+    "private_mb": 0.0,
+    "working_set_mb": 0.0,
+    "peak_private_mb": 0.0,
+    "capture_ms": 0.0,
+    "pages": [],
+    "page_error": null,
+    "error": "image did not settle within 8s (95 changes seen)"
+  },
+  {
+    "file": "bench\\samples\\formats\\gif-anim.gif",
+    "window_ms": 208.9872,
+    "image_ms": 0.0,
+    "final_ms": 0.0,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      0,
+      0
+    ],
+    "private_mb": 0.0,
+    "working_set_mb": 0.0,
+    "peak_private_mb": 0.0,
+    "capture_ms": 0.0,
+    "pages": [],
+    "page_error": null,
+    "error": "image did not settle within 8s (94 changes seen)"
+  },
+  {
+    "file": "bench\\samples\\formats\\photo.heic",
+    "window_ms": 424.9264,
+    "image_ms": 438.6231,
+    "final_ms": 438.6231,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 191.08984375,
+    "working_set_mb": 159.6171875,
+    "peak_private_mb": 358.58984375,
+    "capture_ms": 6.9397,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\photo.heic",
+    "window_ms": 420.9643,
+    "image_ms": 434.5113,
+    "final_ms": 434.5113,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 193.33203125,
+    "working_set_mb": 160.5078125,
+    "peak_private_mb": 357.96484375,
+    "capture_ms": 6.93,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\photo.jxl",
+    "window_ms": 307.72,
+    "image_ms": 316.1959,
+    "final_ms": 316.1959,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 193.59765625,
+    "working_set_mb": 161.25,
+    "peak_private_mb": 249.19921875,
+    "capture_ms": 6.936699999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\photo.jxl",
+    "window_ms": 317.9484,
+    "image_ms": 330.8623,
+    "final_ms": 330.8623,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 207.453125,
+    "working_set_mb": 176.51953125,
+    "peak_private_mb": 243.25,
+    "capture_ms": 7.0351,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png-alpha.png",
+    "window_ms": 213.5774,
+    "image_ms": 227.1804,
+    "final_ms": 227.1804,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 113.265625,
+    "working_set_mb": 65.95703125,
+    "peak_private_mb": 288.65234375,
+    "capture_ms": 6.94655,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png-alpha.png",
+    "window_ms": 196.1958,
+    "image_ms": 205.8024,
+    "final_ms": 205.8024,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 113.38671875,
+    "working_set_mb": 65.69921875,
+    "peak_private_mb": 277.51171875,
+    "capture_ms": 6.9747,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png-panorama-20000.png",
+    "window_ms": 194.523,
+    "image_ms": 205.4058,
+    "final_ms": 205.4058,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 107.921875,
+    "working_set_mb": 65.125,
+    "peak_private_mb": 146.8671875,
+    "capture_ms": 6.941400000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png-panorama-20000.png",
+    "window_ms": 186.2768,
+    "image_ms": 198.0484,
+    "final_ms": 198.0484,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 111.265625,
+    "working_set_mb": 68.01171875,
+    "peak_private_mb": 151.69140625,
+    "capture_ms": 6.93675,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png-photo.png",
+    "window_ms": 220.6762,
+    "image_ms": 232.9566,
+    "final_ms": 232.9566,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 106.57421875,
+    "working_set_mb": 61.66796875,
+    "peak_private_mb": 157.32421875,
+    "capture_ms": 6.9633,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png-photo.png",
+    "window_ms": 237.7465,
+    "image_ms": 247.8395,
+    "final_ms": 247.8395,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 107.2890625,
+    "working_set_mb": 61.94140625,
+    "peak_private_mb": 149.92578125,
+    "capture_ms": 6.954750000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png16-alpha.png",
+    "window_ms": 203.0096,
+    "image_ms": 212.429,
+    "final_ms": 212.429,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 117.94921875,
+    "working_set_mb": 66.83203125,
+    "peak_private_mb": 156.83984375,
+    "capture_ms": 6.9084,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\png16-alpha.png",
+    "window_ms": 197.3365,
+    "image_ms": 211.7436,
+    "final_ms": 211.7436,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 115.96484375,
+    "working_set_mb": 65.0859375,
+    "peak_private_mb": 156.859375,
+    "capture_ms": 6.9374,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\radiance.hdr",
+    "window_ms": 199.8015,
+    "image_ms": 212.3208,
+    "final_ms": 212.3208,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 106.26171875,
+    "working_set_mb": 65.37890625,
+    "peak_private_mb": 117.03125,
+    "capture_ms": 6.90525,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\radiance.hdr",
+    "window_ms": 189.9891,
+    "image_ms": 204.0857,
+    "final_ms": 204.0857,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 108.4921875,
+    "working_set_mb": 65.1796875,
+    "peak_private_mb": 119.05859375,
+    "capture_ms": 6.9529,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\tiff16.tif",
+    "window_ms": 208.4594,
+    "image_ms": 217.8343,
+    "final_ms": 217.8343,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 108.9453125,
+    "working_set_mb": 70.23046875,
+    "peak_private_mb": 149.30078125,
+    "capture_ms": 6.9028,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\tiff16.tif",
+    "window_ms": 193.908,
+    "image_ms": 205.3644,
+    "final_ms": 205.3644,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 109.5859375,
+    "working_set_mb": 70.41796875,
+    "peak_private_mb": 150.82421875,
+    "capture_ms": 6.9205,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\vector.svg",
+    "window_ms": 216.4646,
+    "image_ms": 226.8117,
+    "final_ms": 226.8117,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 113.96484375,
+    "working_set_mb": 70.37109375,
+    "peak_private_mb": 184.4375,
+    "capture_ms": 6.9231,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\vector.svg",
+    "window_ms": 202.6417,
+    "image_ms": 212.1756,
+    "final_ms": 212.1756,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 112.30078125,
+    "working_set_mb": 70.38671875,
+    "peak_private_mb": 184.33203125,
+    "capture_ms": 6.9223,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\webp-anim.webp",
+    "window_ms": 191.9129,
+    "image_ms": 0.0,
+    "final_ms": 0.0,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      0,
+      0
+    ],
+    "private_mb": 0.0,
+    "working_set_mb": 0.0,
+    "peak_private_mb": 0.0,
+    "capture_ms": 0.0,
+    "pages": [],
+    "page_error": null,
+    "error": "image did not settle within 8s (94 changes seen)"
+  },
+  {
+    "file": "bench\\samples\\formats\\webp-anim.webp",
+    "window_ms": 202.2871,
+    "image_ms": 0.0,
+    "final_ms": 0.0,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      0,
+      0
+    ],
+    "private_mb": 0.0,
+    "working_set_mb": 0.0,
+    "peak_private_mb": 0.0,
+    "capture_ms": 0.0,
+    "pages": [],
+    "page_error": null,
+    "error": "image did not settle within 8s (94 changes seen)"
+  },
+  {
+    "file": "bench\\samples\\formats\\webp-lossless-alpha.webp",
+    "window_ms": 218.2069,
+    "image_ms": 226.4615,
+    "final_ms": 226.4615,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 85.28125,
+    "working_set_mb": 64.37890625,
+    "peak_private_mb": 136.8515625,
+    "capture_ms": 6.924300000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\webp-lossless-alpha.webp",
+    "window_ms": 214.5953,
+    "image_ms": 226.0012,
+    "final_ms": 226.0012,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 83.93359375,
+    "working_set_mb": 64.25,
+    "peak_private_mb": 136.18359375,
+    "capture_ms": 6.9253,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\webp-lossy.webp",
+    "window_ms": 344.4914,
+    "image_ms": 361.2825,
+    "final_ms": 361.2825,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 83.2421875,
+    "working_set_mb": 64.078125,
+    "peak_private_mb": 114.69921875,
+    "capture_ms": 6.9747,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\samples\\formats\\webp-lossy.webp",
+    "window_ms": 344.329,
+    "image_ms": 358.3745,
+    "final_ms": 358.3745,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 82.4296875,
+    "working_set_mb": 63.69921875,
+    "peak_private_mb": 114.3984375,
+    "capture_ms": 6.9293499999999995,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

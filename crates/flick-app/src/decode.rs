@@ -1,10 +1,15 @@
-//! WIC decoding. The `Screen` level is decoded at the smallest DCT scale that
-//! still covers the target (the fastest final-quality picture, measured in
-//! milestone 0); `Full` is the native resolution, for zooming in. Animated
-//! GIFs are composed frame by frame into whole pictures (`animate`).
+//! Decoding. WIC does most formats; `formats` the ones it doesn't cover
+//! here (JPEG XL, SVG, EXR/HDR, APNG and animated WebP). The `Screen` level
+//! is decoded at the smallest DCT scale that still covers the target (the
+//! fastest final-quality picture, measured in milestone 0), or scaled down
+//! to the target with WIC's Fant scaler; `Full` is the native resolution,
+//! for zooming in. Animations are composed frame by frame into whole
+//! pictures (`animate`).
 
 use std::path::Path;
 use std::time::Duration;
+
+use crate::formats::{self, Kind};
 
 use windows::Win32::Foundation::GENERIC_READ;
 use windows::Win32::Graphics::Imaging::*;
@@ -47,10 +52,16 @@ struct Source {
     gif: bool,
 }
 
-fn open(path: &Path) -> windows::core::Result<Source> {
+fn factory() -> windows::core::Result<IWICImagingFactory> {
     unsafe {
         CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
-        let factory: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
+        CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)
+    }
+}
+
+fn open(path: &Path) -> windows::core::Result<Source> {
+    unsafe {
+        let factory = factory()?;
         let decoder = factory.CreateDecoderFromFilename(&HSTRING::from(path.as_os_str()), None, GENERIC_READ, WICDecodeMetadataCacheOnDemand)?;
         let frame = decoder.GetFrame(0)?;
         let (mut w, mut h) = (0, 0);
@@ -90,42 +101,107 @@ fn orientation(frame: &IWICBitmapFrameDecode) -> u16 {
     }
 }
 
-/// Decodes at the smallest DCT scale (1/2, 1/4, 1/8) whose output still
-/// covers `target` (in displayed orientation).
-pub fn decode_screen(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
-    let inner = || -> windows::core::Result<Picture> {
-        let source = open(path)?;
-        if source.gif {
-            // Frame 0 composed on the GIF's logical screen, as `animate` shows it.
-            let mut first = None;
-            compose(&source, |frame| {
-                first = Some(frame.image);
-                false
-            })?;
-            let screen = first.ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?;
-            let full_size = (screen.width, screen.height);
-            return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames });
-        }
-        let orientation = orientation(&source.frame);
-        let (w, h) = source.size;
-        let (dw, dh) = if orientation >= 5 { (h, w) } else { (w, h) };
-        let fit = f64::min(f64::from(target.0) / f64::from(dw), f64::from(target.1) / f64::from(dh));
-        let denom = [8, 4, 2].into_iter().find(|&d| 1.0 / f64::from(d) >= fit).unwrap_or(1);
-        let screen = if denom > 1 { scaled(&source, denom)? } else { None };
-        let screen = match screen {
-            Some(image) => image,
-            None => full(&source)?,
-        };
-        Ok(Picture { screen, full_size: source.size, orientation, frames: 1 })
-    };
-    inner().map_err(|e| format!("{}: {e}", path.display()))
+/// The size `size` shrinks to so it fits in `target`, if it is larger.
+fn fit_size((w, h): (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
+    let scale = f64::min(f64::from(target.0) / f64::from(w), f64::from(target.1) / f64::from(h));
+    (scale < 1.0).then(|| (((f64::from(w) * scale).ceil() as u32).max(1), ((f64::from(h) * scale).ceil() as u32).max(1)))
 }
 
-/// Decodes an animated GIF frame by frame, each composed into a whole
-/// picture, handing them to `each` in order until it returns false or the
-/// frames run out (one pass; the caller loops the playback).
+/// The Screen level: the picture as a window first shows it, no larger than
+/// `target` (in displayed orientation) where the format allows.
+pub fn decode_screen(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
+    let named = |e: String| format!("{}: {e}", path.display());
+    let still = |screen: Image, full_size| Picture { screen, full_size, orientation: 1, frames: 1 };
+    match formats::kind(path) {
+        Kind::Wic => wic_screen(path, target).map_err(|e| named(e.to_string())),
+        kind @ (Kind::Apng(frames) | Kind::AnimatedWebp(frames)) => {
+            // Animations are shown at full size, as GIFs are.
+            let screen = first_frame(path, kind).map_err(named)?;
+            let full_size = (screen.width, screen.height);
+            Ok(Picture { screen, full_size, orientation: 1, frames })
+        }
+        Kind::Jxl => {
+            let full = formats::jxl(path).map_err(named)?;
+            let full_size = (full.width, full.height);
+            Ok(still(shrink(full, target).map_err(|e| named(e.to_string()))?, full_size))
+        }
+        Kind::Svg => {
+            let svg = formats::Svg::open(path).map_err(named)?;
+            let full_size = svg.full_size();
+            Ok(still(svg.render(fit_size(full_size, target).unwrap_or(full_size)).map_err(named)?, full_size))
+        }
+        Kind::Float => {
+            let full = formats::float(path).map_err(named)?;
+            let full_size = (full.width, full.height);
+            Ok(still(shrink(full, target).map_err(|e| named(e.to_string()))?, full_size))
+        }
+    }
+}
+
+fn first_frame(path: &Path, kind: Kind) -> Result<Image, String> {
+    let mut first = None;
+    formats::frames(path, kind, |frame| {
+        first = Some(frame.image);
+        false
+    })?;
+    first.ok_or_else(|| "no frames".into())
+}
+
+/// A decoded picture scaled down to fit `target` (Fant, through WIC), if
+/// it is larger.
+fn shrink(image: Image, target: (u32, u32)) -> windows::core::Result<Image> {
+    let Some((w, h)) = fit_size((image.width, image.height), target) else { return Ok(image) };
+    unsafe {
+        let factory = factory()?;
+        let bitmap = factory.CreateBitmapFromMemory(image.width, image.height, &GUID_WICPixelFormat32bppPBGRA, image.width * 4, &image.pixels)?;
+        let scaler = factory.CreateBitmapScaler()?;
+        scaler.Initialize(&bitmap, w, h, WICBitmapInterpolationModeFant)?;
+        let mut pixels = vec![0u8; w as usize * h as usize * 4];
+        scaler.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
+        Ok(Image { width: w, height: h, pixels })
+    }
+}
+
+/// WIC formats: the smallest DCT scale (1/2, 1/4, 1/8) whose output still
+/// covers `target`; else, for a picture larger than it, the Fant scaler.
+fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture> {
+    let source = open(path)?;
+    if source.gif {
+        // Frame 0 composed on the GIF's logical screen, as `animate` shows it.
+        let mut first = None;
+        compose(&source, |frame| {
+            first = Some(frame.image);
+            false
+        })?;
+        let screen = first.ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?;
+        let full_size = (screen.width, screen.height);
+        return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames });
+    }
+    let orientation = orientation(&source.frame);
+    let (w, h) = source.size;
+    let (dw, dh) = if orientation >= 5 { (h, w) } else { (w, h) };
+    let fit = f64::min(f64::from(target.0) / f64::from(dw), f64::from(target.1) / f64::from(dh));
+    let denom = [8, 4, 2].into_iter().find(|&d| 1.0 / f64::from(d) >= fit).unwrap_or(1);
+    let screen = if denom > 1 { scaled(&source, denom)? } else { None };
+    let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
+    let screen = match (screen, fit_size(source.size, stored_target)) {
+        (Some(image), _) => image,
+        (None, Some(size)) => fitted(&source, size)?,
+        (None, None) => full(&source)?,
+    };
+    Ok(Picture { screen, full_size: source.size, orientation, frames: 1 })
+}
+
+/// Decodes an animation (GIF, APNG, animated WebP) frame by frame, each
+/// composed into a whole picture, handing them to `each` in order until it
+/// returns false or the frames run out (one pass; the caller loops the
+/// playback).
 pub fn animate(path: &Path, each: impl FnMut(Frame) -> bool) -> Result<(), String> {
-    open(path).and_then(|source| compose(&source, each)).map_err(|e| format!("{}: {e}", path.display()))
+    let result = match formats::kind(path) {
+        kind @ (Kind::Apng(_) | Kind::AnimatedWebp(_)) => formats::frames(path, kind, each),
+        _ => open(path).and_then(|source| compose(&source, each)).map_err(|e| e.to_string()),
+    };
+    result.map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// GIF composition: every frame is a rectangle drawn onto the logical
@@ -206,6 +282,49 @@ mod tests {
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
     }
 
+    /// Milestone 7: every sample from `bench/gen-formats.ps1`, decoded as a
+    /// window would (screen level for a 3377×1440 target, then full), with
+    /// times. `cargo test --release -p flick-app formats_report -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn formats_report() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/formats");
+        let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).collect();
+        files.sort();
+        for file in files {
+            let name = file.file_name().unwrap().to_string_lossy().into_owned();
+            let started = std::time::Instant::now();
+            let screen = decode_screen(&file, (3377, 1440));
+            let screen_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let started = std::time::Instant::now();
+            let full = decode_full(&file);
+            let full_ms = started.elapsed().as_secs_f64() * 1000.0;
+            if let (Ok(p), Some(out)) = (&screen, std::env::var_os("FLICK_FORMATS_OUT")) {
+                // The screen level over a checkerboard, as a PNG to look at.
+                let s = &p.screen;
+                let rgb = (0..s.width * s.height).flat_map(|i| {
+                    let px = &s.pixels[i as usize * 4..][..4];
+                    let (x, y) = (i % s.width, i / s.width);
+                    let check = if (x / 16 + y / 16) % 2 == 0 { 200u16 } else { 120 };
+                    let under = |c: u8| (u16::from(c) + check * (255 - u16::from(px[3])) / 255).min(255) as u8;
+                    [under(px[2]), under(px[1]), under(px[0])]
+                });
+                let image = image::RgbImage::from_raw(s.width, s.height, rgb.collect()).unwrap();
+                std::fs::create_dir_all(&out).unwrap();
+                image.save(Path::new(&out).join(format!("{name}.png"))).unwrap();
+            }
+            let screen = match screen {
+                Ok(p) => format!("{}x{} of {}x{}, {} frame(s)", p.screen.width, p.screen.height, p.full_size.0, p.full_size.1, p.frames),
+                Err(e) => format!("ERROR {}", e.rsplit(": ").next().unwrap_or(&e)),
+            };
+            let full = match full {
+                Ok(i) => format!("{}x{}", i.width, i.height),
+                Err(e) => format!("ERROR {}", e.rsplit(": ").next().unwrap_or(&e)),
+            };
+            println!("{name:<26} screen {screen_ms:>6.0} ms  {screen:<40} full {full_ms:>6.0} ms  {full}");
+        }
+    }
+
     fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
         let i = (y * image.width + x) as usize * 4;
         image.pixels[i..i + 4].try_into().unwrap()
@@ -278,16 +397,29 @@ fn fill(canvas: &mut [u8], stride: usize, (width, height): (u32, u32), (x, y, w,
     }
 }
 
+/// The Full level: native resolution (for an SVG, its `full_size`).
 pub fn decode_full(path: &Path) -> Result<Image, String> {
-    open(path).and_then(|source| full(&source)).map_err(|e| format!("{}: {e}", path.display()))
+    let result = match formats::kind(path) {
+        Kind::Wic => open(path).and_then(|source| full(&source)).map_err(|e| e.to_string()),
+        kind @ (Kind::Apng(_) | Kind::AnimatedWebp(_)) => first_frame(path, kind),
+        Kind::Jxl => formats::jxl(path),
+        Kind::Svg => formats::Svg::open(path).and_then(|svg| svg.render(svg.full_size())),
+        Kind::Float => formats::float(path),
+    };
+    result.map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// DCT-scaled decode through the codec's own transform, if it has one.
 fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
     unsafe {
         let Ok(transform) = source.frame.cast::<IWICBitmapSourceTransform>() else { return Ok(None) };
-        let (mut w, mut h) = (source.size.0.div_ceil(denom), source.size.1.div_ceil(denom));
+        let (want_w, want_h) = (source.size.0.div_ceil(denom), source.size.1.div_ceil(denom));
+        let (mut w, mut h) = (want_w, want_h);
         transform.GetClosestSize(&mut w, &mut h)?;
+        // Some codecs (PNG) offer the transform but only at full size.
+        if w > want_w || h > want_h {
+            return Ok(None);
+        }
         let mut format: GUID = GUID_WICPixelFormat32bppBGRA;
         transform.GetClosestPixelFormat(&mut format)?;
         let bpp = match format {
@@ -299,6 +431,20 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
         transform.CopyPixels(std::ptr::null(), w, h, &format, WICBitmapTransformRotate0, w * bpp as u32, &mut raw)?;
         let pixels = if bpp == 3 { raw.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect() } else { raw };
         Ok(Some(Image { width: w, height: h, pixels }))
+    }
+}
+
+/// Scaled to exactly `size` with the Fant scaler, after conversion to
+/// premultiplied BGRA (so transparent edges don't fringe).
+fn fitted(source: &Source, (w, h): (u32, u32)) -> windows::core::Result<Image> {
+    unsafe {
+        let converter = source.factory.CreateFormatConverter()?;
+        converter.Initialize(&source.frame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+        let scaler = source.factory.CreateBitmapScaler()?;
+        scaler.Initialize(&converter, w, h, WICBitmapInterpolationModeFant)?;
+        let mut pixels = vec![0u8; w as usize * h as usize * 4];
+        scaler.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
+        Ok(Image { width: w, height: h, pixels })
     }
 }
 

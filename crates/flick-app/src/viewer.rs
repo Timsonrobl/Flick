@@ -1131,6 +1131,12 @@ impl Viewer {
         let picture = match self.tab.current.as_mut().or(self.holdover.as_mut()) {
             Some(current) => {
                 let magnified = current.screen.magnified(current.view.scale);
+                let max_bitmap = shared.gpu.as_ref().map_or(u32::MAX, Gpu::max_bitmap_size);
+                if magnified && !current.full_requested && current.screen.full_size.0.max(current.screen.full_size.1) > max_bitmap {
+                    // Not decoded only to be refused by the GPU (a 20000 px panorama).
+                    current.full_requested = true;
+                    current.full_note = "too large for one bitmap (tiles: milestone 4)";
+                }
                 if magnified && !current.full_requested {
                     // Zoomed past the screen level: decode full resolution,
                     // drawing the screen level (slightly soft) until it lands.

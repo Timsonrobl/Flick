@@ -43,6 +43,9 @@ windows = { version = "0.62", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+jxl-oxide = "0.12.6"
+image = { version = "0.25.10", default-features = false, features = ["png", "webp", "hdr", "exr"] }
+resvg = "0.49.0"
 
 [build-dependencies]
 embed-resource = "3.0.12"

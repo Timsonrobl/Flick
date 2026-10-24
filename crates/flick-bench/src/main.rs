@@ -7,6 +7,7 @@ mod decoders;
 mod diskcache;
 #[cfg(windows)]
 mod external;
+mod formats;
 mod jpeg;
 mod report;
 mod sample;
@@ -43,6 +44,14 @@ enum Cmd {
     Startup(StartupArgs),
     /// Write synthetic JPEGs (with EXIF thumbnails) for smoke tests.
     GenSample(GenSampleArgs),
+    /// Write JPEG XL and HEIC samples from a PNG (the formats ffmpeg can't
+    /// write; `bench/gen-formats.ps1` makes the others).
+    GenFormats {
+        source: PathBuf,
+        dir: PathBuf,
+        #[arg(long, default_value = "sample")]
+        stem: String,
+    },
     /// List the decoders compiled into this build.
     Decoders,
     /// Time an external viewer (e.g. Honeyview) end to end by watching the screen.
@@ -209,6 +218,7 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Cmd::GenFormats { source, dir, stem } => formats::generate(&source, &dir, &stem),
         Cmd::Decoders => {
             for d in decoders::ALL {
                 let modes: Vec<String> = d.modes.iter().map(Mode::to_string).collect();

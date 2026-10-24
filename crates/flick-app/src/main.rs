@@ -22,6 +22,7 @@ mod debug;
 mod decode;
 mod elevation;
 mod folder;
+mod formats;
 mod gpu;
 mod icon;
 mod instance;

@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 /// Extensions WIC can usually decode (some need Store codec extensions).
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "jpe", "jfif", "png", "bmp", "gif", "tif", "tiff", "webp", "heic", "heif", "avif", "jxl"];
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "jpe", "jfif", "png", "apng", "bmp", "dib", "gif", "tif", "tiff", "webp", "heic", "heif", "avif", "jxl", "jxr", "wdp", "ico",
+    "svg", "svgz", "exr", "hdr",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SortKey {

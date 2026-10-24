@@ -569,6 +569,49 @@ instead of putting it on a hardware overlay plane). Same burst file,
   Premultiplied vs. opaque on warm opens: 131–133 vs. 121–125 ms in one
   A/B, within the noise of the build A/B above.
 
+## Milestone 7: formats (2026-10-25)
+
+`bench/gen-formats.ps1` writes one sample per format into
+`bench/samples/formats` (ffmpeg; `flick-bench gen-formats` for JPEG XL,
+lossless, and HEIC through WIC's HEIF encoder). Decode times in-process
+(`cargo test --release -p flick-app formats_report -- --ignored
+--nocapture`, 3377×1440 target), then cold opens like every other run
+(`ext-viewer --standalone`, 2 runs each). Raw data:
+`bench/results/m7-formats-cold.json`.
+
+| sample | size | Screen level | screen decode | cold open → final picture |
+|---|---|---|---|---|
+| JPEG (burst, for reference) | 4800×3584 | 2400×1792 (DCT ½) | ~75 ms | 212 ms |
+| PNG photo | 4032×3024 | 1920×1440 (Fant) | 183 ms | 240 ms |
+| PNG panorama | 20000×1200 | 3377×203 | 55 ms | 202 ms (failed before) |
+| PNG 16-bit + alpha | 1600×1200 | full | 11 ms | 212 ms |
+| TIFF 16-bit | 3000×2250 | 1920×1440 | 34 ms | 212 ms |
+| WebP lossy | 4032×3024 | 1920×1440 | 264 ms | 360 ms |
+| WebP lossless + alpha | 1600×1200 | full | 29 ms | 226 ms |
+| HEIC | 4032×3024 | 1920×1440 | 220 ms | 437 ms |
+| AVIF | 4032×3024 | 1920×1440 | 153 ms | 263 ms |
+| JPEG XL (lossless photo) | 4032×3024 | 1920×1440 | 268 ms | 324 ms |
+| SVG | 800×600 → 4096×3072 | 1920×1440 | 295 ms first (system fonts), then ~60 | 219 ms |
+| OpenEXR (values to 4.0) | 1600×1200 | full, tone-mapped | 98 ms | 215 ms |
+| Radiance HDR | 1600×1200 | full, tone-mapped | 65 ms | 208 ms |
+| BMP | 1600×1200 | full | 4 ms | 205 ms |
+| GIF / APNG / animated WebP | 640×480, 24 frames | first frame | 3–5 ms | plays (95 screen changes in 8 s) |
+
+- **0 blank and 0 flicker frames** in all 32 cold opens of the 16 stills.
+- **The cold JPEG open is unchanged** at 212 ms (10 runs,
+  `m7-cold-jpeg.json`) with three more decoder crates linked in (the exe
+  is 7.4 MB). None of them does anything until a file of its format opens.
+- **Memory after open** in the table's run reflects the neighbours being
+  preloaded (this folder mixes formats). Each file alone in its folder:
+  71–76 MB private, except HEIC, which shows ~170 MB for about 3 s after
+  decoding (Windows' HEVC decoders, one per decoding thread) and then
+  settles at 106 MB private / 74 MB working set.
+- **Paging through all 16 stills in one window** (`m7-formats-paging.json`):
+  every turn a preloaded swap, 8–17 ms key → screen; working set ~75 MB,
+  briefly ~160 MB while the HEIC neighbours were decoding.
+- **Slowest: HEIC and lossy WebP** (WIC's decoders, ~220–265 ms for 12 MP).
+  JPEG XL lossless is 268 ms; typical lossy (VarDCT) files decode faster.
+
 ## Disk cache of screen levels (2026-10-24)
 
 `flick-bench disk-cache --screen 3377x1440 bench/photos/burst`: decode each

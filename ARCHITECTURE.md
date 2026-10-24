@@ -311,6 +311,24 @@ shows the window background.
 Pixel-count limit (default 500 MP, config) rejects absurd headers before any
 allocation.
 
+**As built (milestone 7, 2026-10-25).** No `Decoder` trait yet: one
+function, `formats::kind`, picks the decoder from the file's first bytes
+(SVG by extension), and `decode_screen`/`decode_full`/`animate` dispatch on
+it. The table above is the plan; what each format actually uses:
+
+| Format | Decoder | Screen level |
+|---|---|---|
+| JPEG | WIC | DCT scale 1/2–1/8 (unchanged) |
+| PNG, TIFF (8/16-bit), BMP, ICO, JPEG XR, static WebP, HEIC/HEIF, AVIF | WIC (HEIC/AVIF through Windows' HEIF + HEVC / AV1 extensions) | WIC's Fant scaler to the fit size, after converting to premultiplied BGRA (a PNG panorama of 20000 px now opens; before, its full size went to the GPU and was refused) |
+| APNG, animated WebP | `image` crate (composes frames) | first frame, full size, then played like a GIF |
+| GIF | WIC + `decode::compose` | unchanged |
+| JPEG XL | `jxl-oxide` (WIC has a JPEG XL component on this machine that fails to initialise) | full decode, then the Fant scaler |
+| SVG, SVGZ | `resvg` (system fonts, loaded on the first SVG) | rendered at the fit size; Full = rendered at the SVG's "pixel size": its own size raised to at least 4096 px on the longer side (max 16384) |
+| OpenEXR, Radiance HDR | `image` crate, tone-mapped on the CPU | extended Reinhard on luminance, white point at the 99.9th percentile, sRGB; then the Fant scaler |
+
+A picture whose full size exceeds the GPU's bitmap limit no longer gets a
+Full decode that would only be refused.
+
 ## 8. Cache and memory budget
 
 - `ImageCache` keys: `(ImageId, Level)` → `Entry { cpu: Option<Pixels>, gpu: Option<Texture>, bytes, last_use, pinned_by: Set<WindowId> }`.
@@ -657,7 +675,7 @@ change, debounced, so a crash or "stay resident" restart restores them as
 | 4 | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open |
 | 5 | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path |
 | 6 | Tags/rating read + write, inline editor | Two-keystroke tag edit, file updated atomically |
-| 7 | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup |
+| 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. Done for all but RAW (skipped for now, by request): 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. *No `Decoder` trait yet: `formats::kind` dispatches |
 | 8 | Polish: file associations, installer, session restore, tab drag-out, Linux/macOS build | — |
 
 Milestones 0–3 are the thesis; if 3 doesn't beat Honeyview on cold start,
@@ -764,10 +782,21 @@ closed by a commit that says so; review this list at every milestone.
 - [ ] **Latency after composition** (§16): ~35 ms between present and the
   picture on screen during page turns. Separate display-path latency from
   measurement lag with DXGI Desktop Duplication timestamps.
-- [ ] **Large animated GIFs.** Frames over 256 MB (e.g. long 1080p GIFs)
-  aren't animated: stream them through a small ring instead of keeping
-  them all (§7's plan). Also APNG and animated WebP, which WIC doesn't
-  animate.
+- [ ] **Large animations.** Frames over 256 MB (e.g. long 1080p GIFs, APNG
+  or animated WebP) aren't animated: stream them through a small ring
+  instead of keeping them all (§7's plan).
+- [ ] **RAW** (milestone 7, skipped by request): the embedded full-size JPEG
+  preview, via WIC's Raw Image Extension (installed here) or `rawloader`.
+- [ ] **Colour management.** ICC profiles are ignored (WIC doesn't apply
+  them; jxl-oxide renders to sRGB): wide-gamut photos look duller than in
+  a colour-managed viewer.
+- [ ] **HDR on HDR displays.** EXR/Radiance HDR are tone-mapped to 8-bit
+  sRGB on the CPU; §7's plan is RGBA16F and tone mapping in a shader.
+- [ ] **Format details left out of milestone 7:** multi-page TIFF (first
+  page only), animated AVIF/HEIC sequences and animated JPEG XL (first
+  frame), SVG Full level only up to its 4096–16384 px size, and §6's
+  pixel-count limit (a huge JPEG XL or EXR is decoded whole before being
+  scaled down).
 - [ ] **Version hand-off test.** A newer build taking over from an older
   resident has only been seen working by hand (2026-10-24); a stepped-down
   resident correctly lingers while it has windows. Add a scripted test:

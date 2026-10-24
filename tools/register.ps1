@@ -24,8 +24,10 @@ $ErrorActionPreference = 'Stop'
 $Exe = [System.IO.Path]::GetFullPath($Exe)
 if (-not (Test-Path $Exe)) { throw "$Exe not found; build first (tools\build.ps1)" }
 
-# The formats WIC decodes out of the box on Windows 11.
-$extensions = '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.bmp', '.gif', '.tif', '.tiff', '.webp'
+# Every format Flick opens (folder.rs IMAGE_EXTENSIONS). HEIC/HEIF and AVIF
+# need Windows' HEIF + HEVC and AV1 extensions; the rest work without.
+$extensions = '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.apng', '.bmp', '.dib', '.gif', '.tif', '.tiff', '.webp',
+    '.heic', '.heif', '.avif', '.jxl', '.jxr', '.wdp', '.ico', '.svg', '.svgz', '.exr', '.hdr'
 $classes = 'HKCU:\Software\Classes'
 $progId = 'Flick.Image'
 $command = "`"$Exe`" `"%1`""
