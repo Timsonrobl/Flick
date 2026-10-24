@@ -1,0 +1,12 @@
+[package]
+name = "flick-icon"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Dev tool: renders assets/icon/*.svg into assets/icon/flick.ico"
+
+[dependencies]
+ico = "0.6.0"
+# No text or raster-image support: the icon is plain shapes.
+resvg = { version = "0.49.0", default-features = false }

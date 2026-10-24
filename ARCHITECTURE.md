@@ -200,6 +200,7 @@ Rules that keep this honest:
 | `flick-platform` | winit | Frameless hit-testing, snap, DPI, single-instance IPC, file associations, shell "open with". |
 | `flick-app` | all of the above + `windows` (D3D11, Direct2D, DirectComposition, DirectWrite) | Event loop, windows, rendering, overlay UI, tray icon, keymap. |
 | `flick-bench` | codecs, meta | CLI: decode timings and peak RSS per decoder per file; memory counters. Used in CI and by hand. |
+| `flick-icon` | resvg, ico | Dev tool: renders `assets/icon/flick.svg` (32 px and up) and `flick-small.svg` (16–24 px, heavier lines for the tray) into the committed `assets/icon/flick.ico`, which `flick-app` links in via `flick.rc`. Building Flick never needs it. |
 
 Rule: dependency arrows only point down the table. `flick-core` must build
 with no C dependencies so tests run anywhere.
@@ -565,10 +566,7 @@ lose by accident.
 - **Reopen after trimming: measured** (milestone 3a). A warm open after the
   30 s trim takes ~137 ms instead of ~120 ms, while the resident's idle
   working set drops from ~71 MB to ~0. Kept at 30 s.
-- **Known gaps of the resident process:** no recovery after a graphics
-  device loss (driver update, GPU reset) yet; the tray icon isn't re-added
-  if Explorer restarts (`TaskbarCreated`); no "start with Windows"; the
-  default application icon.
+- **Known gaps of the resident process:** tracked in §17.
 - **Disk cache: paused** (user decision, 2026-10-24). Measured and shelved
   (`bench/README.md`): a raw BGRA screen level reads back cold in ~6 ms
   against ~75 ms to decode the JPEG again; LZ4 is not worth it on photos.
@@ -597,3 +595,31 @@ lose by accident.
   possible (turbojpeg, png, webp, jxl-oxide, resvg are MIT/BSD/Apache);
   libheif (LGPL) and dav1d (BSD) only affect bundling. GPL code from
   lightning-image-viewer or oculante is not copied.
+
+## 17. Open gaps (backlog)
+
+Known gaps that block no milestone but must not be forgotten. Each is
+closed by a commit that says so; review this list at every milestone.
+
+- [x] **App icon** (2026-10-24). The aperture, original colour sweep, chosen
+  from twelve concepts. `assets/icon/flick.ico` (16, 20, 24 from the
+  tray-tuned artwork; 32, 40, 48, 64, 256) is resource 1 of `flick.exe`:
+  Explorer and `register.ps1`'s `DefaultIcon` use it, windows set it as
+  their small and taskbar icons, the tray loads it at the system's small
+  icon size.
+- [ ] **Graphics device loss.** No recovery after a driver update or GPU
+  reset (`D2DERR_RECREATE_TARGET`, `DXGI_ERROR_DEVICE_REMOVED`): recreate
+  the device, surfaces and cached screen levels instead of failing the
+  windows.
+- [ ] **Tray icon after an Explorer restart.** Handle the
+  `TaskbarCreated` message and re-add the icon.
+- [ ] **Start with Windows.** Optional `Run` key entry so the first open of
+  the day is warm too (a tray menu toggle).
+- [ ] **Latency after composition** (§16): ~35 ms between present and the
+  picture on screen during page turns. Separate display-path latency from
+  measurement lag with DXGI Desktop Duplication timestamps.
+- [ ] **Version hand-off test.** A newer build taking over from an older
+  resident has only been seen working by hand (2026-10-24); a stepped-down
+  resident correctly lingers while it has windows. Add a scripted test:
+  old resident with and without windows, newer launcher, check who serves
+  the next open and that the old process exits after its last window.

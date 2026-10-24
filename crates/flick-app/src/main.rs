@@ -22,6 +22,7 @@ mod debug;
 mod decode;
 mod folder;
 mod gpu;
+mod icon;
 mod instance;
 mod placement;
 mod pool;

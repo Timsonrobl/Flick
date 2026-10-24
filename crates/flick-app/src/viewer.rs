@@ -230,8 +230,11 @@ impl Viewer {
     }
 
     pub fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
+        let (small_icon, taskbar_icon) = crate::icon::window_icons();
         let attrs = Window::default_attributes()
             .with_title(file_name(&self.request.file))
+            .with_window_icon(small_icon)
+            .with_taskbar_icon(taskbar_icon)
             .with_decorations(false)
             .with_visible(false)
             // DirectComposition draws everything; no GDI surface to flash.

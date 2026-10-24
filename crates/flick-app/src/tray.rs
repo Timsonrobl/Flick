@@ -26,6 +26,8 @@ static HANDLER: OnceLock<Handler> = OnceLock::new();
 
 pub struct Tray {
     hwnd: HWND,
+    /// Flick's own icon, if it loaded (else the shared system one).
+    icon: Option<HICON>,
 }
 
 impl Tray {
@@ -40,15 +42,22 @@ impl Tray {
             let mut data = icon_data(hwnd);
             data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
             data.uCallbackMessage = CALLBACK;
-            data.hIcon = LoadIconW(None, IDI_APPLICATION).map_err(|e| e.to_string())?;
+            let icon = crate::icon::tray();
+            data.hIcon = match icon {
+                Some(icon) => icon,
+                None => LoadIconW(None, IDI_APPLICATION).map_err(|e| e.to_string())?,
+            };
             for (slot, c) in data.szTip.iter_mut().zip("Flick".encode_utf16()) {
                 *slot = c;
             }
             if !Shell_NotifyIconW(NIM_ADD, &data).as_bool() {
                 let _ = DestroyWindow(hwnd);
+                if let Some(icon) = icon {
+                    let _ = DestroyIcon(icon);
+                }
                 return Err("could not add the tray icon".into());
             }
-            Ok(Tray { hwnd })
+            Ok(Tray { hwnd, icon })
         }
     }
 }
@@ -58,6 +67,9 @@ impl Drop for Tray {
         unsafe {
             let _ = Shell_NotifyIconW(NIM_DELETE, &icon_data(self.hwnd));
             let _ = DestroyWindow(self.hwnd);
+            if let Some(icon) = self.icon {
+                let _ = DestroyIcon(icon);
+            }
         }
     }
 }
