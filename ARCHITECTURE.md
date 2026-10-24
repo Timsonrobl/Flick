@@ -297,7 +297,8 @@ Per-format strategy (what `decode` does for `Screen`):
 by `decode::compose` (logical screen, frame offsets, transparency,
 disposal 0–3; delays under 20 ms play at 100 ms, as browsers do). The
 first composed frame is the Screen level, so a GIF opens like any picture.
-Once it is on screen, a thread decodes the remaining frames in order; each
+Once it has been on screen for 150 ms (so paging past GIFs costs nothing
+extra), a thread decodes the remaining frames in order; each
 goes to the GPU as it arrives, and playback loops over them on the
 viewer's deadline timer (no frame due: nothing runs). Paging away stops the
 thread. Simplification against the row above: frames are kept on the GPU
@@ -504,15 +505,43 @@ change, debounced, so a crash or "stay resident" restart restores them as
   tag write policy, sort key, zoom step.
 - Keymap is data (action ↔ chord), Honeyview-compatible defaults where
   sensible so muscle memory carries over.
-- **View menu (built).** Right-click (or the Menu key) opens Honeyview's View
-  menu without its double-page modes: Stretch Small Images (`Z`), Original
-  Size (`0`), Fit in Window (`9`), Fit to Width (`8`, from the picture's
-  top). A native popup menu: no code runs until it opens. Each window keeps
-  its own mode; every new picture in it starts in that mode, and window
-  resizes re-apply it until the user zooms or pans. The last mode chosen
-  in any window is what new windows start with, and is saved in
-  `%LOCALAPPDATA%\Flick\settings` (`settings.rs`) for the next run.
-  Double-click toggles between the mode's sizing and 100 % at the cursor.
+- **Right-click menu (built).** A native popup menu (no code runs until it
+  opens; also the Menu key) with Honeyview's View items minus the
+  double-page modes: Stretch Small Images (`Z`), Original Size (`0`), Fit
+  in Window (`9`), Fit to Width (`8`, from the picture's top); its render
+  filters: No Filter (`U`, nearest neighbour), Soften (`I`, high-quality
+  cubic shrinking, linear enlarging), Soften+Sharpen (no key: `S` is random
+  paging here; high-quality cubic both ways, then Direct2D's Sharpen effect
+  in window space); and Sort by ▸ Name (natural) / Date modified / Size /
+  Type, Descending.
+- **Settings rule (user's default for every setting):** each window keeps
+  its own; new windows start with the latest chosen in any window; that is
+  saved in `%LOCALAPPDATA%\Flick\settings` (`settings.rs`) for the next run.
+  A view mode applies to each new picture in the window; resizes re-apply
+  it until the user zooms or pans. A sort change re-sorts the window's
+  folder at once (100 000 files: ~40-70 ms) and the preload ring follows.
+- **Mouse.** Wheel pages (walking through every picture passed); Ctrl+wheel
+  zooms. Left-drag pans (nothing moves while the picture fits; only the
+  title bar moves the window, so dragging means one thing); double-click
+  toggles the mode's sizing and 100 %. Right-drag zooms by horizontal
+  travel (right: in, left: out; 2× per 200 px) around where it started; a
+  right click without moving opens the menu.
+- **Held keys page as fast as pictures appear** (as Honeyview): a key's
+  auto-repeats are dropped while the previous picture is still decoding or
+  the walk is still under way, so no "render debt" builds up and paging
+  stops when the key is released. Separate presses always count.
+- **Keys** (letters and digits by position, so any keyboard layout works):
+  ←/→, A/D, PgUp/PgDn, Space/Backspace page in sort order; ↓/S and ↑/W step
+  forward and back in the window's random order: a shuffle of the folder
+  made on the first random step (SplitMix64 Fisher–Yates, ~0.4 ms and 8
+  bytes per file for 100 000), new for each window. Back exactly retraces
+  forward from any picture, every picture comes once per round, and a
+  re-sort doesn't change the walk. Paging in order, the two random
+  neighbours join the preload ring; paging randomly, the ring runs 3 ahead
+  along the shuffled order instead (with only the next random picture
+  preloaded, a held random key waited on a fresh decode at every step and
+  stuttered).
+  Home/End, Esc, F12 (debug), +/- zoom.
 - CLI: `flick <file|dir>…`, `--new-window`, `--slideshow`, `--bench`.
 
 ## 14. Observability and benchmarks

@@ -84,6 +84,18 @@ impl Default for Mode {
     }
 }
 
+/// How pixels are resampled when drawn (Honeyview's render filters).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Filter {
+    /// Hard pixels ("No Filter").
+    Nearest,
+    /// High-quality cubic when shrinking, linear when enlarging.
+    #[default]
+    Soften,
+    /// High-quality cubic both ways, then a light sharpen.
+    Sharpen,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct View {
     pub image: (f32, f32),
@@ -180,11 +192,6 @@ impl View {
         self.center = (self.center.0 - delta.0 / self.scale, self.center.1 - delta.1 / self.scale);
         self.follows_mode = false;
         self.clamp();
-    }
-
-    /// Whether the whole picture is visible (nothing to pan).
-    pub fn fits(&self) -> bool {
-        self.image.0 * self.scale <= self.window.0 + 0.5 && self.image.1 * self.scale <= self.window.1 + 0.5
     }
 
     fn to_image(&self, p: (f32, f32)) -> (f32, f32) {

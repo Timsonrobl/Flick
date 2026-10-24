@@ -83,8 +83,8 @@ struct App {
     focus_order: Vec<ViewerId>,
     /// The remembered placement (updated whenever a window closes).
     placement: Option<placement::Placement>,
-    /// The view mode last chosen in any window: new windows start with it.
-    mode: view::Mode,
+    /// The menu settings last chosen in any window: new windows start with them.
+    prefs: settings::Prefs,
     /// The resident instance (not `--standalone`).
     resident: bool,
     serving: bool,
@@ -116,7 +116,7 @@ impl App {
         let placement = self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) });
         self.spawn_decode(id, &request);
         self.last_file = Some(request.file.clone());
-        let mut viewer = Viewer::new(id, request, placement, self.mode, timeline);
+        let mut viewer = Viewer::new(id, request, placement, self.prefs, timeline);
         if let Err(e) = viewer.create_window(event_loop) {
             return report(&e);
         }
@@ -159,9 +159,9 @@ impl App {
     fn on_screen(&mut self, id: ViewerId, at: f64) {
         let Some(viewer) = self.viewers.get_mut(&id) else { return };
         viewer.timeline.push("on_screen", at);
-        let (file, proxy) = (viewer.request.file.clone(), self.shared.proxy.clone());
+        let (file, sort, proxy) = (viewer.request.file.clone(), viewer.sort(), self.shared.proxy.clone());
         std::thread::spawn(move || {
-            let _ = proxy.send_event(Event::Listed { viewer: id, folder: folder::list(&file) });
+            let _ = proxy.send_event(Event::Listed { viewer: id, folder: folder::list(&file, sort) });
         });
         // Off the open path: listen for later launches, show the tray icon.
         if self.resident && !self.serving {
@@ -423,9 +423,10 @@ impl ApplicationHandler<Event> for App {
         match viewer.window_event(event, &self.shared) {
             Ok(Action::None) => {}
             Ok(Action::Navigated) => self.plan(),
-            Ok(Action::ModeChanged(mode)) => {
-                self.mode = mode;
-                settings::save(mode);
+            Ok(Action::PrefsChanged(prefs)) => {
+                self.prefs = prefs;
+                settings::save(prefs);
+                self.plan(); // a new sort order moves the preload ring
             }
             Ok(Action::Close) => {
                 clock::trace(format_args!("viewer {id}: close"));
@@ -567,17 +568,17 @@ fn main() {
     });
 
     let placement = if request.size.is_none() { placement::load() } else { None };
-    // `--size` benchmark runs keep the default, as they keep the default placement.
-    let mode = if request.size.is_none() { settings::load() } else { view::Mode::default() };
+    // `--size` benchmark runs keep the defaults, as they keep the default placement.
+    let prefs = if request.size.is_none() { settings::load() } else { settings::Prefs::default() };
     let last_file = Some(request.file.clone());
     let mut app = App {
         shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
-        viewers: HashMap::from([(first, Viewer::new(first, request, placement, mode, timeline))]),
+        viewers: HashMap::from([(first, Viewer::new(first, request, placement, prefs, timeline))]),
         windows: HashMap::new(),
         next_id: first + 1,
         focus_order: vec![first],
         placement,
-        mode,
+        prefs,
         resident,
         serving: false,
         tray: None,

@@ -10,6 +10,7 @@ use windows::Win32::Graphics::DirectComposition::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
 use windows::core::Interface;
+use windows_numerics::Matrix3x2;
 
 use crate::decode::Image;
 
@@ -108,6 +109,8 @@ pub struct Surface {
     committed: bool,
     /// Diagnostics (`FLICK_GPU_SYNC=1`): an event query to wait on the GPU.
     gpu_sync: Option<(ID3D11DeviceContext, ID3D11Query)>,
+    /// The Soften+Sharpen filter's effects, once that filter has been used.
+    pub sharpen: Option<Sharpen>,
 }
 
 impl Surface {
@@ -148,6 +151,7 @@ impl Surface {
                 size: desc_size(&desc),
                 committed: false,
                 gpu_sync,
+                sharpen: None,
             };
             surface.bind_target()?;
             Ok(surface)
@@ -232,6 +236,44 @@ impl Surface {
             }
         }
         Ok(())
+    }
+}
+
+/// The Soften+Sharpen filter: the picture resampled into window space with
+/// high-quality cubic (2D affine transform effect), then sharpened there, so
+/// the sharpening works on screen pixels at any zoom. Created on first use.
+pub struct Sharpen {
+    transform: ID2D1Effect,
+    sharpen: ID2D1Effect,
+}
+
+impl Sharpen {
+    /// D2D's sharpness runs 0-10; this is a light touch, like Honeyview's.
+    const SHARPNESS: f32 = 2.0;
+
+    pub fn new(context: &ID2D1DeviceContext) -> Result<Sharpen, String> {
+        unsafe {
+            let transform = context.CreateEffect(&CLSID_D2D12DAffineTransform).map_err(err)?;
+            let mode = D2D1_2DAFFINETRANSFORM_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC.0 as u32;
+            transform.SetValue(D2D1_2DAFFINETRANSFORM_PROP_INTERPOLATION_MODE.0 as u32, D2D1_PROPERTY_TYPE_ENUM, &mode.to_le_bytes()).map_err(err)?;
+            let sharpen = context.CreateEffect(&CLSID_D2D1Sharpen).map_err(err)?;
+            sharpen.SetValue(D2D1_SHARPEN_PROP_SHARPNESS.0 as u32, D2D1_PROPERTY_TYPE_FLOAT, &Self::SHARPNESS.to_le_bytes()).map_err(err)?;
+            sharpen.SetInput(0, &transform.GetOutput().map_err(err)?, true);
+            Ok(Sharpen { transform, sharpen })
+        }
+    }
+
+    /// Draws `bitmap` mapped to the window by `to_window`.
+    pub fn draw(&self, context: &ID2D1DeviceContext, bitmap: &ID2D1Bitmap1, to_window: Matrix3x2) -> Result<(), String> {
+        unsafe {
+            self.transform.SetInput(0, bitmap, true);
+            let m = [to_window.M11, to_window.M12, to_window.M21, to_window.M22, to_window.M31, to_window.M32];
+            let bytes: Vec<u8> = m.iter().flat_map(|v| v.to_le_bytes()).collect();
+            self.transform.SetValue(D2D1_2DAFFINETRANSFORM_PROP_TRANSFORM_MATRIX.0 as u32, D2D1_PROPERTY_TYPE_MATRIX_3X2, &bytes).map_err(err)?;
+            context.SetTransform(&Matrix3x2::identity());
+            context.DrawImage(&self.sharpen.GetOutput().map_err(err)?, None, None, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+            Ok(())
+        }
     }
 }
 

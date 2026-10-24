@@ -10,11 +10,13 @@ use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
-use windows::Win32::Graphics::Direct2D::{D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR, ID2D1Bitmap1};
+use windows::Win32::Graphics::Direct2D::{
+    D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, ID2D1Bitmap1,
+};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
-use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 use winit::platform::windows::WindowAttributesExtWindows;
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::{CursorIcon, ResizeDirection, Window};
@@ -24,12 +26,13 @@ use crate::chrome::{self, Chrome};
 use crate::clock::{self, Timeline, ms_since_start};
 use crate::debug::DebugText;
 use crate::decode::{self, Image, Picture};
-use crate::folder::Folder;
-use crate::gpu::{Gpu, Surface};
+use crate::folder::{Folder, Sort};
+use crate::gpu::{Gpu, Sharpen, Surface};
 use crate::instance::Request;
 use crate::placement::{self, Placement};
 use crate::pool::Pool;
-use crate::view::{self, Affine, Fit, Mode, View};
+use crate::settings::Prefs;
+use crate::view::{self, Affine, Filter, Fit, Mode, View};
 
 pub type ViewerId = u64;
 
@@ -38,6 +41,9 @@ const BACKGROUND: D2D1_COLOR_F = D2D1_COLOR_F { r: 0.08, g: 0.08, b: 0.08, a: 1.
 const EDGE: f64 = 8.0;
 const ZOOM_STEP: f32 = 1.25;
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+/// Left-drag zoom: this much horizontal travel (at 100 % scaling) doubles
+/// or halves the picture.
+const ZOOM_DRAG: f64 = 200.0;
 /// The preload ring: this many images ahead of and behind the current one
 /// (ahead in the direction of travel).
 pub const AHEAD: usize = 3;
@@ -66,8 +72,9 @@ pub enum Action {
     Close,
     /// The folder position changed: re-plan preloading.
     Navigated,
-    /// The user chose a view mode: new windows start with it, and it is saved.
-    ModeChanged(Mode),
+    /// The user changed a menu setting: new windows start with it, it is
+    /// saved, and (sort order) preloading follows the new order.
+    PrefsChanged(Prefs),
 }
 
 /// A `Screen` level on the GPU. Cloning shares the texture.
@@ -135,11 +142,18 @@ pub enum AnimUpdate {
 struct Anim {
     frames: Vec<(ID2D1Bitmap1, Duration)>,
     shown: usize,
-    /// When the next frame is due; None while it is still decoding.
+    /// When the next frame is due (or decoding starts); None while it is
+    /// still decoding.
     due: Option<Instant>,
+    /// Frames are being decoded (from ANIM_START after the GIF appears).
+    decoding: bool,
     complete: bool,
     stop: Arc<AtomicBool>,
 }
+
+/// A GIF's frames start decoding once it has been on screen this long, so
+/// paging past GIFs doesn't spend CPU on animations nobody watches.
+const ANIM_START: Duration = Duration::from_millis(150);
 
 impl Drop for Anim {
     fn drop(&mut self) {
@@ -194,6 +208,8 @@ pub struct Viewer {
     target: usize,
     /// The sign of the last page turn.
     direction: i64,
+    /// Paging randomly: +1 forward, -1 back; 0 when paging in order.
+    random_heading: i64,
     /// When `wanted` went on screen (or its error notice); None while it decodes.
     shown_at: Option<Instant>,
     /// Shown instead of a picture that can't be decoded.
@@ -213,8 +229,12 @@ pub struct Viewer {
     last_click: Option<Instant>,
     /// The left button is down on this, and nothing has happened yet.
     pressed: Option<Press>,
-    /// This window's view mode; each picture shown starts in it.
-    mode: Mode,
+    /// This window's menu settings; each picture shown starts in its mode.
+    prefs: Prefs,
+    /// This window's shuffle (random paging); a new window, a new order.
+    seed: u64,
+    /// The right button is down: a drag zooms, a click opens the menu.
+    right_press: Option<DragZoom>,
     /// Tells the current animation's events from those of pictures passed.
     anim_serial: u64,
 }
@@ -230,8 +250,18 @@ enum Press {
     Move((f64, f64)),
 }
 
+/// A right press: zooms by horizontal travel from `from`, starting at
+/// `scale`, once past the drag threshold (`active`).
+#[derive(Clone, Copy)]
+struct DragZoom {
+    from: (f64, f64),
+    scale: f32,
+    active: bool,
+}
+
 impl Viewer {
-    pub fn new(id: ViewerId, request: Request, placement: Option<Placement>, mode: Mode, timeline: Timeline) -> Viewer {
+    pub fn new(id: ViewerId, request: Request, placement: Option<Placement>, prefs: Prefs, timeline: Timeline) -> Viewer {
+        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64) ^ id.wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let placement = if request.size.is_none() { placement } else { None };
         Viewer {
             id,
@@ -247,6 +277,7 @@ impl Viewer {
             folder: None,
             target: 0,
             direction: 1,
+            random_heading: 0,
             shown_at: None,
             notice: None,
             turn_started: None,
@@ -263,7 +294,9 @@ impl Viewer {
             panning: None,
             last_click: None,
             pressed: None,
-            mode,
+            prefs,
+            seed,
+            right_press: None,
             anim_serial: 0,
         }
     }
@@ -339,7 +372,7 @@ impl Viewer {
         let path = self.request.file.clone();
         shared.cache.insert(path.clone(), screen.clone());
         self.wanted = Some(path.clone());
-        self.current = Some(Current::new(path, screen, size, self.mode));
+        self.current = Some(Current::new(path, screen, size, self.prefs.mode));
         self.shown_at = Some(Instant::now());
         self.render(shared)?;
         if let Some(saved) = self.placement.as_ref().filter(|p| p.maximized) {
@@ -352,7 +385,7 @@ impl Viewer {
         // A warm open's launcher passed its foreground right on to us.
         window.focus_window();
         self.timeline.mark("picture");
-        self.start_animation(shared);
+        self.start_animation();
         Ok(true)
     }
 
@@ -364,7 +397,16 @@ impl Viewer {
         placement::save(self.hwnd?)
     }
 
-    pub fn on_listed(&mut self, folder: Folder, shared: &mut Shared) {
+    /// The sort order this window's folder listing should use.
+    pub fn sort(&self) -> Sort {
+        self.prefs.sort
+    }
+
+    pub fn on_listed(&mut self, mut folder: Folder, shared: &mut Shared) {
+        // Chosen while the listing ran.
+        if folder.sort != self.prefs.sort {
+            folder.sort(self.prefs.sort);
+        }
         // Re-key the first picture under the folder's own path for it.
         let path = folder.files[folder.index].clone();
         if let Some(current) = &mut self.current {
@@ -387,20 +429,43 @@ impl Viewer {
         }
     }
 
-    /// Ring indices around the current image, most wanted first: current,
-    /// next, previous, next+1, ... in the heading's direction, reaching
-    /// AHEAD past the target so the images on the way decode in order.
+    /// Ring indices around the current image, most wanted first. Paging in
+    /// order: current, next, previous, next+1, ... in the heading's
+    /// direction, reaching AHEAD past the target so the images on the way
+    /// decode in order, then the two random neighbours. Paging randomly: the
+    /// same shape along the shuffled order, then the two sequential
+    /// neighbours.
     fn ring(&self) -> Vec<usize> {
         let Some(folder) = &self.folder else { return Vec::new() };
         let (i, n, d) = (folder.index as i64, folder.files.len() as i64, self.heading());
-        let ahead = (self.target as i64 - i).abs() + AHEAD as i64;
         let mut ring = vec![folder.index];
-        for k in 1..=ahead.max(BEHIND as i64) {
-            for (j, wanted) in [(i + k * d, k <= ahead), (i - k * d, k <= BEHIND as i64)] {
-                if wanted && (0..n).contains(&j) {
-                    ring.push(j as usize);
+        let mut add = |j: Option<usize>| {
+            if let Some(j) = j.filter(|j| !ring.contains(j)) {
+                ring.push(j);
+            }
+        };
+        let in_order = |j: i64| (0..n).contains(&j).then_some(j as usize);
+        if self.random_heading != 0 {
+            let h = self.random_heading;
+            add(folder.random_at(h));
+            add(folder.random_at(-h));
+            for k in 2..=AHEAD as i64 {
+                add(folder.random_at(k * h));
+            }
+            add(in_order(i + 1));
+            add(in_order(i - 1));
+        } else {
+            let ahead = (self.target as i64 - i).abs() + AHEAD as i64;
+            for k in 1..=ahead.max(BEHIND as i64) {
+                if k <= ahead {
+                    add(in_order(i + k * d));
+                }
+                if k <= BEHIND as i64 {
+                    add(in_order(i - k * d));
                 }
             }
+            add(folder.random_at(1));
+            add(folder.random_at(-1));
         }
         ring
     }
@@ -428,6 +493,7 @@ impl Viewer {
         }
         self.target = target as usize;
         self.direction = delta.signum();
+        self.random_heading = 0;
         // Too far behind the wheel: skip ahead to stay within MAX_LAG.
         let lag = target - index;
         if lag.unsigned_abs() as usize > MAX_LAG {
@@ -442,13 +508,14 @@ impl Viewer {
     /// Home, End: straight there.
     fn jump(&mut self, index: usize, shared: &Shared) -> Action {
         self.target = index;
+        self.random_heading = 0;
         self.go(index, shared)
     }
 
     /// The `deadline` came: the next paging step and/or animation frame.
     /// Returns whether the folder position moved.
     pub fn tick(&mut self, shared: &Shared) -> bool {
-        self.next_frame();
+        self.next_frame(shared);
         self.advance(shared)
     }
 
@@ -477,15 +544,26 @@ impl Viewer {
         }
     }
 
-    /// Starts decoding the current picture's animation, if it is one.
-    fn start_animation(&mut self, shared: &Shared) {
+    /// If the current picture is animated, schedules its playback: frames
+    /// start decoding ANIM_START later (`next_frame`).
+    fn start_animation(&mut self) {
         let Some(current) = &mut self.current else { return };
-        if !current.screen.animated {
-            return;
+        if current.screen.animated {
+            // Frames still arriving for a GIF passed earlier are told apart by this.
+            self.anim_serial += 1;
+            let stop = Arc::new(AtomicBool::new(false));
+            let due = Some(Instant::now() + ANIM_START);
+            current.anim = Some(Anim { frames: Vec::new(), shown: 0, due, decoding: false, complete: false, stop });
         }
-        self.anim_serial += 1;
-        let stop = Arc::new(AtomicBool::new(false));
-        current.anim = Some(Anim { frames: Vec::new(), shown: 0, due: None, complete: false, stop: stop.clone() });
+    }
+
+    /// Decodes the current animation's frames on their own thread.
+    fn decode_frames(&mut self, shared: &Shared) {
+        let Some(current) = &mut self.current else { return };
+        let Some(anim) = &mut current.anim else { return };
+        anim.decoding = true;
+        anim.due = None;
+        let stop = anim.stop.clone();
         let (viewer, serial, path, proxy) = (self.id, self.anim_serial, current.path.clone(), shared.proxy.clone());
         std::thread::spawn(move || {
             let send = |update| proxy.send_event(Event::Anim { viewer, serial, update }).is_ok();
@@ -537,11 +615,14 @@ impl Viewer {
         }
     }
 
-    /// Shows the animation's next frame if it is due.
-    fn next_frame(&mut self) {
+    /// Shows the animation's next frame if it is due (or starts decoding).
+    fn next_frame(&mut self, shared: &Shared) {
         let Some(anim) = self.current.as_mut().and_then(|c| c.anim.as_mut()) else { return };
         let now = Instant::now();
         let Some(due) = anim.due.filter(|&due| due <= now) else { return };
+        if !anim.decoding {
+            return self.decode_frames(shared);
+        }
         let next = anim.shown + 1;
         let next = if next < anim.frames.len() {
             next
@@ -586,13 +667,13 @@ impl Viewer {
 
     fn display(&mut self, path: PathBuf, screen: Screen, how: &'static str, shared: &Shared) {
         let window = self.surface.as_ref().map_or((1, 1), |s| s.size);
-        self.current = Some(Current::new(path, screen, window, self.mode));
+        self.current = Some(Current::new(path, screen, window, self.prefs.mode));
         self.notice = None;
         self.shown_at = Some(Instant::now());
         if self.render(shared).is_err() {
             self.redraw();
         }
-        self.start_animation(shared);
+        self.start_animation();
         if let Some(started) = self.turn_started.take() {
             let presented_wall = clock::wall_ms();
             self.last_turn = Some((started.elapsed().as_secs_f64() * 1000.0, how));
@@ -692,21 +773,34 @@ impl Viewer {
                 let to_window = Affine::scale(fw / size.0 as f32, fh / size.1 as f32)
                     .then(view::orientation(current.screen.orientation, fw, fh))
                     .then(current.view.transform());
-                let interpolation = if current.view.scale * fw / (size.0 as f32) < 1.0 {
-                    D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC
-                } else {
-                    D2D1_INTERPOLATION_MODE_LINEAR
+                let shrinking = current.view.scale * fw / (size.0 as f32) < 1.0;
+                let interpolation = match self.prefs.filter {
+                    Filter::Nearest => D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                    Filter::Soften if !shrinking => D2D1_INTERPOLATION_MODE_LINEAR,
+                    Filter::Soften | Filter::Sharpen => D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
                 };
                 Some((bitmap, to_window, interpolation))
             }
             None => None,
         };
+        // Soften+Sharpen draws through an effect chain, made on first use.
+        let sharpen = match self.prefs.filter {
+            Filter::Sharpen if picture.is_some() => surface.sharpen.take().or_else(|| Sharpen::new(&surface.context).ok()),
+            _ => None,
+        };
         let (debug, notice, chrome) = (self.debug.as_ref(), self.notice.as_deref(), &mut self.chrome);
         let fading = chrome.animate();
         surface.frame(BACKGROUND, |context| unsafe {
             if let Some((bitmap, to_window, interpolation)) = &picture {
-                context.SetTransform(&to_window.to_d2d());
-                context.DrawBitmap(bitmap, None, 1.0, *interpolation, None, None);
+                match &sharpen {
+                    Some(sharpen) => {
+                        let _ = sharpen.draw(context, bitmap, to_window.to_d2d());
+                    }
+                    None => {
+                        context.SetTransform(&to_window.to_d2d());
+                        context.DrawBitmap(bitmap, None, 1.0, *interpolation, None, None);
+                    }
+                }
                 context.SetTransform(&Affine::IDENTITY.to_d2d());
             }
             if let (Some(debug), Some(notice)) = (debug, notice) {
@@ -717,6 +811,9 @@ impl Viewer {
             }
             chrome.draw(context, window.0, &title, maximized);
         })?;
+        if sharpen.is_some() {
+            surface.sharpen = sharpen;
+        }
         if fading {
             self.redraw();
         }
@@ -747,7 +844,7 @@ impl Viewer {
                 s.size.0,
                 s.size.1,
                 current.view.scale * 100.0,
-                if current.view.follows_mode { format!(" ({:?})", self.mode) } else { String::new() },
+                if current.view.follows_mode { format!(" ({:?})", self.prefs.mode) } else { String::new() },
             );
         }
         if let Some(folder) = &self.folder {
@@ -864,19 +961,46 @@ impl Viewer {
         if double {
             current.view.toggle_zoom(cursor);
             self.redraw();
-        } else if current.view.fits() {
-            // Nothing to pan: dragging moves the window (with Aero Snap).
-            self.pressed = Some(Press::Move(self.cursor));
         } else {
+            // Pans (nothing moves while the picture fits); only the title
+            // bar moves the window.
             self.panning = Some(self.cursor);
             self.update_cursor_icon();
         }
         Action::None
     }
 
+    fn on_right_press(&mut self) {
+        let scale = self.current.as_ref().map_or(1.0, |c| c.view.scale);
+        self.right_press = Some(DragZoom { from: self.cursor, scale, active: false });
+    }
+
+    /// A right drag zooms; a right click (no drag) opens the menu.
+    fn on_right_release(&mut self) -> Action {
+        let dragged = self.right_press.take().is_some_and(|z| z.active);
+        if dragged { Action::None } else { self.show_menu() }
+    }
+
+    /// A right drag on the picture: horizontal travel sets the zoom, around
+    /// where it started (twice or half the size per ZOOM_DRAG px; right: in).
+    fn drag_zoom(&mut self) {
+        let Some(DragZoom { from, scale, active }) = self.right_press else { return };
+        if !active && !beyond_drag_threshold(from, self.cursor) {
+            return;
+        }
+        self.right_press = Some(DragZoom { from, scale, active: true });
+        let per_doubling = ZOOM_DRAG * self.window.as_ref().map_or(1.0, |w| w.scale_factor());
+        let target = scale * 2f32.powf(((self.cursor.0 - from.0) / per_doubling) as f32);
+        if let Some(current) = &mut self.current {
+            current.view.zoom_at((from.0 as f32, from.1 as f32), target / current.view.scale);
+            self.redraw();
+        }
+    }
+
     fn on_left_release(&mut self) -> Action {
-        self.panning = None;
-        self.update_cursor_icon();
+        if self.panning.take().is_some() {
+            self.update_cursor_icon();
+        }
         let (Some(Press::Button(button)), Some(window)) = (self.pressed.take(), self.window.clone()) else { return Action::None };
         // Released somewhere else: cancelled, as with native buttons.
         if self.chrome.hit(self.cursor_f32(), self.width()) != Some(button) {
@@ -891,22 +1015,40 @@ impl Viewer {
         Action::None
     }
 
-    /// Applies a view mode to this window (and its current picture).
-    fn set_mode(&mut self, mode: Mode) -> Action {
-        self.mode = mode;
-        if let Some(current) = &mut self.current {
-            current.view.set_mode(mode);
+    /// Applies menu settings to this window: the view mode to its current
+    /// picture, the filter to drawing, the sort order to its folder.
+    fn set_prefs(&mut self, prefs: Prefs) -> Action {
+        let old = std::mem::replace(&mut self.prefs, prefs);
+        if prefs.mode != old.mode {
+            if let Some(current) = &mut self.current {
+                current.view.set_mode(prefs.mode);
+            }
+        }
+        if prefs.sort != old.sort {
+            if let Some(folder) = &mut self.folder {
+                folder.sort(prefs.sort);
+                self.target = folder.index;
+            }
         }
         self.redraw();
-        Action::ModeChanged(mode)
+        Action::PrefsChanged(prefs)
     }
 
     fn show_menu(&mut self) -> Action {
         let Some(hwnd) = self.hwnd else { return Action::None };
-        match crate::menu::show(hwnd, self.mode) {
-            Some(mode) => self.set_mode(mode),
+        match crate::menu::show(hwnd, self.prefs) {
+            Some(prefs) => self.set_prefs(prefs),
             None => Action::None,
         }
+    }
+
+    /// One step in the window's shuffled order (S/Down forward, W/Up back).
+    fn random(&mut self, forward: bool, shared: &Shared) -> Action {
+        let Some(index) = self.folder.as_mut().and_then(|f| f.random_step(forward, self.seed)) else { return Action::None };
+        self.jump(index, shared);
+        // Preloading now runs ahead along the shuffled order, this way.
+        self.random_heading = if forward { 1 } else { -1 };
+        Action::Navigated
     }
 
     fn on_wheel(&mut self, delta: MouseScrollDelta, shared: &Shared) -> Action {
@@ -929,11 +1071,47 @@ impl Viewer {
         self.step(-whole as i64, shared)
     }
 
-    fn on_key(&mut self, key: Key<&str>, shared: &Shared) -> Action {
-        match key {
+    /// Still getting a picture on screen: the one wanted is decoding, or
+    /// paging is walking toward its target.
+    fn busy(&self) -> bool {
+        self.shown_at.is_none() || self.folder.as_ref().is_some_and(|f| f.index != self.target)
+    }
+
+    fn on_key(&mut self, event: &KeyEvent, shared: &Shared) -> Action {
+        // A held key pages as fast as pictures get on screen, as in
+        // Honeyview: its repeats are dropped while one is still on its way,
+        // so nothing piles up and paging stops when the key is released.
+        // (Separate presses always count; the wheel walks through everything.)
+        let page = !(event.repeat && self.busy());
+        // Letters and digits by position, so they work in any keyboard
+        // layout (as Honeyview's do): Z is Z on a Russian keyboard too.
+        if let PhysicalKey::Code(code) = event.physical_key {
+            let prefs = self.prefs;
+            let action = match code {
+                KeyCode::KeyD if page => Some(self.step(1, shared)),
+                KeyCode::KeyA if page => Some(self.step(-1, shared)),
+                KeyCode::KeyS if page => Some(self.random(true, shared)),
+                KeyCode::KeyW if page => Some(self.random(false, shared)),
+                KeyCode::KeyD | KeyCode::KeyA | KeyCode::KeyS | KeyCode::KeyW => Some(Action::None),
+                // The menu's keys, as in Honeyview (Soften+Sharpen's S is random paging here).
+                KeyCode::Digit0 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Original, ..prefs.mode }, ..prefs })),
+                KeyCode::Digit9 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Window, ..prefs.mode }, ..prefs })),
+                KeyCode::Digit8 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Width, ..prefs.mode }, ..prefs })),
+                KeyCode::KeyZ => Some(self.set_prefs(Prefs { mode: Mode { stretch_small: !prefs.mode.stretch_small, ..prefs.mode }, ..prefs })),
+                KeyCode::KeyU => Some(self.set_prefs(Prefs { filter: Filter::Nearest, ..prefs })),
+                KeyCode::KeyI => Some(self.set_prefs(Prefs { filter: Filter::Soften, ..prefs })),
+                _ => None,
+            };
+            if let Some(action) = action {
+                return action;
+            }
+        }
+        match event.logical_key.as_ref() {
             Key::Named(NamedKey::Escape) => Action::Close,
-            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown | NamedKey::PageDown | NamedKey::Space) => self.step(1, shared),
-            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp | NamedKey::PageUp | NamedKey::Backspace) => self.step(-1, shared),
+            Key::Named(NamedKey::ArrowRight | NamedKey::PageDown | NamedKey::Space) if page => self.step(1, shared),
+            Key::Named(NamedKey::ArrowLeft | NamedKey::PageUp | NamedKey::Backspace) if page => self.step(-1, shared),
+            Key::Named(NamedKey::ArrowDown) if page => self.random(true, shared),
+            Key::Named(NamedKey::ArrowUp) if page => self.random(false, shared),
             Key::Named(NamedKey::Home) => self.jump(0, shared),
             Key::Named(NamedKey::End) => match self.folder.as_ref().map(|f| f.files.len().saturating_sub(1)) {
                 Some(last) => self.jump(last, shared),
@@ -947,11 +1125,6 @@ impl Viewer {
                 self.redraw();
                 Action::None
             }
-            // The View menu's keys, as in Honeyview.
-            Key::Character("0") => self.set_mode(Mode { fit: Fit::Original, ..self.mode }),
-            Key::Character("9") => self.set_mode(Mode { fit: Fit::Window, ..self.mode }),
-            Key::Character("8") => self.set_mode(Mode { fit: Fit::Width, ..self.mode }),
-            Key::Character("z" | "Z") => self.set_mode(Mode { stretch_small: !self.mode.stretch_small, ..self.mode }),
             Key::Named(NamedKey::ContextMenu) => self.show_menu(),
             Key::Character("+" | "=") => {
                 self.zoom(None, ZOOM_STEP);
@@ -991,6 +1164,7 @@ impl Viewer {
                         let _ = window.drag_window();
                     }
                 }
+                self.drag_zoom();
                 if self.panning.is_none() && self.chrome.pointer(Some(self.cursor_f32()), self.width()) {
                     self.redraw();
                 }
@@ -1022,10 +1196,16 @@ impl Viewer {
                 ElementState::Pressed => self.on_left_press(),
                 ElementState::Released => self.on_left_release(),
             },
-            // On release, like Windows' own context menus.
-            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Right, .. } => self.show_menu(),
+            WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => match state {
+                ElementState::Pressed => {
+                    self.on_right_press();
+                    Action::None
+                }
+                // The menu opens on release, like Windows' own context menus.
+                ElementState::Released => self.on_right_release(),
+            },
             WindowEvent::MouseWheel { delta, .. } => self.on_wheel(delta, shared),
-            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => self.on_key(event.logical_key.as_ref(), shared),
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => self.on_key(&event, shared),
             _ => Action::None,
         })
     }
