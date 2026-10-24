@@ -292,6 +292,18 @@ Per-format strategy (what `decode` does for `Screen`):
 | RAW | `rawloader` or WIC | embedded full-size JPEG preview | same | never demosaic in v1 |
 | SVG | `resvg` | rasterise at target size | rasterise at zoom | vector: "Full" is per-zoom |
 | GIF/APNG/aWebP | `gif`, `png`, libwebp | decode on play, ring of ≤ 8 frames | n/a | never pre-decode all frames |
+
+**Animated GIF (built, before milestone 7).** WIC's GIF frames are composed
+by `decode::compose` (logical screen, frame offsets, transparency,
+disposal 0–3; delays under 20 ms play at 100 ms, as browsers do). The
+first composed frame is the Screen level, so a GIF opens like any picture.
+Once it is on screen, a thread decodes the remaining frames in order; each
+goes to the GPU as it arrives, and playback loops over them on the
+viewer's deadline timer (no frame due: nothing runs). Paging away stops the
+thread. Simplification against the row above: frames are kept on the GPU
+(budget 256 MB per animation); a GIF over it stays on its first frame
+(§17). Pictures are now uploaded as premultiplied alpha, so transparency
+shows the window background.
 | EXR/HDR/16-bit | `exr`, `image` | convert to RGBA16F while decoding | same | tone-map in shader |
 | anything else | `image-rs`, then WIC | full → scale | full | long tail |
 
@@ -492,6 +504,15 @@ change, debounced, so a crash or "stay resident" restart restores them as
   tag write policy, sort key, zoom step.
 - Keymap is data (action ↔ chord), Honeyview-compatible defaults where
   sensible so muscle memory carries over.
+- **View menu (built).** Right-click (or the Menu key) opens Honeyview's View
+  menu without its double-page modes: Stretch Small Images (`Z`), Original
+  Size (`0`), Fit in Window (`9`), Fit to Width (`8`, from the picture's
+  top). A native popup menu: no code runs until it opens. Each window keeps
+  its own mode; every new picture in it starts in that mode, and window
+  resizes re-apply it until the user zooms or pans. The last mode chosen
+  in any window is what new windows start with, and is saved in
+  `%LOCALAPPDATA%\Flick\settings` (`settings.rs`) for the next run.
+  Double-click toggles between the mode's sizing and 100 % at the cursor.
 - CLI: `flick <file|dir>…`, `--new-window`, `--slideshow`, `--bench`.
 
 ## 14. Observability and benchmarks
@@ -629,6 +650,10 @@ closed by a commit that says so; review this list at every milestone.
 - [ ] **Latency after composition** (§16): ~35 ms between present and the
   picture on screen during page turns. Separate display-path latency from
   measurement lag with DXGI Desktop Duplication timestamps.
+- [ ] **Large animated GIFs.** Frames over 256 MB (e.g. long 1080p GIFs)
+  aren't animated: stream them through a small ring instead of keeping
+  them all (§7's plan). Also APNG and animated WebP, which WIC doesn't
+  animate.
 - [ ] **Version hand-off test.** A newer build taking over from an older
   resident has only been seen working by hand (2026-10-24); a stepped-down
   resident correctly lingers while it has windows. Add a scripted test:

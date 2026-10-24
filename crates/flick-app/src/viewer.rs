@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::HWND;
@@ -28,7 +29,7 @@ use crate::gpu::{Gpu, Surface};
 use crate::instance::Request;
 use crate::placement::{self, Placement};
 use crate::pool::Pool;
-use crate::view::{self, Affine, View};
+use crate::view::{self, Affine, Fit, Mode, View};
 
 pub type ViewerId = u64;
 
@@ -65,6 +66,8 @@ pub enum Action {
     Close,
     /// The folder position changed: re-plan preloading.
     Navigated,
+    /// The user chose a view mode: new windows start with it, and it is saved.
+    ModeChanged(Mode),
 }
 
 /// A `Screen` level on the GPU. Cloning shares the texture.
@@ -75,6 +78,8 @@ pub struct Screen {
     /// Stored (pre-orientation) native size.
     full_size: (u32, u32),
     orientation: u16,
+    /// An animated GIF: this is its first frame, at full size.
+    animated: bool,
 }
 
 impl Screen {
@@ -84,6 +89,7 @@ impl Screen {
             size: (picture.screen.width, picture.screen.height),
             full_size: picture.full_size,
             orientation: picture.orientation,
+            animated: picture.frames > 1,
         })
     }
 
@@ -102,14 +108,47 @@ struct Current {
     full_requested: bool,
     full_note: &'static str,
     view: View,
+    /// An animated GIF's playback (its first frame is `screen`).
+    anim: Option<Anim>,
 }
 
 impl Current {
-    fn new(path: PathBuf, screen: Screen, window: (u32, u32)) -> Current {
-        let view = View::new(view::oriented_size(screen.orientation, screen.full_size), window);
-        Current { path, screen, full: None, full_requested: false, full_note: "not needed yet", view }
+    fn new(path: PathBuf, screen: Screen, window: (u32, u32), mode: Mode) -> Current {
+        let view = View::new(view::oriented_size(screen.orientation, screen.full_size), window, mode);
+        // An animation's frames are already full size: nothing to decode for zooming.
+        let (full_requested, full_note) = if screen.animated { (true, "animation frames are full size") } else { (false, "not needed yet") };
+        Current { path, screen, full: None, full_requested, full_note, view, anim: None }
     }
 }
+
+/// What the animation thread sends (Event::Anim).
+pub enum AnimUpdate {
+    Frame(decode::Frame),
+    /// All frames sent: playback loops.
+    End,
+    /// Over ANIM_BUDGET: the first frame stays, still.
+    TooLarge,
+}
+
+/// An animated GIF playing: its composed frames on the GPU, decoded on their
+/// own thread as playback starts. Dropping it (paging away) stops the thread.
+struct Anim {
+    frames: Vec<(ID2D1Bitmap1, Duration)>,
+    shown: usize,
+    /// When the next frame is due; None while it is still decoding.
+    due: Option<Instant>,
+    complete: bool,
+    stop: Arc<AtomicBool>,
+}
+
+impl Drop for Anim {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// GPU memory one animation's frames may take.
+const ANIM_BUDGET: usize = 256 << 20;
 
 /// One page turn: how it was served and when (wall-clock ms, comparable with
 /// `flick-bench ext-viewer`'s key-press times).
@@ -174,6 +213,10 @@ pub struct Viewer {
     last_click: Option<Instant>,
     /// The left button is down on this, and nothing has happened yet.
     pressed: Option<Press>,
+    /// This window's view mode; each picture shown starts in it.
+    mode: Mode,
+    /// Tells the current animation's events from those of pictures passed.
+    anim_serial: u64,
 }
 
 /// A left press whose meaning waits for the release or for movement.
@@ -182,15 +225,13 @@ enum Press {
     /// A hover-bar button: acts on release over the same button, like
     /// native caption buttons.
     Button(chrome::Hit),
-    /// Moves the window once the cursor travels past the drag threshold.
-    /// Handing the press to Windows right away (winit's `drag_window`)
-    /// starts its caption loop, which then read our double-click as one on
-    /// another part of the window and closed it.
+    /// Moves the window once the cursor travels past the drag threshold, so
+    /// a click (or a double-click) never enters Windows' move loop.
     Move((f64, f64)),
 }
 
 impl Viewer {
-    pub fn new(id: ViewerId, request: Request, placement: Option<Placement>, timeline: Timeline) -> Viewer {
+    pub fn new(id: ViewerId, request: Request, placement: Option<Placement>, mode: Mode, timeline: Timeline) -> Viewer {
         let placement = if request.size.is_none() { placement } else { None };
         Viewer {
             id,
@@ -222,6 +263,8 @@ impl Viewer {
             panning: None,
             last_click: None,
             pressed: None,
+            mode,
+            anim_serial: 0,
         }
     }
 
@@ -296,7 +339,7 @@ impl Viewer {
         let path = self.request.file.clone();
         shared.cache.insert(path.clone(), screen.clone());
         self.wanted = Some(path.clone());
-        self.current = Some(Current::new(path, screen, size));
+        self.current = Some(Current::new(path, screen, size, self.mode));
         self.shown_at = Some(Instant::now());
         self.render(shared)?;
         if let Some(saved) = self.placement.as_ref().filter(|p| p.maximized) {
@@ -309,6 +352,7 @@ impl Viewer {
         // A warm open's launcher passed its foreground right on to us.
         window.focus_window();
         self.timeline.mark("picture");
+        self.start_animation(shared);
         Ok(true)
     }
 
@@ -401,9 +445,16 @@ impl Viewer {
         self.go(index, shared)
     }
 
+    /// The `deadline` came: the next paging step and/or animation frame.
+    /// Returns whether the folder position moved.
+    pub fn tick(&mut self, shared: &Shared) -> bool {
+        self.next_frame();
+        self.advance(shared)
+    }
+
     /// One image toward the target, once the current one has been on screen
-    /// for DWELL (the app calls this at the `deadline`). Returns whether it moved.
-    pub fn advance(&mut self, shared: &Shared) -> bool {
+    /// for DWELL. Returns whether it moved.
+    fn advance(&mut self, shared: &Shared) -> bool {
         let Some(folder) = &self.folder else { return false };
         let index = folder.index as i64;
         let due = self.shown_at.is_some_and(|t| t.elapsed() >= DWELL);
@@ -415,13 +466,96 @@ impl Viewer {
         true
     }
 
-    /// When the next step toward the target is due (the app wakes for it).
+    /// When the next paging step or animation frame is due (the app wakes
+    /// for it; otherwise nothing runs).
     pub fn deadline(&self) -> Option<Instant> {
-        let index = self.folder.as_ref()?.index;
-        if index == self.target {
-            return None;
+        let frame = self.current.as_ref().and_then(|c| c.anim.as_ref()).and_then(|a| a.due);
+        let step = self.folder.as_ref().filter(|f| f.index != self.target).and_then(|_| self.shown_at).map(|t| t + DWELL);
+        match (frame, step) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
         }
-        Some(self.shown_at? + DWELL)
+    }
+
+    /// Starts decoding the current picture's animation, if it is one.
+    fn start_animation(&mut self, shared: &Shared) {
+        let Some(current) = &mut self.current else { return };
+        if !current.screen.animated {
+            return;
+        }
+        self.anim_serial += 1;
+        let stop = Arc::new(AtomicBool::new(false));
+        current.anim = Some(Anim { frames: Vec::new(), shown: 0, due: None, complete: false, stop: stop.clone() });
+        let (viewer, serial, path, proxy) = (self.id, self.anim_serial, current.path.clone(), shared.proxy.clone());
+        std::thread::spawn(move || {
+            let send = |update| proxy.send_event(Event::Anim { viewer, serial, update }).is_ok();
+            let mut bytes = 0;
+            let mut over = false;
+            let result = decode::animate(&path, |frame| {
+                bytes += frame.image.pixels.len();
+                over = bytes > ANIM_BUDGET;
+                !stop.load(Ordering::Relaxed) && !over && send(AnimUpdate::Frame(frame))
+            });
+            if let Err(e) = result {
+                clock::trace(format_args!("animation: {e}"));
+            }
+            send(if over { AnimUpdate::TooLarge } else { AnimUpdate::End });
+        });
+    }
+
+    /// A frame (or the end) from the animation thread.
+    pub fn on_anim(&mut self, serial: u64, update: AnimUpdate, shared: &Shared) {
+        let (Some(current), Some(gpu)) = (&mut self.current, &shared.gpu) else { return };
+        let Some(anim) = current.anim.as_mut().filter(|_| serial == self.anim_serial) else { return };
+        let now = Instant::now();
+        match update {
+            AnimUpdate::Frame(frame) => {
+                let Ok(bitmap) = gpu.upload(&frame.image) else { return };
+                anim.frames.push((bitmap, frame.delay));
+                if anim.frames.len() == 1 {
+                    // The first frame is the one already shown: time it.
+                    anim.due = Some(now + frame.delay);
+                } else if anim.due.is_none() && anim.frames.len() == anim.shown + 2 {
+                    // Playback was waiting for this one.
+                    anim.shown += 1;
+                    anim.due = Some(now + frame.delay);
+                    self.redraw();
+                }
+            }
+            AnimUpdate::End if anim.frames.len() < 2 => current.anim = None,
+            AnimUpdate::End => {
+                anim.complete = true;
+                if anim.due.is_none() {
+                    anim.due = Some(now);
+                }
+            }
+            AnimUpdate::TooLarge => {
+                current.anim = None;
+                current.full_note = "animation too large to play (first frame shown)";
+                self.redraw();
+            }
+        }
+    }
+
+    /// Shows the animation's next frame if it is due.
+    fn next_frame(&mut self) {
+        let Some(anim) = self.current.as_mut().and_then(|c| c.anim.as_mut()) else { return };
+        let now = Instant::now();
+        let Some(due) = anim.due.filter(|&due| due <= now) else { return };
+        let next = anim.shown + 1;
+        let next = if next < anim.frames.len() {
+            next
+        } else if anim.complete {
+            0
+        } else {
+            anim.due = None; // still decoding: on_anim resumes
+            return;
+        };
+        anim.shown = next;
+        // Keep the GIF's own pace, unless far behind (a stall): then restart it.
+        let base = if now.duration_since(due) > Duration::from_secs(1) { now } else { due };
+        anim.due = Some(base + anim.frames[next].1);
+        self.redraw();
     }
 
     fn go(&mut self, index: usize, shared: &Shared) -> Action {
@@ -452,12 +586,13 @@ impl Viewer {
 
     fn display(&mut self, path: PathBuf, screen: Screen, how: &'static str, shared: &Shared) {
         let window = self.surface.as_ref().map_or((1, 1), |s| s.size);
-        self.current = Some(Current::new(path, screen, window));
+        self.current = Some(Current::new(path, screen, window, self.mode));
         self.notice = None;
         self.shown_at = Some(Instant::now());
         if self.render(shared).is_err() {
             self.redraw();
         }
+        self.start_animation(shared);
         if let Some(started) = self.turn_started.take() {
             let presented_wall = clock::wall_ms();
             self.last_turn = Some((started.elapsed().as_secs_f64() * 1000.0, how));
@@ -546,8 +681,11 @@ impl Viewer {
                         let _ = proxy.send_event(Event::FullDecoded { viewer, path, image, at: ms_since_start() });
                     });
                 }
-                let (bitmap, size) = match &current.full {
-                    Some((bitmap, size)) if magnified => (bitmap.clone(), *size),
+                let frame = current.anim.as_ref().and_then(|a| a.frames.get(a.shown)).map(|(bitmap, _)| bitmap.clone());
+                let (bitmap, size) = match (&current.full, frame) {
+                    // Animation frames are the screen level's size (both full size).
+                    (_, Some(frame)) => (frame, current.screen.size),
+                    (Some((bitmap, size)), _) if magnified => (bitmap.clone(), *size),
                     _ => (current.screen.bitmap.clone(), current.screen.size),
                 };
                 let (fw, fh) = (current.screen.full_size.0 as f32, current.screen.full_size.1 as f32);
@@ -609,7 +747,7 @@ impl Viewer {
                 s.size.0,
                 s.size.1,
                 current.view.scale * 100.0,
-                if current.view.fitted { " (fit)" } else { "" },
+                if current.view.follows_mode { format!(" ({:?})", self.mode) } else { String::new() },
             );
         }
         if let Some(folder) = &self.folder {
@@ -709,7 +847,6 @@ impl Viewer {
         let double = self.last_click.is_some_and(|t| now - t < DOUBLE_CLICK);
         self.last_click = if double { None } else { Some(now) };
         let cursor = self.cursor_f32();
-        clock::trace(format_args!("press at {cursor:?}, width {}, hit {:?}, double {double}", self.width(), self.chrome.hit(cursor, self.width())));
 
         if let Some(hit) = self.chrome.hit(cursor, self.width()) {
             match hit {
@@ -725,7 +862,7 @@ impl Viewer {
             return Action::None;
         };
         if double {
-            if current.view.fitted { current.view.actual_size(cursor) } else { current.view.fit() }
+            current.view.toggle_zoom(cursor);
             self.redraw();
         } else if current.view.fits() {
             // Nothing to pan: dragging moves the window (with Aero Snap).
@@ -740,9 +877,7 @@ impl Viewer {
     fn on_left_release(&mut self) -> Action {
         self.panning = None;
         self.update_cursor_icon();
-        let pressed = self.pressed.take();
-        clock::trace(format_args!("release at {:?}, hit {:?}", self.cursor, self.chrome.hit(self.cursor_f32(), self.width())));
-        let (Some(Press::Button(button)), Some(window)) = (pressed, self.window.clone()) else { return Action::None };
+        let (Some(Press::Button(button)), Some(window)) = (self.pressed.take(), self.window.clone()) else { return Action::None };
         // Released somewhere else: cancelled, as with native buttons.
         if self.chrome.hit(self.cursor_f32(), self.width()) != Some(button) {
             return Action::None;
@@ -754,6 +889,24 @@ impl Viewer {
             chrome::Hit::Title => {}
         }
         Action::None
+    }
+
+    /// Applies a view mode to this window (and its current picture).
+    fn set_mode(&mut self, mode: Mode) -> Action {
+        self.mode = mode;
+        if let Some(current) = &mut self.current {
+            current.view.set_mode(mode);
+        }
+        self.redraw();
+        Action::ModeChanged(mode)
+    }
+
+    fn show_menu(&mut self) -> Action {
+        let Some(hwnd) = self.hwnd else { return Action::None };
+        match crate::menu::show(hwnd, self.mode) {
+            Some(mode) => self.set_mode(mode),
+            None => Action::None,
+        }
     }
 
     fn on_wheel(&mut self, delta: MouseScrollDelta, shared: &Shared) -> Action {
@@ -794,21 +947,12 @@ impl Viewer {
                 self.redraw();
                 Action::None
             }
-            Key::Character("0") => {
-                if let Some(current) = &mut self.current {
-                    current.view.fit();
-                    self.redraw();
-                }
-                Action::None
-            }
-            Key::Character("1") => {
-                if let Some(current) = &mut self.current {
-                    let center = (current.view.window.0 / 2.0, current.view.window.1 / 2.0);
-                    current.view.actual_size(center);
-                    self.redraw();
-                }
-                Action::None
-            }
+            // The View menu's keys, as in Honeyview.
+            Key::Character("0") => self.set_mode(Mode { fit: Fit::Original, ..self.mode }),
+            Key::Character("9") => self.set_mode(Mode { fit: Fit::Window, ..self.mode }),
+            Key::Character("8") => self.set_mode(Mode { fit: Fit::Width, ..self.mode }),
+            Key::Character("z" | "Z") => self.set_mode(Mode { stretch_small: !self.mode.stretch_small, ..self.mode }),
+            Key::Named(NamedKey::ContextMenu) => self.show_menu(),
             Key::Character("+" | "=") => {
                 self.zoom(None, ZOOM_STEP);
                 Action::None
@@ -843,7 +987,6 @@ impl Viewer {
                 self.cursor = (position.x, position.y);
                 if let (Some(Press::Move(from)), Some(window)) = (self.pressed, &self.window) {
                     if beyond_drag_threshold(from, self.cursor) {
-                        clock::trace(format_args!("drag from {from:?} at {:?}", self.cursor));
                         self.pressed = None;
                         let _ = window.drag_window();
                     }
@@ -879,6 +1022,8 @@ impl Viewer {
                 ElementState::Pressed => self.on_left_press(),
                 ElementState::Released => self.on_left_release(),
             },
+            // On release, like Windows' own context menus.
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Right, .. } => self.show_menu(),
             WindowEvent::MouseWheel { delta, .. } => self.on_wheel(delta, shared),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => self.on_key(event.logical_key.as_ref(), shared),
             _ => Action::None,

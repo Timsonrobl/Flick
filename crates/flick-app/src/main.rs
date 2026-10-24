@@ -25,8 +25,10 @@ mod folder;
 mod gpu;
 mod icon;
 mod instance;
+mod menu;
 mod placement;
 mod pool;
+mod settings;
 mod tray;
 mod view;
 mod viewer;
@@ -63,6 +65,8 @@ pub enum Event {
     /// A screen level for some window's ring, from the decode pool.
     Preloaded { path: PathBuf, picture: Result<Picture, String>, decode_ms: f64 },
     FullDecoded { viewer: ViewerId, path: PathBuf, image: Result<Image, String>, at: f64 },
+    /// An animated GIF's next frame (or its end), for one window.
+    Anim { viewer: ViewerId, serial: u64, update: viewer::AnimUpdate },
     /// A later launch's request, from the pipe.
     Open(Request),
     /// A newer build took over as the resident instance.
@@ -79,6 +83,8 @@ struct App {
     focus_order: Vec<ViewerId>,
     /// The remembered placement (updated whenever a window closes).
     placement: Option<placement::Placement>,
+    /// The view mode last chosen in any window: new windows start with it.
+    mode: view::Mode,
     /// The resident instance (not `--standalone`).
     resident: bool,
     serving: bool,
@@ -110,7 +116,7 @@ impl App {
         let placement = self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) });
         self.spawn_decode(id, &request);
         self.last_file = Some(request.file.clone());
-        let mut viewer = Viewer::new(id, request, placement, timeline);
+        let mut viewer = Viewer::new(id, request, placement, self.mode, timeline);
         if let Err(e) = viewer.create_window(event_loop) {
             return report(&e);
         }
@@ -316,7 +322,7 @@ impl ApplicationHandler<Event> for App {
         let mut moved = false;
         for viewer in self.viewers.values_mut() {
             if viewer.deadline().is_some_and(|t| t <= now) {
-                moved |= viewer.advance(&self.shared);
+                moved |= viewer.tick(&self.shared);
             }
         }
         if moved {
@@ -383,6 +389,11 @@ impl ApplicationHandler<Event> for App {
                     v.on_full_decoded(path, image, &self.shared);
                 }
             }
+            Event::Anim { viewer, serial, update } => {
+                if let Some(v) = self.viewers.get_mut(&viewer) {
+                    v.on_anim(serial, update, &self.shared);
+                }
+            }
             Event::Open(request) => self.open(event_loop, request),
             Event::Superseded => {
                 // Keep open windows; exit when the last one closes.
@@ -412,6 +423,10 @@ impl ApplicationHandler<Event> for App {
         match viewer.window_event(event, &self.shared) {
             Ok(Action::None) => {}
             Ok(Action::Navigated) => self.plan(),
+            Ok(Action::ModeChanged(mode)) => {
+                self.mode = mode;
+                settings::save(mode);
+            }
             Ok(Action::Close) => {
                 clock::trace(format_args!("viewer {id}: close"));
                 self.close(event_loop, id)
@@ -552,14 +567,17 @@ fn main() {
     });
 
     let placement = if request.size.is_none() { placement::load() } else { None };
+    // `--size` benchmark runs keep the default, as they keep the default placement.
+    let mode = if request.size.is_none() { settings::load() } else { view::Mode::default() };
     let last_file = Some(request.file.clone());
     let mut app = App {
         shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
-        viewers: HashMap::from([(first, Viewer::new(first, request, placement, timeline))]),
+        viewers: HashMap::from([(first, Viewer::new(first, request, placement, mode, timeline))]),
         windows: HashMap::new(),
         next_id: first + 1,
         focus_order: vec![first],
         placement,
+        mode,
         resident,
         serving: false,
         tray: None,

@@ -18,6 +18,8 @@ fn err(e: windows::core::Error) -> String {
 }
 
 const BGRA_IGNORE: D2D1_PIXEL_FORMAT = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_IGNORE };
+/// Pictures: transparent pixels (GIF, PNG) show the window's background.
+const BGRA_PREMULTIPLIED: D2D1_PIXEL_FORMAT = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED };
 
 /// One per process. Creating it is the ~170 ms driver start, so it happens on
 /// a background thread from process start.
@@ -70,7 +72,7 @@ impl Gpu {
                     D2D_SIZE_U { width: image.width, height: image.height },
                     Some(image.pixels.as_ptr().cast()),
                     image.width * 4,
-                    &D2D1_BITMAP_PROPERTIES1 { pixelFormat: BGRA_IGNORE, dpiX: 96.0, dpiY: 96.0, ..Default::default() },
+                    &D2D1_BITMAP_PROPERTIES1 { pixelFormat: BGRA_PREMULTIPLIED, dpiX: 96.0, dpiY: 96.0, ..Default::default() },
                 )
                 .map_err(err)
         }

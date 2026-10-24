@@ -45,3 +45,6 @@ windows = { version = "0.62", features = [
 
 [build-dependencies]
 embed-resource = "3.0.12"
+
+[dev-dependencies]
+gif = "0.14.2"

@@ -60,26 +60,52 @@ pub fn oriented_size(o: u16, (w, h): (u32, u32)) -> (u32, u32) {
     if o >= 5 { (h, w) } else { (w, h) }
 }
 
+/// How a picture is sized when it is shown (the View menu, as in Honeyview).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    /// The whole picture in the window.
+    Window,
+    /// The window's width, from the top; taller pictures pan vertically.
+    Width,
+    /// 100 %: one picture pixel per screen pixel.
+    Original,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mode {
+    pub fit: Fit,
+    /// Fits enlarge pictures smaller than the window (else they stay at 100 %).
+    pub stretch_small: bool,
+}
+
+impl Default for Mode {
+    fn default() -> Mode {
+        Mode { fit: Fit::Window, stretch_small: false }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct View {
     pub image: (f32, f32),
     pub window: (f32, f32),
     pub scale: f32,
     pub center: (f32, f32),
-    /// Follows the window size (re-fits on resize) until the user zooms.
-    pub fitted: bool,
+    pub mode: Mode,
+    /// Follows the mode (re-applied on resize) until the user zooms or pans.
+    pub follows_mode: bool,
 }
 
 impl View {
-    pub fn new(image: (u32, u32), window: (u32, u32)) -> View {
+    pub fn new(image: (u32, u32), window: (u32, u32), mode: Mode) -> View {
         let mut view = View {
             image: (image.0 as f32, image.1 as f32),
             window: (window.0 as f32, window.1 as f32),
             scale: 1.0,
             center: (0.0, 0.0),
-            fitted: true,
+            mode,
+            follows_mode: true,
         };
-        view.fit();
+        view.apply_mode();
         view
     }
 
@@ -88,20 +114,51 @@ impl View {
         f32::min(1.0, f32::min(self.window.0 / self.image.0, self.window.1 / self.image.1))
     }
 
-    pub fn fit(&mut self) {
-        self.scale = self.fit_scale();
-        self.center = (self.image.0 / 2.0, self.image.1 / 2.0);
-        self.fitted = true;
+    fn mode_scale(&self) -> f32 {
+        let fit = match self.mode.fit {
+            Fit::Window => f32::min(self.window.0 / self.image.0, self.window.1 / self.image.1),
+            Fit::Width => self.window.0 / self.image.0,
+            Fit::Original => return 1.0,
+        };
+        if self.mode.stretch_small { fit } else { fit.min(1.0) }
+    }
+
+    /// Sizes and places the picture as its mode says.
+    pub fn apply_mode(&mut self) {
+        self.scale = self.mode_scale().clamp(MIN_SCALE, MAX_SCALE);
+        let top = self.window.1 / 2.0 / self.scale; // picture's top at the window's
+        let y = if self.mode.fit == Fit::Width { top } else { self.image.1 / 2.0 };
+        self.center = (self.image.0 / 2.0, y);
+        self.follows_mode = true;
+        self.clamp();
+    }
+
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        self.apply_mode();
     }
 
     pub fn actual_size(&mut self, cursor: (f32, f32)) {
         self.zoom_at(cursor, 1.0 / self.scale);
     }
 
+    /// Double-click: from the mode's sizing to 100 % at the cursor (or, when
+    /// that already is 100 %, to the whole picture), and back to the mode.
+    pub fn toggle_zoom(&mut self, cursor: (f32, f32)) {
+        if !self.follows_mode {
+            self.apply_mode();
+        } else if (self.scale - 1.0).abs() > 0.001 {
+            self.actual_size(cursor);
+        } else {
+            let center = (self.window.0 / 2.0, self.window.1 / 2.0);
+            self.zoom_at(center, self.fit_scale() / self.scale);
+        }
+    }
+
     pub fn resize(&mut self, window: (u32, u32)) {
         self.window = (window.0 as f32, window.1 as f32);
-        if self.fitted {
-            self.fit();
+        if self.follows_mode {
+            self.apply_mode();
         } else {
             self.clamp();
         }
@@ -114,14 +171,14 @@ impl View {
         self.scale = new_scale;
         let offset = (cursor.0 - self.window.0 / 2.0, cursor.1 - self.window.1 / 2.0);
         self.center = (point.0 - offset.0 / self.scale, point.1 - offset.1 / self.scale);
-        self.fitted = false;
+        self.follows_mode = false;
         self.clamp();
     }
 
     /// Moves the picture by `delta` window pixels.
     pub fn pan(&mut self, delta: (f32, f32)) {
         self.center = (self.center.0 - delta.0 / self.scale, self.center.1 - delta.1 / self.scale);
-        self.fitted = false;
+        self.follows_mode = false;
         self.clamp();
     }
 
@@ -147,6 +204,11 @@ impl View {
         );
     }
 
+    #[cfg(test)]
+    fn top(&self) -> f32 {
+        self.window.1 / 2.0 - self.center.1 * self.scale
+    }
+
     /// Image space → window pixels.
     pub fn transform(&self) -> Affine {
         Affine([
@@ -157,5 +219,47 @@ impl View {
             self.window.0 / 2.0 - self.center.0 * self.scale,
             self.window.1 / 2.0 - self.center.1 * self.scale,
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WINDOW: (u32, u32) = (1000, 500);
+    fn mode(fit: Fit, stretch_small: bool) -> Mode {
+        Mode { fit, stretch_small }
+    }
+
+    #[test]
+    fn fit_window_shrinks_large_and_keeps_small() {
+        assert_eq!(View::new((4000, 1000), WINDOW, mode(Fit::Window, false)).scale, 0.25);
+        assert_eq!(View::new((100, 50), WINDOW, mode(Fit::Window, false)).scale, 1.0);
+        assert_eq!(View::new((100, 50), WINDOW, mode(Fit::Window, true)).scale, 10.0);
+    }
+
+    #[test]
+    fn fit_width_starts_at_the_top() {
+        let view = View::new((2000, 4000), WINDOW, mode(Fit::Width, false));
+        assert_eq!(view.scale, 0.5);
+        assert_eq!(view.top(), 0.0);
+        // A small picture stays at 100 % unless stretched.
+        assert_eq!(View::new((200, 100), WINDOW, mode(Fit::Width, false)).scale, 1.0);
+        assert_eq!(View::new((200, 100), WINDOW, mode(Fit::Width, true)).scale, 5.0);
+    }
+
+    #[test]
+    fn original_ignores_stretch() {
+        assert_eq!(View::new((4000, 3000), WINDOW, mode(Fit::Original, true)).scale, 1.0);
+    }
+
+    #[test]
+    fn resize_reapplies_the_mode_until_zoomed() {
+        let mut view = View::new((4000, 1000), WINDOW, mode(Fit::Window, false));
+        view.resize((2000, 1000));
+        assert_eq!(view.scale, 0.5);
+        view.zoom_at((0.0, 0.0), 2.0);
+        view.resize((1000, 500));
+        assert_eq!(view.scale, 1.0, "zoomed: the scale stays");
     }
 }
