@@ -18,8 +18,8 @@ fn err(e: windows::core::Error) -> String {
     e.to_string()
 }
 
-const BGRA_IGNORE: D2D1_PIXEL_FORMAT = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_IGNORE };
 /// Pictures: transparent pixels (GIF, PNG) show the window's background.
+/// Window targets too (opaque frames; see `Surface::new`).
 const BGRA_PREMULTIPLIED: D2D1_PIXEL_FORMAT = D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED };
 
 /// One per process. Creating it is the ~170 ms driver start, so it happens on
@@ -116,6 +116,10 @@ pub struct Surface {
 impl Surface {
     pub fn new(gpu: &Gpu, hwnd: HWND, size: (u32, u32)) -> Result<Surface, String> {
         unsafe {
+            // Premultiplied alpha, though every frame is opaque: it keeps the
+            // compositor drawing the window. An opaque swap chain may be put on
+            // a hardware overlay plane instead, and on an NVIDIA RTX 4080 that
+            // went black on screen (not in captures) while resizing.
             let desc = DXGI_SWAP_CHAIN_DESC1 {
                 Width: size.0.max(1),
                 Height: size.1.max(1),
@@ -125,7 +129,7 @@ impl Surface {
                 BufferCount: 2,
                 Scaling: DXGI_SCALING_STRETCH,
                 SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-                AlphaMode: DXGI_ALPHA_MODE_IGNORE,
+                AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
                 ..Default::default()
             };
             let swap_chain = gpu.factory.CreateSwapChainForComposition(&gpu.d3d, &desc, None).map_err(err)?;
@@ -166,7 +170,7 @@ impl Surface {
                 .CreateBitmapFromDxgiSurface(
                     &buffer,
                     Some(&D2D1_BITMAP_PROPERTIES1 {
-                        pixelFormat: BGRA_IGNORE,
+                        pixelFormat: BGRA_PREMULTIPLIED,
                         dpiX: 96.0,
                         dpiY: 96.0,
                         bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,

@@ -358,6 +358,11 @@ allocation.
   trait so another platform can bring its own.
 - Per window: a flip-model swap chain as a DirectComposition visual (the
   picture), a second visual for the overlay UI, and a D2D device context.
+  The swap chain is premultiplied-alpha though every frame is opaque: an
+  opaque one may be put on a hardware overlay plane (multiplane overlay),
+  and on an RTX 4080 that showed black on screen, never in captures, while
+  the window was resized. Composed by DWM instead, it cannot. A window
+  also draws inside `Resized` (resized buffers are empty until presented).
 - Draw = `DrawBitmap` per visible level (Screen, or Full, or the visible
   Tiles) with the view transform; interpolation chosen by zoom:
   - zoom ≤ fit: draw `Screen`, linear filter.
@@ -464,14 +469,30 @@ decides whether tabs stay, so these are the goal, not all built in 3b):**
   windows that already have tabs keep them.
 - **Tab Lock** (`L`, or the menu; per window, not saved; only with two or
   more tabs, else hidden and `L` ignored, and it turns off when a window is
-  down to one): the wheel, the arrows and A/D/W/S switch tabs (wrapping)
-  instead of pictures; PgUp/PgDn and Space/Backspace still page. A padlock
-  shows at the bar's left; clicking it unlocks.
-- A tab switch from the keys or wheel (Tab Lock, Ctrl+Tab, Ctrl+1..9) shows
-  the bar for 2 s (`Chrome::reveal`, on the viewer's deadline timer).
+  down to one): the keys and the wheel switch tabs instead of pictures.
+  Left/Right, A/D and the wheel go along the strip (wrapping); Down/S and
+  Up/W go forward and back in a random order of the tabs, made like random
+  paging's (`folder::shuffled`): each tab once per round, back retracing
+  forward. It is shuffled afresh when tabs come or go and kept when they
+  are reordered. PgUp/PgDn and Space/Backspace still page. A padlock shows
+  at the bar's left; clicking it unlocks.
+- A tab switch from the keys or wheel (Tab Lock, Ctrl+Tab, Ctrl+1..9), and
+  Tab Lock toggled with `L` (to see the padlock come or go), show the bar
+  for 2 s (`Chrome::reveal`, on the viewer's deadline timer).
 - Each window's background behind the picture is a slightly different dark
   grey (`chrome::BACKGROUNDS`, 0.055-0.135, paired with its pastel), so
   overlapping windows are told apart.
+- **Multi-row strip:** tabs are 220 px wide at most and wrap onto another
+  row once they would be narrower than 150 px (`TAB_MIN`); every row is a
+  bar high and all tabs are one width, set by filling the first row's room
+  between the padlock and the window buttons (which stay on the first
+  row). The rows below run the window's full width, so they hold more. Dragging reorders across
+  rows (the dragged tab takes the cell nearest its centre); the others
+  glide in both directions. **Preferences ▸ Multi-row Tabs** (app-wide,
+  saved; on by default): off keeps one row, the tabs narrowing to fit.
+- **Remembered placement of a snapped window:** Windows' normal rect for a
+  snapped window is the one before snapping, so `placement::save` stores
+  the window's rect on screen instead (`IsWindowArranged`).
 - **Opening a selection from Explorer** (one launch per file, all at once):
   files arriving within 500 ms of the previous one form a burst. The first
   opens as usual; the others become background tabs after it, in arrival
@@ -586,7 +607,9 @@ change, debounced, so a crash or "stay resident" restart restores them as
   zooms. Left-drag pans (nothing moves while the picture fits; only the
   title bar moves the window, so dragging means one thing); double-click
   toggles the mode's sizing and 100 %. Right-drag zooms by horizontal
-  travel (right: in, left: out; 2× per 200 px) around where it started; a
+  travel (right: in, left: out; 2× per 200 px) around where it started: the
+  picture point pressed stays under the cursor (a picture smaller than the
+  window grows from there, not from the centre, until it meets an edge); a
   right click without moving opens the menu.
 - **Held keys page as fast as pictures appear** (as Honeyview): a key's
   auto-repeats are dropped while the previous picture is still decoding or

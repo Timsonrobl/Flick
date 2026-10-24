@@ -159,6 +159,12 @@ impl Folder {
     }
 }
 
+/// 0..n in a shuffled order seeded by `seed`, as random paging walks files
+/// (Tab Lock walks a window's tabs this way).
+pub fn shuffled(n: usize, seed: u64) -> Vec<u32> {
+    Shuffle::new(n, seed).order
+}
+
 impl Shuffle {
     /// Fisher–Yates with SplitMix64: ~1 ms and 8 bytes per file for 100 000.
     fn new(n: usize, seed: u64) -> Shuffle {

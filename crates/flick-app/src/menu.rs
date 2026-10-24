@@ -101,6 +101,7 @@ pub struct Target {
 const NEW_WINDOW: usize = 900;
 const LOCK: usize = 901;
 const OPEN_IN_TABS: usize = 902;
+const MULTIROW: usize = 903;
 const MOVE_TO: usize = 1000;
 
 /// Whether the (logical) right button is down right now: the menu closed on
@@ -181,6 +182,7 @@ pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock:
         }
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
+        let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
         let _ = AppendMenuW(menu, MF_POPUP, prefs_menu.0 as usize, w!("Preferences"));
 
         let mut at = POINT::default();
@@ -197,7 +199,8 @@ pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock:
             0 => None,
             NEW_WINDOW => Some(Choice::NewWindow),
             LOCK => Some(Choice::Lock),
-            OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs })),
+            OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs, ..global })),
+            MULTIROW => Some(Choice::Global(Global { multirow: !global.multirow, ..global })),
             id if id >= MOVE_TO => Some(Choice::MoveTo(id - MOVE_TO)),
             id => {
                 let item = main.iter().chain(sort.iter()).flatten().nth(id - 1)?;

@@ -55,13 +55,31 @@ pub fn save(hwnd: HWND) -> Option<Placement> {
     let mut wp = WINDOWPLACEMENT { length: size_of::<WINDOWPLACEMENT>() as u32, ..Default::default() };
     unsafe { GetWindowPlacement(hwnd, &mut wp) }.ok()?;
     let maximized = wp.showCmd == SW_SHOWMAXIMIZED.0 as u32 || (wp.showCmd == SW_SHOWMINIMIZED.0 as u32 && wp.flags.contains(WPF_RESTORETOMAXIMIZED));
-    let r = wp.rcNormalPosition;
+    // A snapped window's normal rect is where it was before snapping: keep
+    // where it is instead, so it reopens where it was left.
+    let snapped = !maximized && wp.showCmd == SW_SHOWNORMAL.0 as u32 && unsafe { IsWindowArranged(hwnd) }.as_bool();
+    let r = if snapped { arranged_rect(hwnd).unwrap_or(wp.rcNormalPosition) } else { wp.rcNormalPosition };
     let path = path()?;
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
     let _ = std::fs::write(path, format!("maximized={}\nnormal={},{},{},{}\n", u8::from(maximized), r.left, r.top, r.right, r.bottom));
     Some(Placement { normal: r, maximized })
+}
+
+/// The window's rect on screen, in the workspace coordinates
+/// WINDOWPLACEMENT uses (screen coordinates less a taskbar on the left or top).
+fn arranged_rect(hwnd: HWND) -> Option<RECT> {
+    unsafe {
+        let mut rect = RECT::default();
+        GetWindowRect(hwnd, &mut rect).ok()?;
+        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if !GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mut info).as_bool() {
+            return None;
+        }
+        let (dx, dy) = (info.rcWork.left - info.rcMonitor.left, info.rcWork.top - info.rcMonitor.top);
+        Some(RECT { left: rect.left - dx, top: rect.top - dy, right: rect.right - dx, bottom: rect.bottom - dy })
+    }
 }
 
 /// Puts the still-hidden window where it will be shown and returns its

@@ -40,9 +40,81 @@ pub const PALETTE: [(&str, [f32; 3]); 8] = [
 /// apart even where the bar is hidden.
 pub const BACKGROUNDS: [f32; 8] = [0.080, 0.115, 0.055, 0.100, 0.135, 0.065, 0.125, 0.090];
 
-/// Tab width in the strip at 100 % scaling: at most, and before squeezing.
+/// Tab width in the strip at 100 % scaling: at most, and the least before
+/// tabs wrap onto another row.
 const TAB_MAX: f32 = 220.0;
+const TAB_MIN: f32 = 150.0;
 const MARGIN: f32 = 8.0;
+
+/// The tab strip's grid, every tab `tab` wide and each row a bar high. The
+/// first row shares the bar with the padlock and the window buttons: `first`
+/// tabs from `left`. The rows below it use the window's full width: `per_row`
+/// tabs each from `lower_left`.
+#[derive(Clone, Copy, Debug)]
+pub struct Strip {
+    left: f32,
+    lower_left: f32,
+    tab: f32,
+    first: usize,
+    per_row: usize,
+    rows: usize,
+    row: f32,
+}
+
+impl Strip {
+    /// Row and column of strip position `i`.
+    fn cell(&self, i: usize) -> (usize, usize) {
+        if i < self.first { (0, i) } else { (1 + (i - self.first) / self.per_row, (i - self.first) % self.per_row) }
+    }
+
+    /// Where row `row` starts and how many tabs it holds.
+    fn row_span(&self, row: usize) -> (f32, usize) {
+        if row == 0 { (self.left, self.first) } else { (self.lower_left, self.per_row) }
+    }
+
+    fn index(&self, row: usize, col: usize) -> usize {
+        if row == 0 { col } else { self.first + (row - 1) * self.per_row + col }
+    }
+
+    /// Top-left corner of the tab at strip position `i`.
+    pub fn origin(&self, i: usize) -> (f32, f32) {
+        let (row, col) = self.cell(i);
+        (self.row_span(row).0 + self.tab * col as f32, self.row * row as f32)
+    }
+
+    /// Whether tab `i` starts a row (no rule before it).
+    fn starts_row(&self, i: usize) -> bool {
+        self.cell(i).1 == 0
+    }
+
+    /// The position of the cell nearest a tab drawn with its top-left at
+    /// (x, y): where a dragged tab goes.
+    pub fn nearest(&self, (x, y): (f32, f32), count: usize) -> usize {
+        let row = (y / self.row).round().clamp(0.0, (self.rows - 1) as f32) as usize;
+        let (left, cols) = self.row_span(row);
+        let col = ((x - left) / self.tab).round().clamp(0.0, (cols - 1) as f32) as usize;
+        self.index(row, col).min(count.saturating_sub(1))
+    }
+
+    /// The tab under (x, y), if any.
+    fn at(&self, (x, y): (f32, f32), count: usize) -> Option<usize> {
+        if y < 0.0 {
+            return None;
+        }
+        let row = (y / self.row).floor() as usize;
+        let (left, cols) = self.row_span(row);
+        let col = ((x - left) / self.tab).floor();
+        let i = self.index(row, col as usize);
+        (x >= left && (col as usize) < cols && i < count).then_some(i)
+    }
+
+    /// Where a dragged tab may be drawn: within the grid.
+    fn clamp(&self, (x, y): (f32, f32)) -> (f32, f32) {
+        let y = y.clamp(0.0, self.row * (self.rows - 1) as f32);
+        let (left, cols) = self.row_span((y / self.row).round() as usize);
+        (x.clamp(left, left + self.tab * (cols - 1) as f32), y)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hit {
@@ -70,9 +142,9 @@ pub struct Chrome {
     color: usize,
     /// Where each tab (by id) is drawn: tabs glide to their slots when the
     /// order changes, like Chrome's.
-    positions: HashMap<u64, f32>,
-    /// The tab being dragged along the strip and its left edge's x.
-    drag: Option<(u64, f32)>,
+    positions: HashMap<u64, (f32, f32)>,
+    /// The tab being dragged along the strip and its top-left corner.
+    drag: Option<(u64, (f32, f32))>,
     /// When tabs last moved, while some are still gliding.
     glide_tick: Option<Instant>,
     locked: bool,
@@ -80,6 +152,8 @@ pub struct Chrome {
     near: bool,
     /// Shown without the cursor until then (a tab switch from the keys).
     reveal_until: Option<Instant>,
+    /// Preferences ▸ Multi-row Tabs: off keeps one row, however narrow.
+    multirow: bool,
 }
 
 /// Room for the Tab Lock padlock at 100 % scaling.
@@ -90,12 +164,17 @@ const LOCK_WIDTH: f32 = 30.0;
 const GLIDE_TAU: f32 = 0.05;
 
 impl Chrome {
-    pub fn new(scale: f32, color: usize) -> Chrome {
-        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None, tabs: 1, color, positions: HashMap::new(), drag: None, glide_tick: None, locked: false, near: false, reveal_until: None }
+    pub fn new(scale: f32, color: usize, multirow: bool) -> Chrome {
+        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None, tabs: 1, color, positions: HashMap::new(), drag: None, glide_tick: None, locked: false, near: false, reveal_until: None, multirow }
     }
 
-    /// A tab dragged along the strip: drawn at `x` (its left edge), on top.
-    pub fn set_drag(&mut self, drag: Option<(u64, f32)>) {
+    pub fn set_multirow(&mut self, multirow: bool) {
+        self.multirow = multirow;
+    }
+
+    /// A tab dragged along the strip: drawn with its top-left corner at the
+    /// given point, on top.
+    pub fn set_drag(&mut self, drag: Option<(u64, (f32, f32))>) {
         self.drag = drag;
     }
 
@@ -114,49 +193,74 @@ impl Chrome {
         self.glide_tick.is_some()
     }
 
-    /// Advances every tab toward its slot (the dragged one sits at the
-    /// cursor) and returns their x, in strip order.
-    fn glide(&mut self, tabs: &[(u64, String)], left: f32, tab: f32) -> Vec<f32> {
+    /// Advances every tab toward its cell (the dragged one sits at the
+    /// cursor) and returns their top-left corners, in strip order.
+    fn glide(&mut self, tabs: &[(u64, String)], strip: &Strip) -> Vec<(f32, f32)> {
         let now = Instant::now();
         let dt = self.glide_tick.map_or(0.0, |t| (now - t).as_secs_f32().min(0.05));
         let ease = 1.0 - (-dt / GLIDE_TAU).exp();
-        let last = left + tab * (tabs.len().saturating_sub(1)) as f32;
         let mut moving = false;
-        let xs = tabs
+        let corners = tabs
             .iter()
             .enumerate()
             .map(|(i, (id, _))| {
-                let slot = left + tab * i as f32;
-                let x = match self.drag {
-                    Some((dragged, x)) if dragged == *id => x.clamp(left, last),
+                let cell = strip.origin(i);
+                let at = match self.drag {
+                    Some((dragged, at)) if dragged == *id => strip.clamp(at),
                     _ => {
-                        let x = *self.positions.get(id).unwrap_or(&slot);
-                        let x = x + (slot - x) * ease;
-                        if (slot - x).abs() < 0.5 { slot } else { x }
+                        let (x, y) = *self.positions.get(id).unwrap_or(&cell);
+                        let (x, y) = (x + (cell.0 - x) * ease, y + (cell.1 - y) * ease);
+                        if (cell.0 - x).abs() < 0.5 && (cell.1 - y).abs() < 0.5 { cell } else { (x, y) }
                     }
                 };
-                moving |= x != slot && self.drag.is_none_or(|(dragged, _)| dragged != *id);
-                self.positions.insert(*id, x);
-                x
+                moving |= at != cell && self.drag.is_none_or(|(dragged, _)| dragged != *id);
+                self.positions.insert(*id, at);
+                at
             })
             .collect();
         self.positions.retain(|id, _| tabs.iter().any(|(t, _)| t == id));
         self.glide_tick = moving.then_some(now);
-        xs
+        corners
     }
 
     pub fn set_tabs(&mut self, tabs: usize) {
         self.tabs = tabs;
     }
 
-    /// Where the strip starts and its tab width, if there is a strip.
-    pub fn tab_layout(&self, width: f32) -> Option<(f32, f32)> {
+    /// The tab strip's grid, if there is a strip (two or more tabs): one row
+    /// between the padlock and the buttons while tabs can be at least
+    /// TAB_MIN wide (with Multi-row Tabs off, whatever their width). Past
+    /// that, tabs of one width fill rows that run the window's full width
+    /// below the first; the first holds as many as fit before the buttons.
+    pub fn strip(&self, width: f32) -> Option<Strip> {
         if self.tabs < 2 {
             return None;
         }
-        let left = MARGIN * self.scale + self.content_left();
-        let room = (width - 3.0 * BUTTON * self.scale - left - MARGIN * self.scale).max(0.0);
-        Some((left, (room / self.tabs as f32).min(TAB_MAX * self.scale)))
+        let s = self.scale;
+        let left = MARGIN * s + self.content_left();
+        let room = (width - 3.0 * BUTTON * s - left - MARGIN * s).max(1.0);
+        let fit = if self.multirow { (room / (TAB_MIN * s)).floor() as usize } else { self.tabs };
+        let first = fit.clamp(1, self.tabs);
+        let row = self.bar();
+        if first == self.tabs {
+            let tab = (room / self.tabs as f32).min(TAB_MAX * s);
+            return Some(Strip { left, lower_left: left, tab, first, per_row: first, rows: 1, row });
+        }
+        // The lower rows set the width, filling the window exactly; the first
+        // row takes as many as fit before the buttons, leaving the rest of it
+        // free (to drag the window by).
+        let full = (width - 2.0 * MARGIN * s).max(1.0);
+        let per_row = ((full / (TAB_MIN * s)).floor() as usize).max(1);
+        let tab = full / per_row as f32;
+        let first = ((room / tab).floor() as usize).clamp(1, first);
+        let lower_left = MARGIN * s;
+        let rows = 1 + (self.tabs - first).div_ceil(per_row);
+        Some(Strip { left, lower_left, tab, first, per_row, rows, row })
+    }
+
+    /// The bar's height: a row per row of tabs.
+    fn height(&self, width: f32) -> f32 {
+        self.strip(width).map_or(1, |strip| strip.rows) as f32 * self.bar()
     }
 
     pub fn set_scale(&mut self, scale: f32) {
@@ -170,7 +274,9 @@ impl Chrome {
     /// Follows the cursor (`None` when it left the window). Returns whether
     /// the bar needs redrawing.
     pub fn pointer(&mut self, pos: Option<(f32, f32)>, width: f32) -> bool {
-        self.near = pos.is_some_and(|(_, y)| y >= 0.0 && y < APPEAR * self.bar());
+        // Within the bar (all its rows), plus the same margin below it as ever.
+        let zone = self.height(width) + (APPEAR - 1.0) * self.bar();
+        self.near = pos.is_some_and(|(_, y)| y >= 0.0 && y < zone);
         let hover = pos.and_then(|p| self.hit_raw(p, width));
         let changed = self.retarget() || (hover != self.hover && self.opacity > 0.0);
         self.hover = hover;
@@ -217,22 +323,20 @@ impl Chrome {
     }
 
     fn hit_raw(&self, (x, y): (f32, f32), width: f32) -> Option<Hit> {
-        if !(0.0..self.bar()).contains(&y) {
+        if !(0.0..self.height(width)).contains(&y) {
             return None;
         }
         let from_right = width - x;
         let button = BUTTON * self.scale;
-        let tab = self.tab_layout(width).and_then(|(left, tab)| {
-            let i = ((x - left) / tab).floor();
-            (x >= left && i < self.tabs as f32).then_some(i as usize)
-        });
-        Some(if from_right < button {
+        let first_row = y < self.bar();
+        let tab = self.strip(width).and_then(|strip| strip.at((x, y), self.tabs));
+        Some(if first_row && from_right < button {
             Hit::Close
-        } else if from_right < 2.0 * button {
+        } else if first_row && from_right < 2.0 * button {
             Hit::Maximize
-        } else if from_right < 3.0 * button {
+        } else if first_row && from_right < 3.0 * button {
             Hit::Minimize
-        } else if self.locked && x < MARGIN * self.scale + self.content_left() {
+        } else if first_row && self.locked && x < MARGIN * self.scale + self.content_left() {
             Hit::Lock
         } else if let Some(i) = tab {
             Hit::Tab(i)
@@ -268,7 +372,8 @@ impl Chrome {
             self.glide_tick = None;
             return;
         }
-        let strip = self.tab_layout(width).map(|(left, tab)| (tab, self.glide(tabs, left, tab)));
+        let strip = self.strip(width).map(|strip| (strip, self.glide(tabs, &strip)));
+        let height = self.height(width);
         if self.text.as_ref().is_none_or(|(_, scale)| *scale != self.scale) {
             self.text = text_format(14.0 * self.scale).ok().map(|f| (f, self.scale));
         }
@@ -284,7 +389,7 @@ impl Chrome {
         let button = BUTTON * s;
         let button_rect = |i: f32| D2D_RECT_F { left: width - button * (i + 1.0), top: 0.0, right: width - button * i, bottom: bar };
         unsafe {
-            context.FillRectangle(&D2D_RECT_F { left: 0.0, top: 0.0, right: width, bottom: bar }, &panel);
+            context.FillRectangle(&D2D_RECT_F { left: 0.0, top: 0.0, right: width, bottom: height }, &panel);
 
             let hovered = match self.hover {
                 Some(Hit::Close) => Some((0.0, brush(0.77, 0.17, 0.11, 1.0))),
@@ -339,7 +444,8 @@ impl Chrome {
                     let rect = D2D_RECT_F { left, top: 0.0, right: (width - 3.0 * button - 14.0 * s).max(left), bottom: bar };
                     text(title, rect, &ink);
                 }
-                Some((tab, xs)) => {
+                Some((strip, corners)) => {
+                    let tab = strip.tab;
                     // The active tab lifts out of the bar; the others are
                     // quieter; a dragged one is lifted too, and drawn last.
                     let (Some(lifted), Some(quiet), Some(hover_fill), Some(rule)) =
@@ -352,17 +458,18 @@ impl Chrome {
                     let mut order: Vec<usize> = (0..tabs.len()).filter(|&i| !dragged(i)).collect();
                     order.extend((0..tabs.len()).filter(|&i| dragged(i)));
                     for i in order {
-                        let (x, label) = (xs[i], &tabs[i].1);
-                        let cell = D2D_RECT_F { left: x + 1.0 * s, top: pad, right: x + tab - 1.0 * s, bottom: bar - pad };
+                        let ((x, y), label) = (corners[i], &tabs[i].1);
+                        let cell = D2D_RECT_F { left: x + 1.0 * s, top: y + pad, right: x + tab - 1.0 * s, bottom: y + bar - pad };
                         if i == active || dragged(i) {
                             context.FillRectangle(&cell, &lifted);
                         } else if self.hover == Some(Hit::Tab(i)) && self.drag.is_none() {
                             context.FillRectangle(&cell, &hover_fill);
                         }
-                        if i > 0 && i != active && i != active + 1 && self.drag.is_none() {
-                            context.FillRectangle(&D2D_RECT_F { left: x, top: 10.0 * s, right: x + 1.0 * s, bottom: bar - 10.0 * s }, &rule);
+                        // A rule between neighbours in a row, not beside the lifted tab.
+                        if !strip.starts_row(i) && i != active && i != active + 1 && self.drag.is_none() {
+                            context.FillRectangle(&D2D_RECT_F { left: x, top: y + 10.0 * s, right: x + 1.0 * s, bottom: y + bar - 10.0 * s }, &rule);
                         }
-                        let rect = D2D_RECT_F { left: x + 10.0 * s, top: 0.0, right: x + tab - 10.0 * s, bottom: bar };
+                        let rect = D2D_RECT_F { left: x + 10.0 * s, top: y, right: x + tab - 10.0 * s, bottom: y + bar };
                         text(if i == active { title } else { label }, rect, if i == active { &ink } else { &quiet });
                     }
                 }

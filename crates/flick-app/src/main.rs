@@ -188,7 +188,7 @@ impl App {
         });
         let used: Vec<usize> = self.viewers.values().map(|v| v.color).collect();
         let color = (0..chrome::PALETTE.len()).find(|c| !used.contains(c)).unwrap_or(self.viewers.len() % chrome::PALETTE.len());
-        let mut viewer = Viewer::new(id, tab, placement, self.prefs, color);
+        let mut viewer = Viewer::new(id, tab, placement, self.prefs, self.global, color);
         if let Err(e) = viewer.create_window(event_loop) {
             report(&e);
             return None;
@@ -589,6 +589,9 @@ impl App {
             Ok(Action::GlobalChanged(global)) => {
                 self.global = global;
                 settings::save(self.prefs, global);
+                for viewer in self.viewers.values_mut() {
+                    viewer.set_global(global);
+                }
             }
             Ok(Action::MoveTab(to)) => self.move_tab(event_loop, id, to),
             Ok(Action::Close) => {
@@ -735,7 +738,7 @@ fn main() {
     let last_file = Some(request.file.clone());
     let mut app = App {
         shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
-        viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs, 0))]),
+        viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs, global, 0))]),
         windows: HashMap::new(),
         next_id: first_tab + 1,
         focus_order: vec![first],

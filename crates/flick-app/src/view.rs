@@ -187,6 +187,24 @@ impl View {
         self.clamp();
     }
 
+    /// A right-drag zoom: `scale`, with the image point `anchor` (taken where
+    /// the drag started) at `cursor`. A picture smaller than the window on an
+    /// axis is not centred there, only kept inside it, so it grows from the
+    /// pressed point rather than from the window's centre.
+    pub fn zoom_anchored(&mut self, anchor: (f32, f32), cursor: (f32, f32), scale: f32) {
+        self.scale = scale.clamp(MIN_SCALE.min(self.fit_scale()), MAX_SCALE);
+        let axis = |anchor: f32, cursor: f32, image: f32, window: f32| {
+            let half = window / 2.0 / self.scale;
+            let center = anchor - (cursor - window / 2.0) / self.scale;
+            center.clamp(half.min(image - half), half.max(image - half))
+        };
+        self.center = (
+            axis(anchor.0, cursor.0, self.image.0, self.window.0),
+            axis(anchor.1, cursor.1, self.image.1, self.window.1),
+        );
+        self.follows_mode = false;
+    }
+
     /// Moves the picture by `delta` window pixels.
     pub fn pan(&mut self, delta: (f32, f32)) {
         self.center = (self.center.0 - delta.0 / self.scale, self.center.1 - delta.1 / self.scale);
@@ -194,7 +212,8 @@ impl View {
         self.clamp();
     }
 
-    fn to_image(&self, p: (f32, f32)) -> (f32, f32) {
+    /// Window pixels → image space.
+    pub fn to_image(&self, p: (f32, f32)) -> (f32, f32) {
         (self.center.0 + (p.0 - self.window.0 / 2.0) / self.scale, self.center.1 + (p.1 - self.window.1 / 2.0) / self.scale)
     }
 
@@ -268,5 +287,22 @@ mod tests {
         view.zoom_at((0.0, 0.0), 2.0);
         view.resize((1000, 500));
         assert_eq!(view.scale, 1.0, "zoomed: the scale stays");
+    }
+
+    #[test]
+    fn drag_zoom_keeps_the_pressed_point_on_a_small_picture() {
+        // 500 × 250 in a 1000 × 500 window: centred, with borders.
+        let mut view = View::new((500, 250), WINDOW, mode(Fit::Window, false));
+        let pressed = (700.0, 300.0);
+        let anchor = view.to_image(pressed);
+        for scale in [1.1, 1.2, 1.4] {
+            view.zoom_anchored(anchor, pressed, scale);
+            let at = view.to_image(pressed);
+            assert!((at.0 - anchor.0).abs() < 0.01 && (at.1 - anchor.1).abs() < 0.01, "scale {scale}: {at:?} vs {anchor:?}");
+        }
+        // Grown to an edge, it stays inside the window rather than follow.
+        view.zoom_anchored(anchor, pressed, 1.8);
+        let left = view.window.0 / 2.0 - view.center.0 * view.scale;
+        assert!(left >= 0.0 && left + 500.0 * 1.8 <= view.window.0 + 0.01, "left {left}");
     }
 }

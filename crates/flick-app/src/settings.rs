@@ -36,11 +36,13 @@ fn name<T: PartialEq>(table: &[(T, &'static str)], value: T) -> &'static str {
 pub struct Global {
     /// Opened files become tabs of the window used last (else new windows).
     pub tabs: bool,
+    /// Tabs wrap onto more rows (else one row, squeezed).
+    pub multirow: bool,
 }
 
 impl Default for Global {
     fn default() -> Global {
-        Global { tabs: true }
+        Global { tabs: true, multirow: true }
     }
 }
 
@@ -56,6 +58,7 @@ pub fn load() -> (Prefs, Global) {
             "sort" => prefs.sort.key = find(&SORTS, value).unwrap_or(prefs.sort.key),
             "descending" => prefs.sort.descending = value == "1",
             "tabs" => global.tabs = value != "0",
+            "multirow" => global.multirow = value != "0",
             _ => {}
         }
     }
@@ -68,13 +71,14 @@ pub fn save(prefs: Prefs, global: Global) {
         let _ = std::fs::create_dir_all(dir);
     }
     let text = format!(
-        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ntabs={}\n",
+        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ntabs={}\nmultirow={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
         name(&FILTERS, prefs.filter),
         name(&SORTS, prefs.sort.key),
         u8::from(prefs.sort.descending),
         u8::from(global.tabs),
+        u8::from(global.multirow),
     );
     let _ = std::fs::write(path, text);
 }
