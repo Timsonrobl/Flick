@@ -1,0 +1,97 @@
+[
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 221.9838,
+    "image_ms": 237.5075,
+    "final_ms": 237.5075,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 102.640625,
+    "working_set_mb": 78.9765625,
+    "peak_private_mb": 103.98828125,
+    "capture_ms": 13.690850000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 239.8563,
+    "image_ms": 257.0776,
+    "final_ms": 257.0776,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 93.5078125,
+    "working_set_mb": 66.6328125,
+    "peak_private_mb": 93.5078125,
+    "capture_ms": 12.295800000000002,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 229.0371,
+    "image_ms": 240.8063,
+    "final_ms": 240.8063,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 95.02734375,
+    "working_set_mb": 66.87890625,
+    "peak_private_mb": 95.02734375,
+    "capture_ms": 9.59585,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 218.9724,
+    "image_ms": 233.7279,
+    "final_ms": 233.7279,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 93.17578125,
+    "working_set_mb": 66.546875,
+    "peak_private_mb": 93.17578125,
+    "capture_ms": 10.566,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 220.2265,
+    "image_ms": 233.3313,
+    "final_ms": 233.3313,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 94.125,
+    "working_set_mb": 66.7734375,
+    "peak_private_mb": 94.125,
+    "capture_ms": 9.88665,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

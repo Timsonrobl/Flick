@@ -1,0 +1,192 @@
+[
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 137.5875,
+    "image_ms": 177.1917,
+    "final_ms": 177.1917,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.765625,
+    "working_set_mb": 36.26171875,
+    "peak_private_mb": 19.765625,
+    "capture_ms": 7.054399999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 137.7506,
+    "image_ms": 176.2462,
+    "final_ms": 176.2462,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.87109375,
+    "working_set_mb": 36.35546875,
+    "peak_private_mb": 19.87109375,
+    "capture_ms": 7.13,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 134.7804,
+    "image_ms": 176.2184,
+    "final_ms": 176.2184,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.71875,
+    "working_set_mb": 36.24609375,
+    "peak_private_mb": 19.71875,
+    "capture_ms": 7.170249999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 137.0582,
+    "image_ms": 176.8046,
+    "final_ms": 176.8046,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.73828125,
+    "working_set_mb": 36.28125,
+    "peak_private_mb": 19.73828125,
+    "capture_ms": 7.2085,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 138.5062,
+    "image_ms": 193.5362,
+    "final_ms": 193.5362,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.71875,
+    "working_set_mb": 36.26953125,
+    "peak_private_mb": 19.71875,
+    "capture_ms": 7.069,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 137.8041,
+    "image_ms": 178.9306,
+    "final_ms": 178.9306,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.7109375,
+    "working_set_mb": 36.23828125,
+    "peak_private_mb": 19.7109375,
+    "capture_ms": 7.0790500000000005,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 139.5671,
+    "image_ms": 180.8624,
+    "final_ms": 180.8624,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.70703125,
+    "working_set_mb": 36.24609375,
+    "peak_private_mb": 19.70703125,
+    "capture_ms": 6.94135,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 138.7359,
+    "image_ms": 178.9776,
+    "final_ms": 178.9776,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.76171875,
+    "working_set_mb": 36.28515625,
+    "peak_private_mb": 19.76171875,
+    "capture_ms": 7.0466,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 139.1082,
+    "image_ms": 179.129,
+    "final_ms": 179.129,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.703125,
+    "working_set_mb": 36.234375,
+    "peak_private_mb": 19.703125,
+    "capture_ms": 7.0699,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 139.4492,
+    "image_ms": 179.1811,
+    "final_ms": 179.1811,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.69921875,
+    "working_set_mb": 36.24609375,
+    "peak_private_mb": 19.69921875,
+    "capture_ms": 6.992100000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

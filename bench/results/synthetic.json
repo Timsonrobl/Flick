@@ -1,0 +1,506 @@
+[
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      4032,
+      3024
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 107.3259,
+    "median_ms": 104.3928,
+    "min_ms": 104.0542,
+    "peak_mb": 81.8046875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      4032,
+      3024
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 104.438,
+    "median_ms": 101.7591,
+    "min_ms": 100.2601,
+    "peak_mb": 46.88671875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      4032,
+      3024
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 122.5023,
+    "median_ms": 121.9966,
+    "min_ms": 120.6014,
+    "peak_mb": 83.578125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      2016,
+      1512
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 99.6127,
+    "median_ms": 96.543,
+    "min_ms": 96.0822,
+    "peak_mb": 21.80859375,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      4032,
+      3024
+    ],
+    "denom": 1,
+    "init_ms": 2.7388,
+    "first_ms": 90.5188,
+    "median_ms": 85.7282,
+    "min_ms": 84.2701,
+    "peak_mb": 46.93359375,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      2016,
+      1512
+    ],
+    "denom": 2,
+    "init_ms": 2.4341,
+    "first_ms": 78.6003,
+    "median_ms": 74.7644,
+    "min_ms": 74.43669999999999,
+    "peak_mb": 11.89453125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      1920,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.4832,
+    "first_ms": 86.7332,
+    "median_ms": 82.17280000000001,
+    "min_ms": 81.038,
+    "peak_mb": 11.3125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "decoder": "exif-thumb",
+    "mode": "thumb",
+    "file_bytes": 7058482,
+    "src": [
+      4032,
+      3024
+    ],
+    "out": [
+      160,
+      120
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 0.2306,
+    "median_ms": 0.1114,
+    "min_ms": 0.1063,
+    "peak_mb": 0.10546875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      6000,
+      4000
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 210.5107,
+    "median_ms": 207.6528,
+    "min_ms": 204.4169,
+    "peak_mb": 160.6171875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      6000,
+      4000
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 203.7434,
+    "median_ms": 197.4971,
+    "min_ms": 196.8499,
+    "peak_mb": 92.08203125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      6000,
+      4000
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 292.0156,
+    "median_ms": 246.4061,
+    "min_ms": 231.9057,
+    "peak_mb": 162.91796875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      3000,
+      2000
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 238.7065,
+    "median_ms": 196.355,
+    "min_ms": 192.8266,
+    "peak_mb": 41.8359375,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      6000,
+      4000
+    ],
+    "denom": 1,
+    "init_ms": 2.675,
+    "first_ms": 175.8509,
+    "median_ms": 169.681,
+    "min_ms": 166.02700000000002,
+    "peak_mb": 92.12890625,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      3000,
+      2000
+    ],
+    "denom": 2,
+    "init_ms": 2.3536,
+    "first_ms": 151.39749999999998,
+    "median_ms": 145.1557,
+    "min_ms": 144.21280000000002,
+    "peak_mb": 23.22265625,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      2160,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.354,
+    "first_ms": 161.4458,
+    "median_ms": 155.5444,
+    "min_ms": 154.13950000000003,
+    "peak_mb": 12.703125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "decoder": "exif-thumb",
+    "mode": "thumb",
+    "file_bytes": 13869290,
+    "src": [
+      6000,
+      4000
+    ],
+    "out": [
+      160,
+      106
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 0.1896,
+    "median_ms": 0.0727,
+    "min_ms": 0.07100000000000001,
+    "peak_mb": 0.09765625,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      8256,
+      5504
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 390.8572,
+    "median_ms": 388.4637,
+    "min_ms": 387.3796,
+    "peak_mb": 304.421875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      8256,
+      5504
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 383.028,
+    "median_ms": 373.0695,
+    "min_ms": 371.5608,
+    "peak_mb": 174.13671875,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      8256,
+      5504
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 523.3342,
+    "median_ms": 447.4615,
+    "min_ms": 439.3729,
+    "peak_mb": 306.6015625,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      4128,
+      2752
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 436.7408,
+    "median_ms": 365.7744,
+    "min_ms": 357.2871,
+    "peak_mb": 78.18359375,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      8256,
+      5504
+    ],
+    "denom": 1,
+    "init_ms": 2.7461,
+    "first_ms": 329.8046,
+    "median_ms": 317.4594,
+    "min_ms": 314.3518,
+    "peak_mb": 174.125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      4128,
+      2752
+    ],
+    "denom": 2,
+    "init_ms": 2.2769,
+    "first_ms": 285.9743,
+    "median_ms": 277.7692,
+    "min_ms": 275.1552,
+    "peak_mb": 43.70703125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      2160,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.2577000000000003,
+    "first_ms": 297.6123,
+    "median_ms": 288.5298,
+    "min_ms": 285.0643,
+    "peak_mb": 12.73828125,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "decoder": "exif-thumb",
+    "mode": "thumb",
+    "file_bytes": 26185240,
+    "src": [
+      8256,
+      5504
+    ],
+    "out": [
+      160,
+      106
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 0.1762,
+    "median_ms": 0.0853,
+    "min_ms": 0.08399999999999999,
+    "peak_mb": 0.09765625,
+    "error": null
+  }
+]

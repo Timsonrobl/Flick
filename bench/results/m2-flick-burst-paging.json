@@ -1,0 +1,224 @@
+[
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 248.127,
+    "image_ms": 284.0399,
+    "final_ms": 284.0399,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 144.0859375,
+    "working_set_mb": 66.5859375,
+    "peak_private_mb": 160.5234375,
+    "capture_ms": 13.614700000000001,
+    "pages": [
+      {
+        "image_ms": 13.959900000000001,
+        "final_ms": 13.959900000000001,
+        "private_mb": 163.8125,
+        "working_set_mb": 69.90625
+      },
+      {
+        "image_ms": 35.478500000000004,
+        "final_ms": 35.478500000000004,
+        "private_mb": 180.3984375,
+        "working_set_mb": 70.1328125
+      },
+      {
+        "image_ms": 27.8709,
+        "final_ms": 27.8709,
+        "private_mb": 196.8671875,
+        "working_set_mb": 70.1640625
+      },
+      {
+        "image_ms": 41.7752,
+        "final_ms": 41.7752,
+        "private_mb": 196.8671875,
+        "working_set_mb": 70.1796875
+      },
+      {
+        "image_ms": 35.392199999999995,
+        "final_ms": 35.392199999999995,
+        "private_mb": 196.9765625,
+        "working_set_mb": 70.27734375
+      },
+      {
+        "image_ms": 34.9833,
+        "final_ms": 34.9833,
+        "private_mb": 197.00390625,
+        "working_set_mb": 70.30078125
+      },
+      {
+        "image_ms": 28.6271,
+        "final_ms": 28.6271,
+        "private_mb": 197.00390625,
+        "working_set_mb": 70.30078125
+      },
+      {
+        "image_ms": 48.914899999999996,
+        "final_ms": 48.914899999999996,
+        "private_mb": 197.00390625,
+        "working_set_mb": 70.30078125
+      },
+      {
+        "image_ms": 41.8765,
+        "final_ms": 41.8765,
+        "private_mb": 197.08203125,
+        "working_set_mb": 70.42578125
+      },
+      {
+        "image_ms": 76.4928,
+        "final_ms": 76.4928,
+        "private_mb": 197.3359375,
+        "working_set_mb": 70.67578125
+      },
+      {
+        "image_ms": 69.1858,
+        "final_ms": 69.1858,
+        "private_mb": 197.5859375,
+        "working_set_mb": 70.92578125
+      },
+      {
+        "image_ms": 42.2962,
+        "final_ms": 42.2962,
+        "private_mb": 197.8359375,
+        "working_set_mb": 71.17578125
+      },
+      {
+        "image_ms": 69.67320000000001,
+        "final_ms": 69.67320000000001,
+        "private_mb": 197.99609375,
+        "working_set_mb": 71.3359375
+      },
+      {
+        "image_ms": 49.5367,
+        "final_ms": 49.5367,
+        "private_mb": 198.26171875,
+        "working_set_mb": 71.6640625
+      },
+      {
+        "image_ms": 55.4621,
+        "final_ms": 55.4621,
+        "private_mb": 199.0,
+        "working_set_mb": 72.3671875
+      },
+      {
+        "image_ms": 75.9863,
+        "final_ms": 75.9863,
+        "private_mb": 199.09375,
+        "working_set_mb": 72.453125
+      },
+      {
+        "image_ms": 83.40350000000001,
+        "final_ms": 83.40350000000001,
+        "private_mb": 199.09375,
+        "working_set_mb": 72.45703125
+      },
+      {
+        "image_ms": 90.2217,
+        "final_ms": 90.2217,
+        "private_mb": 199.078125,
+        "working_set_mb": 72.44140625
+      },
+      {
+        "image_ms": 70.1155,
+        "final_ms": 70.1155,
+        "private_mb": 199.078125,
+        "working_set_mb": 72.44140625
+      },
+      {
+        "image_ms": 75.8865,
+        "final_ms": 75.8865,
+        "private_mb": 199.08984375,
+        "working_set_mb": 72.453125
+      },
+      {
+        "image_ms": 69.18249999999999,
+        "final_ms": 69.18249999999999,
+        "private_mb": 199.08984375,
+        "working_set_mb": 72.453125
+      }
+    ],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 258.7164,
+    "image_ms": 271.3595,
+    "final_ms": 271.3595,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 145.19140625,
+    "working_set_mb": 66.05859375,
+    "peak_private_mb": 161.62890625,
+    "capture_ms": 6.91615,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 221.9465,
+    "image_ms": 234.0765,
+    "final_ms": 234.0765,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 144.65234375,
+    "working_set_mb": 66.40625,
+    "peak_private_mb": 161.08984375,
+    "capture_ms": 6.92915,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 221.8528,
+    "image_ms": 232.3511,
+    "final_ms": 232.3511,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 143.53125,
+    "working_set_mb": 66.48046875,
+    "peak_private_mb": 159.97265625,
+    "capture_ms": 6.8976999999999995,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 239.306,
+    "image_ms": 249.2591,
+    "final_ms": 249.2591,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 144.265625,
+    "working_set_mb": 66.6015625,
+    "peak_private_mb": 160.70703125,
+    "capture_ms": 6.90485,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

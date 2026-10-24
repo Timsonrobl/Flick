@@ -1,0 +1,2734 @@
+{
+  "d2d": [
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 115.5,
+      "stages": [
+        [
+          "main",
+          19.926
+        ],
+        [
+          "event_loop",
+          24.444
+        ],
+        [
+          "window",
+          32.713
+        ],
+        [
+          "d2d_factory",
+          32.737
+        ],
+        [
+          "decoded",
+          110.89
+        ],
+        [
+          "render_target",
+          208.045
+        ],
+        [
+          "renderer_ready",
+          208.049
+        ],
+        [
+          "frame",
+          233.84
+        ]
+      ],
+      "working_set_mb": 73.7
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 114.2,
+      "stages": [
+        [
+          "main",
+          19.124
+        ],
+        [
+          "event_loop",
+          22.519
+        ],
+        [
+          "window",
+          30.823
+        ],
+        [
+          "d2d_factory",
+          30.848
+        ],
+        [
+          "decoded",
+          111.694
+        ],
+        [
+          "render_target",
+          203.398
+        ],
+        [
+          "renderer_ready",
+          203.401
+        ],
+        [
+          "frame",
+          225.592
+        ]
+      ],
+      "working_set_mb": 70.6
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 114.9,
+      "stages": [
+        [
+          "main",
+          16.918
+        ],
+        [
+          "event_loop",
+          21.399
+        ],
+        [
+          "window",
+          30.192
+        ],
+        [
+          "d2d_factory",
+          30.22
+        ],
+        [
+          "decoded",
+          109.664
+        ],
+        [
+          "render_target",
+          205.905
+        ],
+        [
+          "renderer_ready",
+          205.909
+        ],
+        [
+          "frame",
+          225.698
+        ]
+      ],
+      "working_set_mb": 70.7
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 114.7,
+      "stages": [
+        [
+          "main",
+          17.023
+        ],
+        [
+          "event_loop",
+          21.744
+        ],
+        [
+          "window",
+          29.727
+        ],
+        [
+          "d2d_factory",
+          29.751
+        ],
+        [
+          "decoded",
+          109.795
+        ],
+        [
+          "render_target",
+          203.921
+        ],
+        [
+          "renderer_ready",
+          203.925
+        ],
+        [
+          "frame",
+          226.56
+        ]
+      ],
+      "working_set_mb": 70.6
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 113.7,
+      "stages": [
+        [
+          "main",
+          16.812
+        ],
+        [
+          "event_loop",
+          21.613
+        ],
+        [
+          "window",
+          29.691
+        ],
+        [
+          "d2d_factory",
+          29.715
+        ],
+        [
+          "decoded",
+          109.419
+        ],
+        [
+          "render_target",
+          204.048
+        ],
+        [
+          "renderer_ready",
+          204.052
+        ],
+        [
+          "frame",
+          223.559
+        ]
+      ],
+      "working_set_mb": 70.6
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 114.7,
+      "stages": [
+        [
+          "main",
+          16.836
+        ],
+        [
+          "event_loop",
+          20.099
+        ],
+        [
+          "window",
+          29.834
+        ],
+        [
+          "d2d_factory",
+          29.859
+        ],
+        [
+          "decoded",
+          109.586
+        ],
+        [
+          "render_target",
+          204.399
+        ],
+        [
+          "renderer_ready",
+          204.403
+        ],
+        [
+          "frame",
+          226.262
+        ]
+      ],
+      "working_set_mb": 70.7
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 115.5,
+      "stages": [
+        [
+          "main",
+          16.37
+        ],
+        [
+          "event_loop",
+          21.42
+        ],
+        [
+          "window",
+          29.059
+        ],
+        [
+          "d2d_factory",
+          29.083
+        ],
+        [
+          "decoded",
+          108.072
+        ],
+        [
+          "render_target",
+          204.448
+        ],
+        [
+          "renderer_ready",
+          204.452
+        ],
+        [
+          "frame",
+          225.326
+        ]
+      ],
+      "working_set_mb": 70.6
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 114.0,
+      "stages": [
+        [
+          "main",
+          18.34
+        ],
+        [
+          "event_loop",
+          22.66
+        ],
+        [
+          "window",
+          32.141
+        ],
+        [
+          "d2d_factory",
+          32.171
+        ],
+        [
+          "decoded",
+          110.179
+        ],
+        [
+          "render_target",
+          208.268
+        ],
+        [
+          "renderer_ready",
+          208.273
+        ],
+        [
+          "frame",
+          228.01
+        ]
+      ],
+      "working_set_mb": 70.6
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 113.9,
+      "stages": [
+        [
+          "main",
+          17.971
+        ],
+        [
+          "event_loop",
+          22.584
+        ],
+        [
+          "window",
+          30.599
+        ],
+        [
+          "d2d_factory",
+          30.624
+        ],
+        [
+          "decoded",
+          110.571
+        ],
+        [
+          "render_target",
+          207.175
+        ],
+        [
+          "renderer_ready",
+          207.18
+        ],
+        [
+          "frame",
+          228.195
+        ]
+      ],
+      "working_set_mb": 70.6
+    },
+    {
+      "adapter": "d2d",
+      "error": null,
+      "private_mb": 115.1,
+      "stages": [
+        [
+          "main",
+          17.434
+        ],
+        [
+          "event_loop",
+          21.442
+        ],
+        [
+          "window",
+          29.517
+        ],
+        [
+          "d2d_factory",
+          29.553
+        ],
+        [
+          "decoded",
+          110.456
+        ],
+        [
+          "render_target",
+          205.517
+        ],
+        [
+          "renderer_ready",
+          205.522
+        ],
+        [
+          "frame",
+          230.629
+        ]
+      ],
+      "working_set_mb": 70.6
+    }
+  ],
+  "d2d-dxgi": [
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 96.6,
+      "stages": [
+        [
+          "main",
+          17.084
+        ],
+        [
+          "event_loop",
+          21.179
+        ],
+        [
+          "window",
+          28.721
+        ],
+        [
+          "decoded",
+          109.376
+        ],
+        [
+          "d3d11_device",
+          203.231
+        ],
+        [
+          "swap_chain",
+          205.607
+        ],
+        [
+          "d2d_context",
+          206.381
+        ],
+        [
+          "renderer_ready",
+          206.385
+        ],
+        [
+          "frame",
+          224.249
+        ]
+      ],
+      "working_set_mb": 75.3
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 96.2,
+      "stages": [
+        [
+          "main",
+          19.547
+        ],
+        [
+          "event_loop",
+          23.611
+        ],
+        [
+          "window",
+          32.688
+        ],
+        [
+          "decoded",
+          112.455
+        ],
+        [
+          "d3d11_device",
+          204.226
+        ],
+        [
+          "swap_chain",
+          206.629
+        ],
+        [
+          "d2d_context",
+          207.385
+        ],
+        [
+          "renderer_ready",
+          207.389
+        ],
+        [
+          "frame",
+          227.015
+        ]
+      ],
+      "working_set_mb": 72.5
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 96.2,
+      "stages": [
+        [
+          "main",
+          16.564
+        ],
+        [
+          "event_loop",
+          21.521
+        ],
+        [
+          "window",
+          29.431
+        ],
+        [
+          "decoded",
+          109.419
+        ],
+        [
+          "d3d11_device",
+          203.107
+        ],
+        [
+          "swap_chain",
+          205.304
+        ],
+        [
+          "d2d_context",
+          206.236
+        ],
+        [
+          "renderer_ready",
+          206.24
+        ],
+        [
+          "frame",
+          224.949
+        ]
+      ],
+      "working_set_mb": 72.5
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 97.1,
+      "stages": [
+        [
+          "main",
+          18.719
+        ],
+        [
+          "event_loop",
+          22.822
+        ],
+        [
+          "window",
+          31.38
+        ],
+        [
+          "decoded",
+          110.252
+        ],
+        [
+          "d3d11_device",
+          205.102
+        ],
+        [
+          "swap_chain",
+          207.463
+        ],
+        [
+          "d2d_context",
+          208.205
+        ],
+        [
+          "renderer_ready",
+          208.209
+        ],
+        [
+          "frame",
+          226.94
+        ]
+      ],
+      "working_set_mb": 72.5
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 96.5,
+      "stages": [
+        [
+          "main",
+          18.665
+        ],
+        [
+          "event_loop",
+          22.267
+        ],
+        [
+          "window",
+          32.377
+        ],
+        [
+          "decoded",
+          111.984
+        ],
+        [
+          "d3d11_device",
+          204.615
+        ],
+        [
+          "swap_chain",
+          206.745
+        ],
+        [
+          "d2d_context",
+          207.544
+        ],
+        [
+          "renderer_ready",
+          207.548
+        ],
+        [
+          "frame",
+          229.228
+        ]
+      ],
+      "working_set_mb": 72.6
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 96.0,
+      "stages": [
+        [
+          "main",
+          18.662
+        ],
+        [
+          "event_loop",
+          23.428
+        ],
+        [
+          "window",
+          31.821
+        ],
+        [
+          "decoded",
+          111.23
+        ],
+        [
+          "d3d11_device",
+          205.267
+        ],
+        [
+          "swap_chain",
+          207.587
+        ],
+        [
+          "d2d_context",
+          208.281
+        ],
+        [
+          "renderer_ready",
+          208.285
+        ],
+        [
+          "frame",
+          227.24
+        ]
+      ],
+      "working_set_mb": 72.4
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 97.4,
+      "stages": [
+        [
+          "main",
+          17.076
+        ],
+        [
+          "event_loop",
+          21.796
+        ],
+        [
+          "window",
+          29.859
+        ],
+        [
+          "decoded",
+          108.968
+        ],
+        [
+          "d3d11_device",
+          201.895
+        ],
+        [
+          "swap_chain",
+          203.902
+        ],
+        [
+          "d2d_context",
+          204.576
+        ],
+        [
+          "renderer_ready",
+          204.58
+        ],
+        [
+          "frame",
+          223.82
+        ]
+      ],
+      "working_set_mb": 72.5
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 97.6,
+      "stages": [
+        [
+          "main",
+          18.212
+        ],
+        [
+          "event_loop",
+          22.484
+        ],
+        [
+          "window",
+          30.69
+        ],
+        [
+          "decoded",
+          111.362
+        ],
+        [
+          "d3d11_device",
+          205.835
+        ],
+        [
+          "swap_chain",
+          208.233
+        ],
+        [
+          "d2d_context",
+          209.013
+        ],
+        [
+          "renderer_ready",
+          209.017
+        ],
+        [
+          "frame",
+          231.652
+        ]
+      ],
+      "working_set_mb": 72.4
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 96.2,
+      "stages": [
+        [
+          "main",
+          18.214
+        ],
+        [
+          "event_loop",
+          21.124
+        ],
+        [
+          "window",
+          30.747
+        ],
+        [
+          "decoded",
+          110.151
+        ],
+        [
+          "d3d11_device",
+          203.518
+        ],
+        [
+          "swap_chain",
+          205.586
+        ],
+        [
+          "d2d_context",
+          206.257
+        ],
+        [
+          "renderer_ready",
+          206.26
+        ],
+        [
+          "frame",
+          226.571
+        ]
+      ],
+      "working_set_mb": 72.6
+    },
+    {
+      "adapter": "d2d-dxgi",
+      "error": null,
+      "private_mb": 97.2,
+      "stages": [
+        [
+          "main",
+          16.786
+        ],
+        [
+          "event_loop",
+          21.497
+        ],
+        [
+          "window",
+          29.59
+        ],
+        [
+          "decoded",
+          108.971
+        ],
+        [
+          "d3d11_device",
+          203.671
+        ],
+        [
+          "swap_chain",
+          205.87
+        ],
+        [
+          "d2d_context",
+          206.593
+        ],
+        [
+          "renderer_ready",
+          206.596
+        ],
+        [
+          "frame",
+          225.358
+        ]
+      ],
+      "working_set_mb": 72.5
+    }
+  ],
+  "gdi": [
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.5,
+      "stages": [
+        [
+          "main",
+          16.452
+        ],
+        [
+          "event_loop",
+          19.336
+        ],
+        [
+          "window",
+          27.549
+        ],
+        [
+          "renderer_ready",
+          27.553
+        ],
+        [
+          "decoded",
+          108.427
+        ],
+        [
+          "frame",
+          142.124
+        ]
+      ],
+      "working_set_mb": 34.2
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.4,
+      "stages": [
+        [
+          "main",
+          19.042
+        ],
+        [
+          "event_loop",
+          22.839
+        ],
+        [
+          "window",
+          30.638
+        ],
+        [
+          "renderer_ready",
+          30.641
+        ],
+        [
+          "decoded",
+          109.265
+        ],
+        [
+          "frame",
+          142.091
+        ]
+      ],
+      "working_set_mb": 34.2
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.6,
+      "stages": [
+        [
+          "main",
+          19.576
+        ],
+        [
+          "event_loop",
+          22.571
+        ],
+        [
+          "window",
+          33.195
+        ],
+        [
+          "renderer_ready",
+          33.199
+        ],
+        [
+          "decoded",
+          111.772
+        ],
+        [
+          "frame",
+          143.893
+        ]
+      ],
+      "working_set_mb": 34.2
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.6,
+      "stages": [
+        [
+          "main",
+          19.613
+        ],
+        [
+          "event_loop",
+          24.002
+        ],
+        [
+          "window",
+          33.373
+        ],
+        [
+          "renderer_ready",
+          33.376
+        ],
+        [
+          "decoded",
+          110.643
+        ],
+        [
+          "frame",
+          140.394
+        ]
+      ],
+      "working_set_mb": 34.3
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.5,
+      "stages": [
+        [
+          "main",
+          19.301
+        ],
+        [
+          "event_loop",
+          22.894
+        ],
+        [
+          "window",
+          32.542
+        ],
+        [
+          "renderer_ready",
+          32.545
+        ],
+        [
+          "decoded",
+          111.133
+        ],
+        [
+          "frame",
+          141.913
+        ]
+      ],
+      "working_set_mb": 34.2
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.4,
+      "stages": [
+        [
+          "main",
+          19.866
+        ],
+        [
+          "event_loop",
+          24.55
+        ],
+        [
+          "window",
+          32.285
+        ],
+        [
+          "renderer_ready",
+          32.288
+        ],
+        [
+          "decoded",
+          111.701
+        ],
+        [
+          "frame",
+          140.883
+        ]
+      ],
+      "working_set_mb": 34.2
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.4,
+      "stages": [
+        [
+          "main",
+          16.604
+        ],
+        [
+          "event_loop",
+          20.308
+        ],
+        [
+          "window",
+          28.001
+        ],
+        [
+          "renderer_ready",
+          28.005
+        ],
+        [
+          "decoded",
+          108.184
+        ],
+        [
+          "frame",
+          137.77
+        ]
+      ],
+      "working_set_mb": 34.1
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.4,
+      "stages": [
+        [
+          "main",
+          19.676
+        ],
+        [
+          "event_loop",
+          22.947
+        ],
+        [
+          "window",
+          32.953
+        ],
+        [
+          "renderer_ready",
+          32.956
+        ],
+        [
+          "decoded",
+          112.657
+        ],
+        [
+          "frame",
+          148.333
+        ]
+      ],
+      "working_set_mb": 34.1
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.4,
+      "stages": [
+        [
+          "main",
+          18.867
+        ],
+        [
+          "event_loop",
+          21.899
+        ],
+        [
+          "window",
+          32.621
+        ],
+        [
+          "renderer_ready",
+          32.624
+        ],
+        [
+          "decoded",
+          109.687
+        ],
+        [
+          "frame",
+          143.29
+        ]
+      ],
+      "working_set_mb": 34.2
+    },
+    {
+      "adapter": "gdi",
+      "error": null,
+      "private_mb": 19.5,
+      "stages": [
+        [
+          "main",
+          17.48
+        ],
+        [
+          "event_loop",
+          20.513
+        ],
+        [
+          "window",
+          31.228
+        ],
+        [
+          "renderer_ready",
+          31.231
+        ],
+        [
+          "decoded",
+          107.759
+        ],
+        [
+          "frame",
+          140.919
+        ]
+      ],
+      "working_set_mb": 34.2
+    }
+  ],
+  "wgpu-dx12": [
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 337.7,
+      "stages": [
+        [
+          "main",
+          21.428
+        ],
+        [
+          "event_loop",
+          24.908
+        ],
+        [
+          "window",
+          32.965
+        ],
+        [
+          "wgpu_instance",
+          46.706
+        ],
+        [
+          "decoded",
+          112.981
+        ],
+        [
+          "wgpu_adapter",
+          225.893
+        ],
+        [
+          "wgpu_device",
+          263.326
+        ],
+        [
+          "wgpu_surface",
+          267.323
+        ],
+        [
+          "wgpu_pipeline",
+          306.0
+        ],
+        [
+          "renderer_ready",
+          306.008
+        ],
+        [
+          "frame",
+          327.375
+        ]
+      ],
+      "working_set_mb": 178.6
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 332.8,
+      "stages": [
+        [
+          "main",
+          20.891
+        ],
+        [
+          "event_loop",
+          24.363
+        ],
+        [
+          "window",
+          34.061
+        ],
+        [
+          "wgpu_instance",
+          49.472
+        ],
+        [
+          "decoded",
+          112.789
+        ],
+        [
+          "wgpu_adapter",
+          230.484
+        ],
+        [
+          "wgpu_device",
+          272.71
+        ],
+        [
+          "wgpu_surface",
+          276.494
+        ],
+        [
+          "wgpu_pipeline",
+          280.935
+        ],
+        [
+          "renderer_ready",
+          280.939
+        ],
+        [
+          "frame",
+          298.204
+        ]
+      ],
+      "working_set_mb": 165.9
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 333.1,
+      "stages": [
+        [
+          "main",
+          25.24
+        ],
+        [
+          "event_loop",
+          30.091
+        ],
+        [
+          "window",
+          44.951
+        ],
+        [
+          "wgpu_instance",
+          61.806
+        ],
+        [
+          "decoded",
+          134.501
+        ],
+        [
+          "wgpu_adapter",
+          249.605
+        ],
+        [
+          "wgpu_device",
+          284.573
+        ],
+        [
+          "wgpu_surface",
+          288.482
+        ],
+        [
+          "wgpu_pipeline",
+          293.12
+        ],
+        [
+          "renderer_ready",
+          293.125
+        ],
+        [
+          "frame",
+          310.204
+        ]
+      ],
+      "working_set_mb": 166.0
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 334.1,
+      "stages": [
+        [
+          "main",
+          17.241
+        ],
+        [
+          "event_loop",
+          20.712
+        ],
+        [
+          "window",
+          29.056
+        ],
+        [
+          "wgpu_instance",
+          44.767
+        ],
+        [
+          "decoded",
+          110.981
+        ],
+        [
+          "wgpu_adapter",
+          223.605
+        ],
+        [
+          "wgpu_device",
+          258.351
+        ],
+        [
+          "wgpu_surface",
+          262.29
+        ],
+        [
+          "wgpu_pipeline",
+          267.055
+        ],
+        [
+          "renderer_ready",
+          267.06
+        ],
+        [
+          "frame",
+          286.245
+        ]
+      ],
+      "working_set_mb": 166.0
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 334.3,
+      "stages": [
+        [
+          "main",
+          16.906
+        ],
+        [
+          "event_loop",
+          20.002
+        ],
+        [
+          "window",
+          27.76
+        ],
+        [
+          "wgpu_instance",
+          49.107
+        ],
+        [
+          "decoded",
+          108.959
+        ],
+        [
+          "wgpu_adapter",
+          227.344
+        ],
+        [
+          "wgpu_device",
+          261.902
+        ],
+        [
+          "wgpu_surface",
+          265.834
+        ],
+        [
+          "wgpu_pipeline",
+          270.424
+        ],
+        [
+          "renderer_ready",
+          270.433
+        ],
+        [
+          "frame",
+          286.964
+        ]
+      ],
+      "working_set_mb": 166.1
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 333.7,
+      "stages": [
+        [
+          "main",
+          17.501
+        ],
+        [
+          "event_loop",
+          21.611
+        ],
+        [
+          "window",
+          29.71
+        ],
+        [
+          "wgpu_instance",
+          43.321
+        ],
+        [
+          "decoded",
+          110.797
+        ],
+        [
+          "wgpu_adapter",
+          222.701
+        ],
+        [
+          "wgpu_device",
+          254.638
+        ],
+        [
+          "wgpu_surface",
+          258.421
+        ],
+        [
+          "wgpu_pipeline",
+          263.008
+        ],
+        [
+          "renderer_ready",
+          263.012
+        ],
+        [
+          "frame",
+          278.746
+        ]
+      ],
+      "working_set_mb": 166.1
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 333.2,
+      "stages": [
+        [
+          "main",
+          17.636
+        ],
+        [
+          "event_loop",
+          21.573
+        ],
+        [
+          "window",
+          29.691
+        ],
+        [
+          "wgpu_instance",
+          43.698
+        ],
+        [
+          "decoded",
+          108.851
+        ],
+        [
+          "wgpu_adapter",
+          225.149
+        ],
+        [
+          "wgpu_device",
+          262.413
+        ],
+        [
+          "wgpu_surface",
+          266.052
+        ],
+        [
+          "wgpu_pipeline",
+          270.927
+        ],
+        [
+          "renderer_ready",
+          270.931
+        ],
+        [
+          "frame",
+          286.796
+        ]
+      ],
+      "working_set_mb": 166.0
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 332.8,
+      "stages": [
+        [
+          "main",
+          20.025
+        ],
+        [
+          "event_loop",
+          23.325
+        ],
+        [
+          "window",
+          34.472
+        ],
+        [
+          "wgpu_instance",
+          48.693
+        ],
+        [
+          "decoded",
+          113.768
+        ],
+        [
+          "wgpu_adapter",
+          227.932
+        ],
+        [
+          "wgpu_device",
+          262.428
+        ],
+        [
+          "wgpu_surface",
+          266.529
+        ],
+        [
+          "wgpu_pipeline",
+          271.531
+        ],
+        [
+          "renderer_ready",
+          271.536
+        ],
+        [
+          "frame",
+          288.021
+        ]
+      ],
+      "working_set_mb": 166.0
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 332.5,
+      "stages": [
+        [
+          "main",
+          16.829
+        ],
+        [
+          "event_loop",
+          19.817
+        ],
+        [
+          "window",
+          28.626
+        ],
+        [
+          "wgpu_instance",
+          42.61
+        ],
+        [
+          "decoded",
+          109.576
+        ],
+        [
+          "wgpu_adapter",
+          225.866
+        ],
+        [
+          "wgpu_device",
+          261.265
+        ],
+        [
+          "wgpu_surface",
+          265.573
+        ],
+        [
+          "wgpu_pipeline",
+          270.168
+        ],
+        [
+          "renderer_ready",
+          270.172
+        ],
+        [
+          "frame",
+          287.947
+        ]
+      ],
+      "working_set_mb": 166.0
+    },
+    {
+      "adapter": "wgpu-dx12",
+      "error": null,
+      "private_mb": 332.8,
+      "stages": [
+        [
+          "main",
+          19.046
+        ],
+        [
+          "event_loop",
+          22.594
+        ],
+        [
+          "window",
+          30.751
+        ],
+        [
+          "wgpu_instance",
+          43.962
+        ],
+        [
+          "decoded",
+          111.55
+        ],
+        [
+          "wgpu_adapter",
+          223.591
+        ],
+        [
+          "wgpu_device",
+          255.373
+        ],
+        [
+          "wgpu_surface",
+          259.077
+        ],
+        [
+          "wgpu_pipeline",
+          263.478
+        ],
+        [
+          "renderer_ready",
+          263.482
+        ],
+        [
+          "frame",
+          280.452
+        ]
+      ],
+      "working_set_mb": 165.9
+    }
+  ],
+  "wgpu-gl": [
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 261.6,
+      "stages": [
+        [
+          "main",
+          16.528
+        ],
+        [
+          "event_loop",
+          19.781
+        ],
+        [
+          "window",
+          28.624
+        ],
+        [
+          "decoded",
+          108.209
+        ],
+        [
+          "wgpu_instance",
+          158.612
+        ],
+        [
+          "wgpu_adapter",
+          158.79
+        ],
+        [
+          "wgpu_device",
+          159.661
+        ],
+        [
+          "wgpu_surface",
+          163.376
+        ],
+        [
+          "wgpu_pipeline",
+          196.927
+        ],
+        [
+          "renderer_ready",
+          196.931
+        ],
+        [
+          "frame",
+          215.264
+        ]
+      ],
+      "working_set_mb": 157.6
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 209.6,
+      "stages": [
+        [
+          "main",
+          17.861
+        ],
+        [
+          "event_loop",
+          43.351
+        ],
+        [
+          "window",
+          52.601
+        ],
+        [
+          "decoded",
+          112.166
+        ],
+        [
+          "wgpu_instance",
+          184.944
+        ],
+        [
+          "wgpu_adapter",
+          185.201
+        ],
+        [
+          "wgpu_device",
+          186.239
+        ],
+        [
+          "wgpu_surface",
+          189.938
+        ],
+        [
+          "wgpu_pipeline",
+          194.61
+        ],
+        [
+          "renderer_ready",
+          194.615
+        ],
+        [
+          "frame",
+          211.917
+        ]
+      ],
+      "working_set_mb": 99.4
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.2,
+      "stages": [
+        [
+          "main",
+          16.053
+        ],
+        [
+          "event_loop",
+          20.042
+        ],
+        [
+          "window",
+          27.819
+        ],
+        [
+          "decoded",
+          109.154
+        ],
+        [
+          "wgpu_instance",
+          158.793
+        ],
+        [
+          "wgpu_adapter",
+          158.953
+        ],
+        [
+          "wgpu_device",
+          159.802
+        ],
+        [
+          "wgpu_surface",
+          164.535
+        ],
+        [
+          "wgpu_pipeline",
+          168.804
+        ],
+        [
+          "renderer_ready",
+          168.808
+        ],
+        [
+          "frame",
+          186.838
+        ]
+      ],
+      "working_set_mb": 99.5
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.5,
+      "stages": [
+        [
+          "main",
+          16.264
+        ],
+        [
+          "event_loop",
+          26.367
+        ],
+        [
+          "window",
+          34.2
+        ],
+        [
+          "decoded",
+          115.767
+        ],
+        [
+          "wgpu_instance",
+          165.814
+        ],
+        [
+          "wgpu_adapter",
+          165.994
+        ],
+        [
+          "wgpu_device",
+          166.827
+        ],
+        [
+          "wgpu_surface",
+          170.915
+        ],
+        [
+          "wgpu_pipeline",
+          175.352
+        ],
+        [
+          "renderer_ready",
+          175.356
+        ],
+        [
+          "frame",
+          193.378
+        ]
+      ],
+      "working_set_mb": 99.4
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 209.7,
+      "stages": [
+        [
+          "main",
+          18.159
+        ],
+        [
+          "event_loop",
+          21.525
+        ],
+        [
+          "window",
+          31.385
+        ],
+        [
+          "decoded",
+          110.697
+        ],
+        [
+          "wgpu_instance",
+          167.439
+        ],
+        [
+          "wgpu_adapter",
+          167.613
+        ],
+        [
+          "wgpu_device",
+          168.663
+        ],
+        [
+          "wgpu_surface",
+          172.275
+        ],
+        [
+          "wgpu_pipeline",
+          176.667
+        ],
+        [
+          "renderer_ready",
+          176.67
+        ],
+        [
+          "frame",
+          194.159
+        ]
+      ],
+      "working_set_mb": 99.5
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.5,
+      "stages": [
+        [
+          "main",
+          16.488
+        ],
+        [
+          "event_loop",
+          21.331
+        ],
+        [
+          "window",
+          29.373
+        ],
+        [
+          "decoded",
+          109.036
+        ],
+        [
+          "wgpu_instance",
+          163.326
+        ],
+        [
+          "wgpu_adapter",
+          163.498
+        ],
+        [
+          "wgpu_device",
+          164.364
+        ],
+        [
+          "wgpu_surface",
+          168.085
+        ],
+        [
+          "wgpu_pipeline",
+          172.322
+        ],
+        [
+          "renderer_ready",
+          172.325
+        ],
+        [
+          "frame",
+          188.519
+        ]
+      ],
+      "working_set_mb": 99.4
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.4,
+      "stages": [
+        [
+          "main",
+          16.977
+        ],
+        [
+          "event_loop",
+          20.135
+        ],
+        [
+          "window",
+          28.316
+        ],
+        [
+          "decoded",
+          108.963
+        ],
+        [
+          "wgpu_instance",
+          158.674
+        ],
+        [
+          "wgpu_adapter",
+          158.847
+        ],
+        [
+          "wgpu_device",
+          159.705
+        ],
+        [
+          "wgpu_surface",
+          163.816
+        ],
+        [
+          "wgpu_pipeline",
+          168.473
+        ],
+        [
+          "renderer_ready",
+          168.477
+        ],
+        [
+          "frame",
+          185.506
+        ]
+      ],
+      "working_set_mb": 99.5
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.4,
+      "stages": [
+        [
+          "main",
+          16.394
+        ],
+        [
+          "event_loop",
+          19.233
+        ],
+        [
+          "window",
+          28.654
+        ],
+        [
+          "decoded",
+          108.418
+        ],
+        [
+          "wgpu_instance",
+          156.551
+        ],
+        [
+          "wgpu_adapter",
+          156.723
+        ],
+        [
+          "wgpu_device",
+          157.676
+        ],
+        [
+          "wgpu_surface",
+          161.527
+        ],
+        [
+          "wgpu_pipeline",
+          165.982
+        ],
+        [
+          "renderer_ready",
+          165.986
+        ],
+        [
+          "frame",
+          183.818
+        ]
+      ],
+      "working_set_mb": 99.3
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.9,
+      "stages": [
+        [
+          "main",
+          16.248
+        ],
+        [
+          "event_loop",
+          19.079
+        ],
+        [
+          "window",
+          28.014
+        ],
+        [
+          "decoded",
+          107.657
+        ],
+        [
+          "wgpu_instance",
+          157.69
+        ],
+        [
+          "wgpu_adapter",
+          157.843
+        ],
+        [
+          "wgpu_device",
+          158.954
+        ],
+        [
+          "wgpu_surface",
+          162.564
+        ],
+        [
+          "wgpu_pipeline",
+          167.113
+        ],
+        [
+          "renderer_ready",
+          167.117
+        ],
+        [
+          "frame",
+          183.923
+        ]
+      ],
+      "working_set_mb": 99.5
+    },
+    {
+      "adapter": "wgpu-gl",
+      "error": null,
+      "private_mb": 208.8,
+      "stages": [
+        [
+          "main",
+          17.484
+        ],
+        [
+          "event_loop",
+          21.423
+        ],
+        [
+          "window",
+          29.378
+        ],
+        [
+          "decoded",
+          110.713
+        ],
+        [
+          "wgpu_instance",
+          167.139
+        ],
+        [
+          "wgpu_adapter",
+          167.315
+        ],
+        [
+          "wgpu_device",
+          168.143
+        ],
+        [
+          "wgpu_surface",
+          172.173
+        ],
+        [
+          "wgpu_pipeline",
+          176.589
+        ],
+        [
+          "renderer_ready",
+          176.592
+        ],
+        [
+          "frame",
+          194.026
+        ]
+      ],
+      "working_set_mb": 99.4
+    }
+  ],
+  "wgpu-vulkan": [
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 369.0,
+      "stages": [
+        [
+          "main",
+          16.996
+        ],
+        [
+          "event_loop",
+          20.043
+        ],
+        [
+          "window",
+          28.341
+        ],
+        [
+          "decoded",
+          108.838
+        ],
+        [
+          "wgpu_instance",
+          153.289
+        ],
+        [
+          "wgpu_adapter",
+          163.618
+        ],
+        [
+          "wgpu_device",
+          189.651
+        ],
+        [
+          "wgpu_surface",
+          363.23
+        ],
+        [
+          "wgpu_pipeline",
+          438.318
+        ],
+        [
+          "renderer_ready",
+          438.322
+        ],
+        [
+          "frame",
+          454.991
+        ]
+      ],
+      "working_set_mb": 172.4
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 346.8,
+      "stages": [
+        [
+          "main",
+          22.811
+        ],
+        [
+          "event_loop",
+          26.197
+        ],
+        [
+          "window",
+          34.54
+        ],
+        [
+          "decoded",
+          119.741
+        ],
+        [
+          "wgpu_instance",
+          166.244
+        ],
+        [
+          "wgpu_adapter",
+          175.788
+        ],
+        [
+          "wgpu_device",
+          200.662
+        ],
+        [
+          "wgpu_surface",
+          374.274
+        ],
+        [
+          "wgpu_pipeline",
+          375.637
+        ],
+        [
+          "renderer_ready",
+          375.642
+        ],
+        [
+          "frame",
+          390.141
+        ]
+      ],
+      "working_set_mb": 140.1
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 348.2,
+      "stages": [
+        [
+          "main",
+          18.363
+        ],
+        [
+          "event_loop",
+          21.712
+        ],
+        [
+          "window",
+          31.046
+        ],
+        [
+          "decoded",
+          111.495
+        ],
+        [
+          "wgpu_instance",
+          153.794
+        ],
+        [
+          "wgpu_adapter",
+          163.67
+        ],
+        [
+          "wgpu_device",
+          188.233
+        ],
+        [
+          "wgpu_surface",
+          360.504
+        ],
+        [
+          "wgpu_pipeline",
+          361.887
+        ],
+        [
+          "renderer_ready",
+          361.891
+        ],
+        [
+          "frame",
+          377.486
+        ]
+      ],
+      "working_set_mb": 140.1
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 346.9,
+      "stages": [
+        [
+          "main",
+          18.042
+        ],
+        [
+          "event_loop",
+          22.065
+        ],
+        [
+          "window",
+          30.381
+        ],
+        [
+          "decoded",
+          109.579
+        ],
+        [
+          "wgpu_instance",
+          153.337
+        ],
+        [
+          "wgpu_adapter",
+          162.586
+        ],
+        [
+          "wgpu_device",
+          191.381
+        ],
+        [
+          "wgpu_surface",
+          369.263
+        ],
+        [
+          "wgpu_pipeline",
+          370.627
+        ],
+        [
+          "renderer_ready",
+          370.632
+        ],
+        [
+          "frame",
+          386.425
+        ]
+      ],
+      "working_set_mb": 140.1
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 347.1,
+      "stages": [
+        [
+          "main",
+          17.892
+        ],
+        [
+          "event_loop",
+          21.706
+        ],
+        [
+          "window",
+          31.356
+        ],
+        [
+          "decoded",
+          111.917
+        ],
+        [
+          "wgpu_instance",
+          157.837
+        ],
+        [
+          "wgpu_adapter",
+          167.19
+        ],
+        [
+          "wgpu_device",
+          191.333
+        ],
+        [
+          "wgpu_surface",
+          365.323
+        ],
+        [
+          "wgpu_pipeline",
+          366.761
+        ],
+        [
+          "renderer_ready",
+          366.765
+        ],
+        [
+          "frame",
+          381.761
+        ]
+      ],
+      "working_set_mb": 140.1
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 348.2,
+      "stages": [
+        [
+          "main",
+          17.572
+        ],
+        [
+          "event_loop",
+          20.983
+        ],
+        [
+          "window",
+          29.896
+        ],
+        [
+          "decoded",
+          110.418
+        ],
+        [
+          "wgpu_instance",
+          152.315
+        ],
+        [
+          "wgpu_adapter",
+          161.379
+        ],
+        [
+          "wgpu_device",
+          190.314
+        ],
+        [
+          "wgpu_surface",
+          364.824
+        ],
+        [
+          "wgpu_pipeline",
+          366.169
+        ],
+        [
+          "renderer_ready",
+          366.173
+        ],
+        [
+          "frame",
+          380.452
+        ]
+      ],
+      "working_set_mb": 140.2
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 346.4,
+      "stages": [
+        [
+          "main",
+          17.461
+        ],
+        [
+          "event_loop",
+          20.522
+        ],
+        [
+          "window",
+          28.722
+        ],
+        [
+          "decoded",
+          109.878
+        ],
+        [
+          "wgpu_instance",
+          151.527
+        ],
+        [
+          "wgpu_adapter",
+          160.551
+        ],
+        [
+          "wgpu_device",
+          190.36
+        ],
+        [
+          "wgpu_surface",
+          367.138
+        ],
+        [
+          "wgpu_pipeline",
+          368.625
+        ],
+        [
+          "renderer_ready",
+          368.629
+        ],
+        [
+          "frame",
+          383.614
+        ]
+      ],
+      "working_set_mb": 140.1
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 347.5,
+      "stages": [
+        [
+          "main",
+          16.729
+        ],
+        [
+          "event_loop",
+          19.784
+        ],
+        [
+          "window",
+          28.367
+        ],
+        [
+          "decoded",
+          110.611
+        ],
+        [
+          "wgpu_instance",
+          152.929
+        ],
+        [
+          "wgpu_adapter",
+          162.49
+        ],
+        [
+          "wgpu_device",
+          187.97
+        ],
+        [
+          "wgpu_surface",
+          360.256
+        ],
+        [
+          "wgpu_pipeline",
+          361.594
+        ],
+        [
+          "renderer_ready",
+          361.598
+        ],
+        [
+          "frame",
+          376.841
+        ]
+      ],
+      "working_set_mb": 140.1
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 347.9,
+      "stages": [
+        [
+          "main",
+          17.11
+        ],
+        [
+          "event_loop",
+          20.466
+        ],
+        [
+          "window",
+          29.043
+        ],
+        [
+          "decoded",
+          109.321
+        ],
+        [
+          "wgpu_instance",
+          152.107
+        ],
+        [
+          "wgpu_adapter",
+          161.365
+        ],
+        [
+          "wgpu_device",
+          184.447
+        ],
+        [
+          "wgpu_surface",
+          359.285
+        ],
+        [
+          "wgpu_pipeline",
+          360.678
+        ],
+        [
+          "renderer_ready",
+          360.682
+        ],
+        [
+          "frame",
+          375.844
+        ]
+      ],
+      "working_set_mb": 139.9
+    },
+    {
+      "adapter": "wgpu-vulkan",
+      "error": null,
+      "private_mb": 347.7,
+      "stages": [
+        [
+          "main",
+          17.232
+        ],
+        [
+          "event_loop",
+          21.293
+        ],
+        [
+          "window",
+          29.369
+        ],
+        [
+          "decoded",
+          108.848
+        ],
+        [
+          "wgpu_instance",
+          152.922
+        ],
+        [
+          "wgpu_adapter",
+          162.621
+        ],
+        [
+          "wgpu_device",
+          190.734
+        ],
+        [
+          "wgpu_surface",
+          361.844
+        ],
+        [
+          "wgpu_pipeline",
+          363.231
+        ],
+        [
+          "renderer_ready",
+          363.235
+        ],
+        [
+          "frame",
+          379.202
+        ]
+      ],
+      "working_set_mb": 140.0
+    }
+  ]
+}

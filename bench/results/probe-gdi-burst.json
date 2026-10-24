@@ -1,0 +1,87 @@
+[
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 111.0222,
+    "image_ms": 188.7958,
+    "final_ms": 188.7958,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.63671875,
+    "working_set_mb": 35.83203125,
+    "peak_private_mb": 19.63671875,
+    "capture_ms": 7.1081,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 109.6863,
+    "image_ms": 204.5479,
+    "final_ms": 204.5479,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.59765625,
+    "working_set_mb": 35.796875,
+    "peak_private_mb": 19.59765625,
+    "capture_ms": 7.04655,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 110.0831,
+    "image_ms": 200.3416,
+    "final_ms": 200.3416,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.609375,
+    "working_set_mb": 35.80078125,
+    "peak_private_mb": 19.609375,
+    "capture_ms": 7.14805,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 111.3643,
+    "image_ms": 190.7645,
+    "final_ms": 190.7645,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.64453125,
+    "working_set_mb": 35.8359375,
+    "peak_private_mb": 19.64453125,
+    "capture_ms": 7.0472,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 109.8631,
+    "image_ms": 189.7817,
+    "final_ms": 189.7817,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 19.6484375,
+    "working_set_mb": 35.8359375,
+    "peak_private_mb": 19.6484375,
+    "capture_ms": 6.9952,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

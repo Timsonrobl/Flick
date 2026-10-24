@@ -1,0 +1,97 @@
+[
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 237.5926,
+    "image_ms": 273.4288,
+    "final_ms": 273.4288,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 145.5546875,
+    "working_set_mb": 66.7734375,
+    "peak_private_mb": 161.9921875,
+    "capture_ms": 6.899900000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 212.926,
+    "image_ms": 226.7287,
+    "final_ms": 226.7287,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 145.34765625,
+    "working_set_mb": 66.75,
+    "peak_private_mb": 161.78515625,
+    "capture_ms": 6.933,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 228.131,
+    "image_ms": 240.6489,
+    "final_ms": 240.6489,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 149.71484375,
+    "working_set_mb": 70.89453125,
+    "peak_private_mb": 166.15234375,
+    "capture_ms": 6.8984000000000005,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 220.5697,
+    "image_ms": 234.5579,
+    "final_ms": 234.5579,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 145.92578125,
+    "working_set_mb": 66.8671875,
+    "peak_private_mb": 162.36328125,
+    "capture_ms": 6.9191,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst/burst-01.jpeg",
+    "window_ms": 236.5264,
+    "image_ms": 248.0332,
+    "final_ms": 248.0332,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 149.25,
+    "working_set_mb": 71.26171875,
+    "peak_private_mb": 165.6875,
+    "capture_ms": 6.939299999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

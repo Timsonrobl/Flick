@@ -1,0 +1,267 @@
+[
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "window_ms": 95.3402,
+    "image_ms": 302.3963,
+    "final_ms": 302.3963,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 114.2109375,
+    "working_set_mb": 134.75,
+    "peak_private_mb": 114.2109375,
+    "capture_ms": 6.95335,
+    "pages": [
+      [
+        175.267,
+        320.4118
+      ]
+    ],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "window_ms": 92.1561,
+    "image_ms": 276.6844,
+    "final_ms": 276.6844,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 114.23046875,
+    "working_set_mb": 134.78125,
+    "peak_private_mb": 114.23046875,
+    "capture_ms": 6.9201,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "window_ms": 94.0994,
+    "image_ms": 282.477,
+    "final_ms": 282.477,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 114.28515625,
+    "working_set_mb": 134.8515625,
+    "peak_private_mb": 114.28515625,
+    "capture_ms": 6.9159500000000005,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "window_ms": 93.9722,
+    "image_ms": 277.7772,
+    "final_ms": 277.7772,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 114.30078125,
+    "working_set_mb": 134.83984375,
+    "peak_private_mb": 114.30859375,
+    "capture_ms": 6.957,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-4032x3024-q90.jpg",
+    "window_ms": 92.0943,
+    "image_ms": 291.0622,
+    "final_ms": 291.0622,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 114.37109375,
+    "working_set_mb": 134.9140625,
+    "peak_private_mb": 114.37890625,
+    "capture_ms": 7.1276,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "window_ms": 94.3049,
+    "image_ms": 316.4966,
+    "final_ms": 468.8733,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 159.4765625,
+    "working_set_mb": 181.58203125,
+    "peak_private_mb": 159.4765625,
+    "capture_ms": 6.90735,
+    "pages": [
+      [
+        21.2514,
+        417.56890000000004
+      ]
+    ],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "window_ms": 95.1656,
+    "image_ms": 332.9426,
+    "final_ms": 472.0298,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 159.49609375,
+    "working_set_mb": 181.62109375,
+    "peak_private_mb": 159.49609375,
+    "capture_ms": 6.9362,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "window_ms": 93.7465,
+    "image_ms": 347.8131,
+    "final_ms": 479.0455,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 159.515625,
+    "working_set_mb": 181.62109375,
+    "peak_private_mb": 159.515625,
+    "capture_ms": 7.1762,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "window_ms": 90.8034,
+    "image_ms": 331.1204,
+    "final_ms": 469.7605,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 159.4609375,
+    "working_set_mb": 181.56640625,
+    "peak_private_mb": 159.4609375,
+    "capture_ms": 6.9261,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-6000x4000-q90.jpg",
+    "window_ms": 94.4201,
+    "image_ms": 337.9565,
+    "final_ms": 490.9918,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 159.5078125,
+    "working_set_mb": 181.6171875,
+    "peak_private_mb": 159.5078125,
+    "capture_ms": 6.92225,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "window_ms": 92.3345,
+    "image_ms": 325.0751,
+    "final_ms": 561.9551,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 110.20703125,
+    "working_set_mb": 132.5625,
+    "peak_private_mb": 113.06640625,
+    "capture_ms": 6.9915,
+    "pages": [],
+    "page_error": "page turn 1: image did not settle within 15s (0 changes seen)",
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "window_ms": 90.8668,
+    "image_ms": 321.1029,
+    "final_ms": 585.2883,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 110.22265625,
+    "working_set_mb": 132.5625,
+    "peak_private_mb": 113.08203125,
+    "capture_ms": 6.9098,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "window_ms": 92.2613,
+    "image_ms": 328.1785,
+    "final_ms": 473.9522,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 110.234375,
+    "working_set_mb": 132.5859375,
+    "peak_private_mb": 113.125,
+    "capture_ms": 6.925549999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "window_ms": 92.8281,
+    "image_ms": 326.6387,
+    "final_ms": 588.5438,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 110.24609375,
+    "working_set_mb": 132.5859375,
+    "peak_private_mb": 113.1328125,
+    "capture_ms": 6.982150000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench/samples\\synthetic-8256x5504-q90.jpg",
+    "window_ms": 92.4471,
+    "image_ms": 328.2387,
+    "final_ms": 571.1272,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 110.26171875,
+    "working_set_mb": 132.55078125,
+    "peak_private_mb": 113.125,
+    "capture_ms": 6.91545,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

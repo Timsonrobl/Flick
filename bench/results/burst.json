@@ -1,0 +1,4358 @@
+[
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 118.9165,
+    "median_ms": 118.8849,
+    "min_ms": 117.7519,
+    "peak_mb": 115.90625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 114.2149,
+    "median_ms": 111.8158,
+    "min_ms": 110.6193,
+    "peak_mb": 66.5859375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 141.3492,
+    "median_ms": 119.6763,
+    "min_ms": 118.407,
+    "peak_mb": 117.68359375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0004,
+    "first_ms": 112.1939,
+    "median_ms": 93.3035,
+    "min_ms": 91.6984,
+    "peak_mb": 30.44921875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0003,
+    "first_ms": 93.8404,
+    "median_ms": 88.2632,
+    "min_ms": 75.5401,
+    "peak_mb": 3.109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.418,
+    "first_ms": 97.53,
+    "median_ms": 91.2915,
+    "min_ms": 89.8965,
+    "peak_mb": 66.15625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3727,
+    "first_ms": 83.46520000000001,
+    "median_ms": 77.8098,
+    "min_ms": 76.5569,
+    "peak_mb": 16.7421875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.2672999999999996,
+    "first_ms": 68.1044,
+    "median_ms": 64.0993,
+    "min_ms": 62.78110000000001,
+    "peak_mb": 1.28125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-01.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 9334160,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.4799,
+    "first_ms": 94.4693,
+    "median_ms": 87.46,
+    "min_ms": 86.5065,
+    "peak_mb": 11.3984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 118.932,
+    "median_ms": 117.9711,
+    "min_ms": 117.0295,
+    "peak_mb": 115.8984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 114.602,
+    "median_ms": 112.2876,
+    "min_ms": 110.8798,
+    "peak_mb": 66.625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 126.8021,
+    "median_ms": 123.5638,
+    "min_ms": 119.1095,
+    "peak_mb": 117.8515625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 110.6535,
+    "median_ms": 108.6129,
+    "min_ms": 92.803,
+    "peak_mb": 30.4765625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0002,
+    "first_ms": 97.9956,
+    "median_ms": 88.2816,
+    "min_ms": 75.781,
+    "peak_mb": 3.09765625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.5612999999999997,
+    "first_ms": 95.5326,
+    "median_ms": 91.7168,
+    "min_ms": 90.5181,
+    "peak_mb": 66.16796875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3492,
+    "first_ms": 83.2688,
+    "median_ms": 78.45230000000001,
+    "min_ms": 77.9717,
+    "peak_mb": 16.7578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.3971,
+    "first_ms": 67.85549999999999,
+    "median_ms": 63.4038,
+    "min_ms": 62.688599999999994,
+    "peak_mb": 1.27734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-02.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 9392048,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.4294,
+    "first_ms": 93.3524,
+    "median_ms": 88.85990000000001,
+    "min_ms": 88.5361,
+    "peak_mb": 11.40234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 109.6515,
+    "median_ms": 111.5686,
+    "min_ms": 109.6515,
+    "peak_mb": 115.93359375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 106.7578,
+    "median_ms": 106.2,
+    "min_ms": 104.6105,
+    "peak_mb": 66.60546875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 118.8641,
+    "median_ms": 118.8641,
+    "min_ms": 110.5725,
+    "peak_mb": 117.77734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 87.12440000000001,
+    "median_ms": 84.6768,
+    "min_ms": 83.63239999999999,
+    "peak_mb": 30.9296875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0004,
+    "first_ms": 86.5885,
+    "median_ms": 76.3482,
+    "min_ms": 67.1448,
+    "peak_mb": 3.109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.5297,
+    "first_ms": 87.4408,
+    "median_ms": 83.3,
+    "min_ms": 82.4595,
+    "peak_mb": 66.140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5145,
+    "first_ms": 75.70649999999999,
+    "median_ms": 73.7835,
+    "min_ms": 70.0031,
+    "peak_mb": 16.76171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.4111,
+    "first_ms": 65.1972,
+    "median_ms": 59.2871,
+    "min_ms": 58.1888,
+    "peak_mb": 1.2578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-03.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7501248,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.4654,
+    "first_ms": 89.4754,
+    "median_ms": 82.3879,
+    "min_ms": 81.8735,
+    "peak_mb": 11.41796875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 116.0098,
+    "median_ms": 116.0098,
+    "min_ms": 113.5863,
+    "peak_mb": 115.91015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 110.1959,
+    "median_ms": 107.0825,
+    "min_ms": 105.1985,
+    "peak_mb": 66.58984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 121.8035,
+    "median_ms": 130.2246,
+    "min_ms": 116.4868,
+    "peak_mb": 117.8046875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 93.686,
+    "median_ms": 93.686,
+    "min_ms": 88.33409999999999,
+    "peak_mb": 30.37890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0003,
+    "first_ms": 77.7851,
+    "median_ms": 73.387,
+    "min_ms": 72.7881,
+    "peak_mb": 3.1328125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.3629,
+    "first_ms": 89.37910000000001,
+    "median_ms": 85.3045,
+    "min_ms": 84.21090000000001,
+    "peak_mb": 66.15625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.8302,
+    "first_ms": 79.7473,
+    "median_ms": 73.5903,
+    "min_ms": 72.8027,
+    "peak_mb": 16.75,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.3849,
+    "first_ms": 63.84239999999999,
+    "median_ms": 60.4633,
+    "min_ms": 58.6504,
+    "peak_mb": 1.26171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-04.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8154792,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.4306,
+    "first_ms": 89.6521,
+    "median_ms": 84.0497,
+    "min_ms": 82.50630000000001,
+    "peak_mb": 11.41015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 112.1515,
+    "median_ms": 112.6661,
+    "min_ms": 112.1515,
+    "peak_mb": 115.87890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 112.032,
+    "median_ms": 106.9342,
+    "min_ms": 105.9255,
+    "peak_mb": 66.5546875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 122.707,
+    "median_ms": 119.4046,
+    "min_ms": 114.5199,
+    "peak_mb": 118.05078125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0003,
+    "first_ms": 106.9719,
+    "median_ms": 93.8959,
+    "min_ms": 87.92609999999999,
+    "peak_mb": 30.3359375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 90.8575,
+    "median_ms": 71.5677,
+    "min_ms": 71.0367,
+    "peak_mb": 3.48828125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.5753999999999997,
+    "first_ms": 94.0351,
+    "median_ms": 85.95270000000001,
+    "min_ms": 85.83739999999999,
+    "peak_mb": 66.1640625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3338,
+    "first_ms": 79.1048,
+    "median_ms": 74.107,
+    "min_ms": 73.62209999999999,
+    "peak_mb": 16.74609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.475,
+    "first_ms": 65.5386,
+    "median_ms": 59.7066,
+    "min_ms": 58.70269999999999,
+    "peak_mb": 1.265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-05.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8657780,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.3761,
+    "first_ms": 89.09100000000001,
+    "median_ms": 84.2738,
+    "min_ms": 83.0207,
+    "peak_mb": 11.37109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 111.4075,
+    "median_ms": 111.6086,
+    "min_ms": 111.0711,
+    "peak_mb": 115.9140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 109.774,
+    "median_ms": 106.1729,
+    "min_ms": 105.4687,
+    "peak_mb": 66.59765625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 133.74,
+    "median_ms": 115.4318,
+    "min_ms": 112.523,
+    "peak_mb": 117.75390625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 88.8468,
+    "median_ms": 88.8468,
+    "min_ms": 85.3909,
+    "peak_mb": 30.26953125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 74.17110000000001,
+    "median_ms": 69.2517,
+    "min_ms": 68.9664,
+    "peak_mb": 3.109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.5551,
+    "first_ms": 88.5113,
+    "median_ms": 83.5303,
+    "min_ms": 83.0172,
+    "peak_mb": 66.15234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.606,
+    "first_ms": 74.73249999999999,
+    "median_ms": 72.6665,
+    "min_ms": 70.8207,
+    "peak_mb": 16.7578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.7168,
+    "first_ms": 63.3435,
+    "median_ms": 60.4533,
+    "min_ms": 58.9555,
+    "peak_mb": 1.24609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-06.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7742828,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.5932,
+    "first_ms": 86.74900000000001,
+    "median_ms": 82.55,
+    "min_ms": 80.7234,
+    "peak_mb": 11.41015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 110.4005,
+    "median_ms": 110.8657,
+    "min_ms": 109.7307,
+    "peak_mb": 115.86328125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 110.2112,
+    "median_ms": 106.4775,
+    "min_ms": 106.2144,
+    "peak_mb": 66.6015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 135.7378,
+    "median_ms": 115.8414,
+    "min_ms": 112.8903,
+    "peak_mb": 117.984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 105.3057,
+    "median_ms": 88.17899999999999,
+    "min_ms": 87.9028,
+    "peak_mb": 30.91015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 91.7176,
+    "median_ms": 83.5579,
+    "min_ms": 71.7913,
+    "peak_mb": 3.1015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.4327,
+    "first_ms": 89.99459999999999,
+    "median_ms": 84.2053,
+    "min_ms": 83.4579,
+    "peak_mb": 66.15625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5173,
+    "first_ms": 77.7452,
+    "median_ms": 73.2524,
+    "min_ms": 72.1224,
+    "peak_mb": 16.734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.3137000000000003,
+    "first_ms": 63.7274,
+    "median_ms": 58.348499999999994,
+    "min_ms": 57.8064,
+    "peak_mb": 1.2734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-07.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8008896,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.3379,
+    "first_ms": 85.21140000000001,
+    "median_ms": 83.57050000000001,
+    "min_ms": 81.3452,
+    "peak_mb": 11.40234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 118.9804,
+    "median_ms": 115.2112,
+    "min_ms": 113.5033,
+    "peak_mb": 115.28515625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 117.5235,
+    "median_ms": 114.0337,
+    "min_ms": 113.0426,
+    "peak_mb": 66.56640625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 141.4735,
+    "median_ms": 130.2128,
+    "min_ms": 117.9101,
+    "peak_mb": 117.7890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 98.4894,
+    "median_ms": 101.0803,
+    "min_ms": 97.3142,
+    "peak_mb": 31.16796875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 98.9436,
+    "median_ms": 85.27,
+    "min_ms": 77.94080000000001,
+    "peak_mb": 3.1171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 3.069,
+    "first_ms": 99.1429,
+    "median_ms": 92.05,
+    "min_ms": 91.1694,
+    "peak_mb": 66.171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.8775,
+    "first_ms": 85.56479999999999,
+    "median_ms": 76.8239,
+    "min_ms": 75.14179999999999,
+    "peak_mb": 16.74609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.5747,
+    "first_ms": 67.1391,
+    "median_ms": 62.860600000000005,
+    "min_ms": 60.8399,
+    "peak_mb": 1.25,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-08.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8436026,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.4064,
+    "first_ms": 90.3181,
+    "median_ms": 85.9302,
+    "min_ms": 85.5977,
+    "peak_mb": 11.40625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 115.2429,
+    "median_ms": 110.7631,
+    "min_ms": 107.2388,
+    "peak_mb": 115.91015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 106.6033,
+    "median_ms": 110.3024,
+    "min_ms": 106.6033,
+    "peak_mb": 66.609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 137.21040000000002,
+    "median_ms": 127.6151,
+    "min_ms": 109.9999,
+    "peak_mb": 117.8125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 92.1687,
+    "median_ms": 99.408,
+    "min_ms": 87.81830000000001,
+    "peak_mb": 30.68359375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0002,
+    "first_ms": 89.9265,
+    "median_ms": 73.4231,
+    "min_ms": 71.8061,
+    "peak_mb": 3.140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.9096,
+    "first_ms": 90.534,
+    "median_ms": 87.47399999999999,
+    "min_ms": 85.19210000000001,
+    "peak_mb": 66.15234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3513,
+    "first_ms": 76.00070000000001,
+    "median_ms": 71.6245,
+    "min_ms": 70.48559999999999,
+    "peak_mb": 16.7265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.5901,
+    "first_ms": 63.1726,
+    "median_ms": 62.8828,
+    "min_ms": 57.6536,
+    "peak_mb": 1.27734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-09.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7652980,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.6005,
+    "first_ms": 91.3902,
+    "median_ms": 84.708,
+    "min_ms": 83.8676,
+    "peak_mb": 11.4140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 129.1006,
+    "median_ms": 121.9985,
+    "min_ms": 120.2768,
+    "peak_mb": 115.24609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 115.5932,
+    "median_ms": 111.2305,
+    "min_ms": 110.9382,
+    "peak_mb": 66.625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 140.173,
+    "median_ms": 122.4669,
+    "min_ms": 120.49,
+    "peak_mb": 117.7578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 109.7357,
+    "median_ms": 93.991,
+    "min_ms": 90.5944,
+    "peak_mb": 30.5546875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0003,
+    "first_ms": 94.5099,
+    "median_ms": 75.617,
+    "min_ms": 74.244,
+    "peak_mb": 3.1328125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.6113,
+    "first_ms": 91.4283,
+    "median_ms": 85.98100000000001,
+    "min_ms": 85.4568,
+    "peak_mb": 66.15234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3148999999999997,
+    "first_ms": 78.86,
+    "median_ms": 75.2517,
+    "min_ms": 73.0984,
+    "peak_mb": 16.74609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.4103000000000003,
+    "first_ms": 65.1362,
+    "median_ms": 59.3876,
+    "min_ms": 59.1508,
+    "peak_mb": 1.28515625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-10.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8319474,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.3605,
+    "first_ms": 89.90480000000001,
+    "median_ms": 84.2902,
+    "min_ms": 84.0452,
+    "peak_mb": 11.40234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 113.5449,
+    "median_ms": 113.5283,
+    "min_ms": 112.7044,
+    "peak_mb": 115.9140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 108.015,
+    "median_ms": 108.015,
+    "min_ms": 104.547,
+    "peak_mb": 66.60546875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 121.1161,
+    "median_ms": 121.1161,
+    "min_ms": 114.5276,
+    "peak_mb": 117.921875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 90.354,
+    "median_ms": 93.4283,
+    "min_ms": 85.0142,
+    "peak_mb": 30.421875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0002,
+    "first_ms": 88.3096,
+    "median_ms": 68.7305,
+    "min_ms": 68.49810000000001,
+    "peak_mb": 3.12109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.2659999999999996,
+    "first_ms": 87.54,
+    "median_ms": 83.70429999999999,
+    "min_ms": 81.8777,
+    "peak_mb": 66.14453125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3677,
+    "first_ms": 76.3022,
+    "median_ms": 70.65169999999999,
+    "min_ms": 69.7025,
+    "peak_mb": 16.7578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.6732,
+    "first_ms": 63.2833,
+    "median_ms": 56.0542,
+    "min_ms": 55.919999999999995,
+    "peak_mb": 1.2734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-11.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7567305,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.2916999999999996,
+    "first_ms": 83.9258,
+    "median_ms": 78.7471,
+    "min_ms": 77.99929999999999,
+    "peak_mb": 11.37890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 119.0304,
+    "median_ms": 118.478,
+    "min_ms": 118.1424,
+    "peak_mb": 115.93359375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 110.4287,
+    "median_ms": 109.3926,
+    "min_ms": 108.7673,
+    "peak_mb": 66.55078125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 129.5214,
+    "median_ms": 122.4651,
+    "min_ms": 119.6188,
+    "peak_mb": 117.9296875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 111.7061,
+    "median_ms": 103.968,
+    "min_ms": 97.4486,
+    "peak_mb": 30.265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0,
+    "first_ms": 80.59280000000001,
+    "median_ms": 75.35310000000001,
+    "min_ms": 74.7467,
+    "peak_mb": 2.921875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.3076,
+    "first_ms": 93.1163,
+    "median_ms": 88.9691,
+    "min_ms": 88.5847,
+    "peak_mb": 66.14453125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3074,
+    "first_ms": 79.7818,
+    "median_ms": 74.58760000000001,
+    "min_ms": 74.1521,
+    "peak_mb": 16.75,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.4663,
+    "first_ms": 65.5979,
+    "median_ms": 61.0645,
+    "min_ms": 60.8894,
+    "peak_mb": 1.27734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-12.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8495303,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.2842,
+    "first_ms": 89.7781,
+    "median_ms": 85.5701,
+    "min_ms": 85.01939999999999,
+    "peak_mb": 11.37109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 122.3006,
+    "median_ms": 119.8517,
+    "min_ms": 117.9496,
+    "peak_mb": 115.8984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 115.6625,
+    "median_ms": 112.2519,
+    "min_ms": 107.9577,
+    "peak_mb": 66.56640625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 136.7591,
+    "median_ms": 120.1918,
+    "min_ms": 117.3917,
+    "peak_mb": 118.078125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 109.691,
+    "median_ms": 98.9706,
+    "min_ms": 90.0262,
+    "peak_mb": 30.890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0,
+    "first_ms": 92.9171,
+    "median_ms": 79.5737,
+    "min_ms": 74.9848,
+    "peak_mb": 3.12890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.5244999999999997,
+    "first_ms": 99.4412,
+    "median_ms": 95.0515,
+    "min_ms": 88.6465,
+    "peak_mb": 66.109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5769,
+    "first_ms": 81.9441,
+    "median_ms": 77.30969999999999,
+    "min_ms": 75.5973,
+    "peak_mb": 16.75,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.2594,
+    "first_ms": 79.1082,
+    "median_ms": 61.068,
+    "min_ms": 60.7344,
+    "peak_mb": 1.28125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-13.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 9010233,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.5477999999999996,
+    "first_ms": 91.0849,
+    "median_ms": 86.1304,
+    "min_ms": 85.4147,
+    "peak_mb": 11.41015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 121.2224,
+    "median_ms": 120.0921,
+    "min_ms": 119.6422,
+    "peak_mb": 115.88671875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 119.0749,
+    "median_ms": 111.8806,
+    "min_ms": 110.3017,
+    "peak_mb": 66.62109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 122.9651,
+    "median_ms": 122.9651,
+    "min_ms": 117.6879,
+    "peak_mb": 117.859375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 96.9577,
+    "median_ms": 96.4652,
+    "min_ms": 92.1496,
+    "peak_mb": 30.34765625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 96.6698,
+    "median_ms": 79.7621,
+    "min_ms": 76.4701,
+    "peak_mb": 2.890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.3804999999999996,
+    "first_ms": 94.8808,
+    "median_ms": 91.7711,
+    "min_ms": 90.2576,
+    "peak_mb": 66.15625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5164,
+    "first_ms": 84.6876,
+    "median_ms": 78.1071,
+    "min_ms": 77.2949,
+    "peak_mb": 16.7578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.2504999999999997,
+    "first_ms": 69.0445,
+    "median_ms": 63.16180000000001,
+    "min_ms": 63.1022,
+    "peak_mb": 1.27734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-14.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 9357171,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.559,
+    "first_ms": 95.5592,
+    "median_ms": 87.7722,
+    "min_ms": 86.87140000000001,
+    "peak_mb": 11.38671875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 113.5858,
+    "median_ms": 112.8006,
+    "min_ms": 112.4324,
+    "peak_mb": 115.90625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 111.1849,
+    "median_ms": 108.4119,
+    "min_ms": 106.0139,
+    "peak_mb": 66.625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 123.5093,
+    "median_ms": 116.9979,
+    "min_ms": 113.8627,
+    "peak_mb": 117.86328125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 92.0532,
+    "median_ms": 92.0532,
+    "min_ms": 87.30019999999999,
+    "peak_mb": 30.47265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 90.9003,
+    "median_ms": 84.6559,
+    "min_ms": 75.40719999999999,
+    "peak_mb": 3.12109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.2943,
+    "first_ms": 92.8759,
+    "median_ms": 88.0193,
+    "min_ms": 87.58330000000001,
+    "peak_mb": 66.16015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.2449000000000003,
+    "first_ms": 81.1509,
+    "median_ms": 76.3853,
+    "min_ms": 74.7081,
+    "peak_mb": 16.73828125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.6373,
+    "first_ms": 65.4601,
+    "median_ms": 60.3126,
+    "min_ms": 59.7118,
+    "peak_mb": 1.2734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-15.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8826137,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.5489,
+    "first_ms": 90.5209,
+    "median_ms": 85.2136,
+    "min_ms": 84.3826,
+    "peak_mb": 11.39453125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 111.4942,
+    "median_ms": 109.8223,
+    "min_ms": 109.6759,
+    "peak_mb": 115.9296875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 106.6514,
+    "median_ms": 104.0566,
+    "min_ms": 103.4185,
+    "peak_mb": 66.62109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 117.4178,
+    "median_ms": 117.4178,
+    "min_ms": 111.034,
+    "peak_mb": 117.69140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 88.8766,
+    "median_ms": 85.88,
+    "min_ms": 84.1636,
+    "peak_mb": 30.359375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0002,
+    "first_ms": 89.0668,
+    "median_ms": 80.3827,
+    "min_ms": 68.97319999999999,
+    "peak_mb": 3.1171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.4083,
+    "first_ms": 86.922,
+    "median_ms": 83.2648,
+    "min_ms": 82.7394,
+    "peak_mb": 66.171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5571,
+    "first_ms": 75.6169,
+    "median_ms": 70.8116,
+    "min_ms": 70.03099999999999,
+    "peak_mb": 16.74609375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.4137,
+    "first_ms": 61.6941,
+    "median_ms": 56.3609,
+    "min_ms": 55.5828,
+    "peak_mb": 1.26953125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-16.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7637415,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.7439,
+    "first_ms": 83.2294,
+    "median_ms": 81.2777,
+    "min_ms": 79.9421,
+    "peak_mb": 11.40234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 117.9777,
+    "median_ms": 114.634,
+    "min_ms": 113.2625,
+    "peak_mb": 115.91015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 112.6198,
+    "median_ms": 109.4725,
+    "min_ms": 108.8204,
+    "peak_mb": 66.58984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 136.1451,
+    "median_ms": 130.311,
+    "min_ms": 120.0436,
+    "peak_mb": 117.7890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0002,
+    "first_ms": 110.4936,
+    "median_ms": 92.611,
+    "min_ms": 90.8407,
+    "peak_mb": 30.44140625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 79.551,
+    "median_ms": 79.551,
+    "min_ms": 75.6635,
+    "peak_mb": 3.14453125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.7573,
+    "first_ms": 91.9831,
+    "median_ms": 87.0871,
+    "min_ms": 86.0102,
+    "peak_mb": 66.1640625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.841,
+    "first_ms": 79.6197,
+    "median_ms": 73.335,
+    "min_ms": 72.78999999999999,
+    "peak_mb": 16.75,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.6885,
+    "first_ms": 68.39580000000001,
+    "median_ms": 62.4133,
+    "min_ms": 59.7587,
+    "peak_mb": 1.25,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-17.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8539326,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.2819,
+    "first_ms": 88.7945,
+    "median_ms": 84.4644,
+    "min_ms": 84.2058,
+    "peak_mb": 11.390625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 112.6893,
+    "median_ms": 112.1312,
+    "min_ms": 110.8059,
+    "peak_mb": 115.91796875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 108.283,
+    "median_ms": 105.5788,
+    "min_ms": 105.01,
+    "peak_mb": 66.578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0,
+    "first_ms": 115.369,
+    "median_ms": 115.369,
+    "min_ms": 112.7502,
+    "peak_mb": 118.35546875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 89.2805,
+    "median_ms": 99.8423,
+    "min_ms": 84.5359,
+    "peak_mb": 30.38671875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 88.3904,
+    "median_ms": 74.1004,
+    "min_ms": 71.08829999999999,
+    "peak_mb": 3.12109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.4748,
+    "first_ms": 89.86919999999999,
+    "median_ms": 84.15830000000001,
+    "min_ms": 81.9257,
+    "peak_mb": 66.16796875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.3247,
+    "first_ms": 76.984,
+    "median_ms": 71.90390000000001,
+    "min_ms": 71.6098,
+    "peak_mb": 16.734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.5252999999999997,
+    "first_ms": 64.0071,
+    "median_ms": 58.7105,
+    "min_ms": 57.553,
+    "peak_mb": 1.265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-18.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8377978,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.3629,
+    "first_ms": 87.1647,
+    "median_ms": 81.8325,
+    "min_ms": 79.6009,
+    "peak_mb": 11.40234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 115.1187,
+    "median_ms": 114.0827,
+    "min_ms": 112.3057,
+    "peak_mb": 115.921875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 111.8079,
+    "median_ms": 107.9093,
+    "min_ms": 107.2046,
+    "peak_mb": 66.58203125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 138.055,
+    "median_ms": 117.3792,
+    "min_ms": 114.9072,
+    "peak_mb": 117.89453125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 95.4133,
+    "median_ms": 95.4133,
+    "min_ms": 87.6881,
+    "peak_mb": 30.17578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 93.8198,
+    "median_ms": 74.19969999999999,
+    "min_ms": 73.0539,
+    "peak_mb": 3.09375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.4399,
+    "first_ms": 89.4132,
+    "median_ms": 84.73179999999999,
+    "min_ms": 84.0282,
+    "peak_mb": 66.16796875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5728999999999997,
+    "first_ms": 78.21549999999999,
+    "median_ms": 73.0553,
+    "min_ms": 71.71039999999999,
+    "peak_mb": 16.73828125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.4699,
+    "first_ms": 64.5968,
+    "median_ms": 58.9868,
+    "min_ms": 58.1202,
+    "peak_mb": 1.26953125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-19.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8327132,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.3428,
+    "first_ms": 88.5628,
+    "median_ms": 82.95,
+    "min_ms": 82.4664,
+    "peak_mb": 11.3984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 115.4108,
+    "median_ms": 112.1698,
+    "min_ms": 111.1296,
+    "peak_mb": 115.89453125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 110.8617,
+    "median_ms": 108.5329,
+    "min_ms": 105.9996,
+    "peak_mb": 66.56640625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 136.24249999999998,
+    "median_ms": 118.9677,
+    "min_ms": 116.2488,
+    "peak_mb": 117.7890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 93.7245,
+    "median_ms": 93.7245,
+    "min_ms": 91.232,
+    "peak_mb": 30.5703125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0002,
+    "first_ms": 97.1213,
+    "median_ms": 77.11070000000001,
+    "min_ms": 73.7037,
+    "peak_mb": 3.15625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.4671,
+    "first_ms": 92.1031,
+    "median_ms": 85.8105,
+    "min_ms": 84.56099999999999,
+    "peak_mb": 66.15625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5835,
+    "first_ms": 78.3594,
+    "median_ms": 73.51989999999999,
+    "min_ms": 72.39320000000001,
+    "peak_mb": 16.7265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.5612,
+    "first_ms": 64.18849999999999,
+    "median_ms": 59.2896,
+    "min_ms": 58.314499999999995,
+    "peak_mb": 1.265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-20.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8145656,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.2562,
+    "first_ms": 87.4969,
+    "median_ms": 83.5843,
+    "min_ms": 81.6379,
+    "peak_mb": 11.3984375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0003,
+    "first_ms": 118.4274,
+    "median_ms": 113.2492,
+    "min_ms": 110.9672,
+    "peak_mb": 115.921875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 109.1461,
+    "median_ms": 105.9107,
+    "min_ms": 104.8958,
+    "peak_mb": 66.5625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 135.6105,
+    "median_ms": 128.0077,
+    "min_ms": 113.8115,
+    "peak_mb": 117.8203125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 103.9527,
+    "median_ms": 90.7355,
+    "min_ms": 84.4964,
+    "peak_mb": 30.3125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0002,
+    "first_ms": 88.402,
+    "median_ms": 80.69709999999999,
+    "min_ms": 68.9033,
+    "peak_mb": 3.51171875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.2529,
+    "first_ms": 89.03949999999999,
+    "median_ms": 84.4216,
+    "min_ms": 82.3961,
+    "peak_mb": 66.15234375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.2645,
+    "first_ms": 75.4528,
+    "median_ms": 71.6519,
+    "min_ms": 70.2677,
+    "peak_mb": 16.7265625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.5582000000000003,
+    "first_ms": 63.31530000000001,
+    "median_ms": 59.0039,
+    "min_ms": 57.0819,
+    "peak_mb": 1.28125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-21.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 7701730,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.2546,
+    "first_ms": 87.1704,
+    "median_ms": 81.2533,
+    "min_ms": 80.49860000000001,
+    "peak_mb": 11.40625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "image-rs",
+    "mode": "full",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 118.6558,
+    "median_ms": 118.0875,
+    "min_ms": 117.3393,
+    "peak_mb": 115.87890625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "zune-jpeg",
+    "mode": "full",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0002,
+    "first_ms": 113.6811,
+    "median_ms": 110.7593,
+    "min_ms": 108.8324,
+    "peak_mb": 66.5546875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "full",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 0.0001,
+    "first_ms": 124.5763,
+    "median_ms": 124.5763,
+    "min_ms": 121.3434,
+    "peak_mb": 117.98046875,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "screen",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 0.0001,
+    "first_ms": 96.3694,
+    "median_ms": 93.2393,
+    "min_ms": 90.9177,
+    "peak_mb": 30.77734375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "jpeg-decoder",
+    "mode": "preview",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 0.0001,
+    "first_ms": 82.27850000000001,
+    "median_ms": 79.4965,
+    "min_ms": 76.7578,
+    "peak_mb": 3.109375,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "wic",
+    "mode": "full",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      4800,
+      3584
+    ],
+    "denom": 1,
+    "init_ms": 2.2387,
+    "first_ms": 91.7586,
+    "median_ms": 87.145,
+    "min_ms": 86.8823,
+    "peak_mb": 66.16015625,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "wic",
+    "mode": "screen",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      2400,
+      1792
+    ],
+    "denom": 2,
+    "init_ms": 2.5641000000000003,
+    "first_ms": 81.93849999999999,
+    "median_ms": 74.05720000000001,
+    "min_ms": 73.6411,
+    "peak_mb": 16.7578125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "wic",
+    "mode": "preview",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      600,
+      448
+    ],
+    "denom": 8,
+    "init_ms": 2.4522,
+    "first_ms": 65.6695,
+    "median_ms": 60.463,
+    "min_ms": 60.0025,
+    "peak_mb": 1.26953125,
+    "error": null
+  },
+  {
+    "file": "bench/photos/burst\\burst-22.jpeg",
+    "decoder": "wic-scaler",
+    "mode": "screen",
+    "file_bytes": 8478293,
+    "format": "baseline 4:2:0",
+    "src": [
+      4800,
+      3584
+    ],
+    "out": [
+      1929,
+      1440
+    ],
+    "denom": 1,
+    "init_ms": 2.5055,
+    "first_ms": 88.6317,
+    "median_ms": 83.1075,
+    "min_ms": 82.5513,
+    "peak_mb": 11.4140625,
+    "error": null
+  }
+]
