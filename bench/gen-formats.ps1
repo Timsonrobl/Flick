@@ -2,7 +2,7 @@
 # milestone 7: ffmpeg for most formats, flick-bench gen-formats for JPEG XL
 # and HEIC. Needs ffmpeg on PATH, the synthetic JPEGs from
 # `flick-bench gen-sample bench/samples`, and a release build of flick-bench.
-param([string]$Out = "$PSScriptRoot\samples\formats")
+param([string]$Out = "$PSScriptRoot\samples\formats", [switch]$LargeAnimations)
 
 $ErrorActionPreference = 'Stop'
 $photo = "$PSScriptRoot\samples\synthetic-4032x3024-q90.jpg"
@@ -24,6 +24,14 @@ Run-Ffmpeg @('-f', 'lavfi', '-i', $alphaCard, '-frames:v', '1', '-pix_fmt', 'rgb
 Run-Ffmpeg @('-f', 'lavfi', '-i', 'testsrc2=s=20000x1200', '-frames:v', '1', "$Out\png-panorama-20000.png")
 Run-Ffmpeg @('-f', 'lavfi', '-i', 'testsrc2=s=640x480:r=12,format=rgba', '-frames:v', '24', '-plays', '0', '-f', 'apng', "$Out\apng-anim.png")
 Run-Ffmpeg @('-f', 'lavfi', '-i', 'testsrc2=s=640x480:r=12', '-frames:v', '24', "$Out\gif-anim.gif")
+
+if ($LargeAnimations) {
+    # Video-like animations far over the 256 MB a decoded animation may keep
+    # (1080p, 300 frames: ~2.4 GB composed), so playback has to stream.
+    $video = 'testsrc2=s=1920x1080:r=25'
+    Run-Ffmpeg @('-f', 'lavfi', '-i', $video, '-frames:v', '300', "$Out\gif-video-1080p.gif")
+    Run-Ffmpeg @('-f', 'lavfi', '-i', $video, '-frames:v', '300', '-c:v', 'libwebp_anim', '-quality', '70', '-loop', '0', "$Out\webp-video-1080p.webp")
+}
 
 Run-Ffmpeg @('-i', $photo, '-c:v', 'libwebp', '-quality', '85', "$Out\webp-lossy.webp")
 Run-Ffmpeg @('-i', "$Out\png-alpha.png", '-c:v', 'libwebp', '-lossless', '1', "$Out\webp-lossless-alpha.webp")

@@ -2,10 +2,10 @@
 //! What windows share (the GPU device, the decode pool and the cache of
 //! screen levels) lives in `Shared`, owned by the app (ARCHITECTURE.md §3).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::HWND;
@@ -96,8 +96,8 @@ pub struct Screen {
     /// Stored (pre-orientation) native size.
     full_size: (u32, u32),
     orientation: u16,
-    /// An animated GIF: this is its first frame, at full size.
-    animated: bool,
+    /// More than one: an animation, and this is its first frame, at full size.
+    frames: u32,
 }
 
 impl Screen {
@@ -107,8 +107,17 @@ impl Screen {
             size: (picture.screen.width, picture.screen.height),
             full_size: picture.full_size,
             orientation: picture.orientation,
-            animated: picture.frames > 1,
+            frames: picture.frames,
         })
+    }
+
+    fn animated(&self) -> bool {
+        self.frames > 1
+    }
+
+    /// One frame's size on the GPU (animation frames are full size).
+    fn frame_bytes(&self) -> usize {
+        self.size.0 as usize * self.size.1 as usize * 4
     }
 
     /// Whether drawing it at `scale` (display px per full-res px) magnifies it.
@@ -134,7 +143,7 @@ impl Current {
     fn new(path: PathBuf, screen: Screen, window: (u32, u32), mode: Mode) -> Current {
         let view = View::new(view::oriented_size(screen.orientation, screen.full_size), window, mode);
         // An animation's frames are already full size: nothing to decode for zooming.
-        let (full_requested, full_note) = if screen.animated { (true, "animation frames are full size") } else { (false, "not needed yet") };
+        let (full_requested, full_note) = if screen.animated() { (true, "animation frames are full size") } else { (false, "not needed yet") };
         Current { path, screen, full: None, full_requested, full_note, view, anim: None }
     }
 
@@ -148,38 +157,82 @@ impl Current {
 /// What the animation thread sends (Event::Anim).
 pub enum AnimUpdate {
     Frame(decode::Frame),
-    /// All frames sent: playback loops.
+    /// All frames sent: playback loops over them.
     End,
-    /// Over ANIM_BUDGET: the first frame stays, still.
-    TooLarge,
 }
 
-/// An animated GIF playing: its composed frames on the GPU, decoded on their
+/// An animation playing: its composed frames on the GPU, decoded on their
 /// own thread as playback starts. Dropping it (paging away) stops the thread.
+///
+/// One whose frames fit in ANIM_BUDGET keeps them all and loops over them.
+/// A bigger one (a video saved as GIF or WebP) streams: the thread stays a
+/// few frames ahead (`Ring`), each frame is dropped once shown and its
+/// bitmap refilled with a later one, and the thread decodes the file again
+/// from the start for every loop.
 struct Anim {
-    frames: Vec<(ID2D1Bitmap1, Duration)>,
+    frames: VecDeque<(ID2D1Bitmap1, Duration)>,
+    /// Kept: the index shown. Streaming: always 0, the front.
     shown: usize,
     /// When the next frame is due (or decoding starts); None while it is
     /// still decoding.
     due: Option<Instant>,
-    /// Frames are being decoded (from ANIM_START after the GIF appears).
+    /// Frames are being decoded (from ANIM_START after it appears).
     decoding: bool,
+    /// Kept: all frames are in. (Streaming never completes.)
     complete: bool,
     stop: Arc<AtomicBool>,
+    /// Streaming: how far ahead the thread may decode.
+    ring: Option<Arc<Ring>>,
+    /// Streaming: bitmaps of frames already shown, to refill.
+    spare: Vec<ID2D1Bitmap1>,
 }
 
-/// A GIF's frames start decoding once it has been on screen this long, so
-/// paging past GIFs doesn't spend CPU on animations nobody watches.
+/// An animation's frames start decoding once it has been on screen this
+/// long, so paging past animations doesn't spend CPU nobody watches.
 const ANIM_START: Duration = Duration::from_millis(150);
 
 impl Drop for Anim {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        if let Some(ring) = &self.ring {
+            ring.ready.notify_all();
+        }
     }
 }
 
-/// GPU memory one animation's frames may take.
+/// GPU memory one animation's frames may take, all kept.
 const ANIM_BUDGET: usize = 256 << 20;
+/// A streaming animation's frames on the GPU at once: up to this much
+/// (2 to 8 frames; ~8 at 1080p).
+const ANIM_STREAM_BYTES: usize = 64 << 20;
+
+/// Credits for frames the streaming thread may send ahead of playback: it
+/// takes one per frame, playback gives one back per frame it drops.
+struct Ring {
+    free: Mutex<usize>,
+    ready: Condvar,
+}
+
+impl Ring {
+    /// Waits for a credit; false once the animation stopped.
+    fn take(&self, stop: &AtomicBool) -> bool {
+        let mut free = self.free.lock().unwrap_or_else(|e| e.into_inner());
+        while *free == 0 {
+            if stop.load(Ordering::Relaxed) {
+                return false;
+            }
+            // Timed, so a stop that lands just before the wait isn't missed.
+            free = self.ready.wait_timeout(free, Duration::from_millis(100)).unwrap_or_else(|e| e.into_inner()).0;
+        }
+        *free -= 1;
+        !stop.load(Ordering::Relaxed)
+    }
+
+    fn give(&self) {
+        *self.free.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        self.ready.notify_one();
+    }
+}
 
 /// One page turn: how it was served and when (wall-clock ms, comparable with
 /// `flick-bench ext-viewer`'s key-press times).
@@ -300,7 +353,7 @@ fn park(mut tab: Tab) -> Tab {
     if let Some(current) = &mut tab.current {
         current.anim = None;
         current.full = None;
-        current.full_requested = current.screen.animated;
+        current.full_requested = current.screen.animated();
     }
     tab
 }
@@ -910,36 +963,48 @@ impl Viewer {
     /// start decoding ANIM_START later (`next_frame`).
     fn start_animation(&mut self) {
         let Some(current) = &mut self.tab.current else { return };
-        if current.screen.animated {
-            // Frames still arriving for a GIF passed earlier are told apart by this.
+        if current.screen.animated() {
+            // Frames still arriving for an animation passed earlier are told apart by this.
             self.anim_serial += 1;
             let stop = Arc::new(AtomicBool::new(false));
             let due = Some(Instant::now() + ANIM_START);
-            current.anim = Some(Anim { frames: Vec::new(), shown: 0, due, decoding: false, complete: false, stop });
+            let frame_bytes = current.screen.frame_bytes();
+            let ring = (current.screen.frames as usize * frame_bytes > ANIM_BUDGET).then(|| {
+                let ahead = (ANIM_STREAM_BYTES / frame_bytes.max(1)).clamp(2, 8);
+                Arc::new(Ring { free: Mutex::new(ahead), ready: Condvar::new() })
+            });
+            current.anim = Some(Anim { frames: VecDeque::new(), shown: 0, due, decoding: false, complete: false, stop, ring, spare: Vec::new() });
         }
     }
 
-    /// Decodes the current animation's frames on their own thread.
+    /// Decodes the current animation's frames on their own thread: once
+    /// (kept), or over and over, a few frames ahead of playback (streaming).
     fn decode_frames(&mut self, shared: &Shared) {
         let Some(current) = &mut self.tab.current else { return };
         let Some(anim) = &mut current.anim else { return };
         anim.decoding = true;
         anim.due = None;
-        let stop = anim.stop.clone();
+        let (stop, ring) = (anim.stop.clone(), anim.ring.clone());
         let (viewer, serial, path, proxy) = (self.id, self.anim_serial, current.path.clone(), shared.proxy.clone());
         std::thread::spawn(move || {
             let send = |update| proxy.send_event(Event::Anim { viewer, serial, update }).is_ok();
-            let mut bytes = 0;
-            let mut over = false;
-            let result = decode::animate(&path, |frame| {
-                bytes += frame.image.pixels.len();
-                over = bytes > ANIM_BUDGET;
-                !stop.load(Ordering::Relaxed) && !over && send(AnimUpdate::Frame(frame))
-            });
-            if let Err(e) = result {
-                clock::trace(format_args!("animation: {e}"));
+            loop {
+                let mut sent = 0;
+                let result = decode::animate(&path, |frame| {
+                    let room = ring.as_ref().is_none_or(|ring| ring.take(&stop));
+                    sent += 1;
+                    room && !stop.load(Ordering::Relaxed) && send(AnimUpdate::Frame(frame))
+                });
+                if let Err(e) = &result {
+                    clock::trace(format_args!("animation: {e}"));
+                }
+                if ring.is_none() || result.is_err() || sent == 0 || stop.load(Ordering::Relaxed) {
+                    break;
+                }
             }
-            send(if over { AnimUpdate::TooLarge } else { AnimUpdate::End });
+            if ring.is_none() {
+                send(AnimUpdate::End);
+            }
         });
     }
 
@@ -950,16 +1015,21 @@ impl Viewer {
         let now = Instant::now();
         match update {
             AnimUpdate::Frame(frame) => {
-                let Ok(bitmap) = gpu.upload(&frame.image) else { return };
-                anim.frames.push((bitmap, frame.delay));
+                // Streaming: refill a bitmap already shown rather than allocate.
+                let bitmap = match anim.spare.pop() {
+                    Some(bitmap) if gpu.refill(&bitmap, &frame.image).is_ok() => bitmap,
+                    _ => match gpu.upload(&frame.image) {
+                        Ok(bitmap) => bitmap,
+                        Err(_) => return,
+                    },
+                };
+                anim.frames.push_back((bitmap, frame.delay));
                 if anim.frames.len() == 1 {
                     // The first frame is the one already shown: time it.
                     anim.due = Some(now + frame.delay);
-                } else if anim.due.is_none() && anim.frames.len() == anim.shown + 2 {
+                } else if anim.due.is_none() && anim.frames.len() > anim.shown + 1 {
                     // Playback was waiting for this one.
-                    anim.shown += 1;
-                    anim.due = Some(now + frame.delay);
-                    self.redraw();
+                    self.advance_frame(now);
                 }
             }
             AnimUpdate::End if anim.frames.len() < 2 => current.anim = None,
@@ -968,11 +1038,6 @@ impl Viewer {
                 if anim.due.is_none() {
                     anim.due = Some(now);
                 }
-            }
-            AnimUpdate::TooLarge => {
-                current.anim = None;
-                current.full_note = "animation too large to play (first frame shown)";
-                self.redraw();
             }
         }
     }
@@ -985,19 +1050,38 @@ impl Viewer {
         if !anim.decoding {
             return self.decode_frames(shared);
         }
-        let next = anim.shown + 1;
-        let next = if next < anim.frames.len() {
-            next
-        } else if anim.complete {
-            0
-        } else {
-            anim.due = None; // still decoding: on_anim resumes
-            return;
-        };
-        anim.shown = next;
-        // Keep the GIF's own pace, unless far behind (a stall): then restart it.
+        // Keep the animation's own pace, unless far behind (a stall): then restart it.
         let base = if now.duration_since(due) > Duration::from_secs(1) { now } else { due };
-        anim.due = Some(base + anim.frames[next].1);
+        self.advance_frame(base);
+    }
+
+    /// Moves to the next frame, timed from `base`; if it hasn't been decoded
+    /// yet, waits for it (`on_anim` calls back).
+    fn advance_frame(&mut self, base: Instant) {
+        let Some(anim) = self.tab.current.as_mut().and_then(|c| c.anim.as_mut()) else { return };
+        if let Some(ring) = &anim.ring {
+            // Streaming: the front is shown; drop it once the next is in.
+            if anim.frames.len() < 2 {
+                anim.due = None;
+                return;
+            }
+            if let Some((bitmap, _)) = anim.frames.pop_front() {
+                anim.spare.push(bitmap);
+                ring.give();
+            }
+            anim.shown = 0;
+        } else {
+            let next = anim.shown + 1;
+            if next < anim.frames.len() {
+                anim.shown = next;
+            } else if anim.complete {
+                anim.shown = 0;
+            } else {
+                anim.due = None; // still decoding: on_anim resumes
+                return;
+            }
+        }
+        anim.due = Some(base + anim.frames[anim.shown].1);
         self.redraw();
     }
 

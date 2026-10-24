@@ -79,6 +79,16 @@ impl Gpu {
         }
     }
 
+    /// Copies `image` into an existing bitmap of the same size (a streaming
+    /// animation reuses its few bitmaps instead of allocating per frame).
+    pub fn refill(&self, bitmap: &ID2D1Bitmap1, image: &Image) -> Result<(), String> {
+        let size = unsafe { bitmap.GetPixelSize() };
+        if (size.width, size.height) != (image.width, image.height) {
+            return Err("size differs".into());
+        }
+        unsafe { bitmap.CopyFromMemory(None, image.pixels.as_ptr().cast(), image.width * 4) }.map_err(err)
+    }
+
     pub fn max_bitmap_size(&self) -> u32 {
         unsafe { self.uploads.GetMaximumBitmapSize() }
     }

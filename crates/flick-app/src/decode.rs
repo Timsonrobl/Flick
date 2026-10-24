@@ -325,6 +325,27 @@ mod tests {
         }
     }
 
+    /// How fast the large animations decode, frame by frame (they stream
+    /// during playback, so decoding must keep up with their frame rate).
+    /// Needs `bench/gen-formats.ps1 -LargeAnimations`.
+    #[test]
+    #[ignore]
+    fn large_animation_throughput() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/formats");
+        for name in ["gif-video-1080p.gif", "webp-video-1080p.webp"] {
+            let started = std::time::Instant::now();
+            let (mut frames, mut playing) = (0u32, Duration::ZERO);
+            animate(&dir.join(name), |frame| {
+                frames += 1;
+                playing += frame.delay;
+                true
+            })
+            .unwrap();
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            println!("{name}: {frames} frames in {ms:.0} ms, {:.1} ms per frame; plays {:.1} ms per frame", ms / f64::from(frames), playing.as_secs_f64() * 1000.0 / f64::from(frames));
+        }
+    }
+
     fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
         let i = (y * image.width + x) as usize * 4;
         image.pixels[i..i + 4].try_into().unwrap()

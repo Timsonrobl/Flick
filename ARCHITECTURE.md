@@ -301,9 +301,9 @@ Once it has been on screen for 150 ms (so paging past GIFs costs nothing
 extra), a thread decodes the remaining frames in order; each
 goes to the GPU as it arrives, and playback loops over them on the
 viewer's deadline timer (no frame due: nothing runs). Paging away stops the
-thread. Simplification against the row above: frames are kept on the GPU
-(budget 256 MB per animation); a GIF over it stays on its first frame
-(§17). Pictures are now uploaded as premultiplied alpha, so transparency
+thread. Frames are kept on the GPU while they fit in 256 MB per animation;
+a bigger one streams through a ring of 2–8 frames instead, decoding the
+file again for every loop (§17). Pictures are now uploaded as premultiplied alpha, so transparency
 shows the window background.
 | EXR/HDR/16-bit | `exr`, `image` | convert to RGBA16F while decoding | same | tone-map in shader |
 | anything else | `image-rs`, then WIC | full → scale | full | long tail |
@@ -782,9 +782,14 @@ closed by a commit that says so; review this list at every milestone.
 - [ ] **Latency after composition** (§16): ~35 ms between present and the
   picture on screen during page turns. Separate display-path latency from
   measurement lag with DXGI Desktop Duplication timestamps.
-- [ ] **Large animations.** Frames over 256 MB (e.g. long 1080p GIFs, APNG
-  or animated WebP) aren't animated: stream them through a small ring
-  instead of keeping them all (§7's plan).
+- [x] **Large animations** (2026-10-25). An animation whose frames would
+  take over 256 MB on the GPU (a video saved as GIF or WebP) used to play
+  ~30 frames at 1080p and then stop on its first frame. It now streams:
+  the decoding thread stays 2–8 frames ahead (up to 64 MB, credits in
+  `Ring`), each frame is dropped once shown and its bitmap refilled with
+  a later one, and every loop decodes the file again. 1080p, 300 frames:
+  GIF decodes at 6.8 ms per frame, animated WebP at 25.9 ms, both under
+  their 40 ms per frame of playback.
 - [ ] **RAW** (milestone 7, skipped by request): the embedded full-size JPEG
   preview, via WIC's Raw Image Extension (installed here) or `rawloader`.
 - [ ] **Colour management.** ICC profiles are ignored (WIC doesn't apply
