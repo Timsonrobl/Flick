@@ -4,10 +4,11 @@
 //! title moves the window. It is drawn over the picture, never beside it, and
 //! its text resources are created on first appearance, off the open path.
 
-use std::time::Instant;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_COLOR_F};
-use windows::Win32::Graphics::Direct2D::{D2D1_DRAW_TEXT_OPTIONS_CLIP, ID2D1DeviceContext, ID2D1SolidColorBrush};
+use windows::Win32::Graphics::Direct2D::{D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_ROUNDED_RECT, ID2D1DeviceContext, ID2D1SolidColorBrush};
 use windows::Win32::Graphics::DirectWrite::*;
 use windows::core::w;
 use windows_numerics::Vector2;
@@ -19,6 +20,25 @@ const BUTTON: f32 = 46.0;
 const APPEAR: f32 = 2.0;
 const FADE_IN_S: f32 = 0.10;
 const FADE_OUT_S: f32 = 0.20;
+
+/// Window colours (ARCHITECTURE.md §10a): each window's hover bar has its
+/// own pastel, so windows are easy to tell apart (and to pick in Move to
+/// Window). Light enough for the bar's dark text.
+pub const PALETTE: [(&str, [f32; 3]); 8] = [
+    ("Sky", [0.81, 0.89, 0.96]),
+    ("Mint", [0.80, 0.92, 0.83]),
+    ("Peach", [0.98, 0.86, 0.77]),
+    ("Lavender", [0.87, 0.84, 0.95]),
+    ("Butter", [0.96, 0.93, 0.72]),
+    ("Rose", [0.96, 0.84, 0.86]),
+    ("Aqua", [0.80, 0.92, 0.92]),
+    ("Sand", [0.91, 0.89, 0.83]),
+];
+
+/// The background behind each colour's pictures: a slightly different dark
+/// grey per window (same order as PALETTE), so overlapping windows are told
+/// apart even where the bar is hidden.
+pub const BACKGROUNDS: [f32; 8] = [0.080, 0.115, 0.055, 0.100, 0.135, 0.065, 0.125, 0.090];
 
 /// Tab width in the strip at 100 % scaling: at most, and before squeezing.
 const TAB_MAX: f32 = 220.0;
@@ -32,6 +52,8 @@ pub enum Hit {
     Title,
     /// A tab in the strip, by position (only with two or more tabs).
     Tab(usize),
+    /// The Tab Lock padlock (a click unlocks).
+    Lock,
 }
 
 pub struct Chrome {
@@ -44,24 +66,96 @@ pub struct Chrome {
     text: Option<(IDWriteTextFormat, f32)>,
     /// Tabs in the strip; with one, there is no strip (just the title).
     tabs: usize,
+    /// The window's colour, an index into PALETTE.
+    color: usize,
+    /// Where each tab (by id) is drawn: tabs glide to their slots when the
+    /// order changes, like Chrome's.
+    positions: HashMap<u64, f32>,
+    /// The tab being dragged along the strip and its left edge's x.
+    drag: Option<(u64, f32)>,
+    /// When tabs last moved, while some are still gliding.
+    glide_tick: Option<Instant>,
+    locked: bool,
+    /// The cursor is in the bar's zone.
+    near: bool,
+    /// Shown without the cursor until then (a tab switch from the keys).
+    reveal_until: Option<Instant>,
 }
 
+/// Room for the Tab Lock padlock at 100 % scaling.
+const LOCK_WIDTH: f32 = 30.0;
+
+/// Gliding tabs close this fraction of their distance per GLIDE_TAU seconds
+/// (exponential easing, frame-rate independent).
+const GLIDE_TAU: f32 = 0.05;
+
 impl Chrome {
-    pub fn new(scale: f32) -> Chrome {
-        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None, tabs: 1 }
+    pub fn new(scale: f32, color: usize) -> Chrome {
+        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None, tabs: 1, color, positions: HashMap::new(), drag: None, glide_tick: None, locked: false, near: false, reveal_until: None }
+    }
+
+    /// A tab dragged along the strip: drawn at `x` (its left edge), on top.
+    pub fn set_drag(&mut self, drag: Option<(u64, f32)>) {
+        self.drag = drag;
+    }
+
+    /// Tab Lock: a padlock at the bar's left, before the tabs or title.
+    pub fn set_locked(&mut self, locked: bool) {
+        self.locked = locked;
+    }
+
+    /// Where the title or the strip starts: after the padlock when locked.
+    fn content_left(&self) -> f32 {
+        if self.locked { LOCK_WIDTH * self.scale } else { 0.0 }
+    }
+
+    /// Tabs are still gliding into place: the caller requests another frame.
+    pub fn moving(&self) -> bool {
+        self.glide_tick.is_some()
+    }
+
+    /// Advances every tab toward its slot (the dragged one sits at the
+    /// cursor) and returns their x, in strip order.
+    fn glide(&mut self, tabs: &[(u64, String)], left: f32, tab: f32) -> Vec<f32> {
+        let now = Instant::now();
+        let dt = self.glide_tick.map_or(0.0, |t| (now - t).as_secs_f32().min(0.05));
+        let ease = 1.0 - (-dt / GLIDE_TAU).exp();
+        let last = left + tab * (tabs.len().saturating_sub(1)) as f32;
+        let mut moving = false;
+        let xs = tabs
+            .iter()
+            .enumerate()
+            .map(|(i, (id, _))| {
+                let slot = left + tab * i as f32;
+                let x = match self.drag {
+                    Some((dragged, x)) if dragged == *id => x.clamp(left, last),
+                    _ => {
+                        let x = *self.positions.get(id).unwrap_or(&slot);
+                        let x = x + (slot - x) * ease;
+                        if (slot - x).abs() < 0.5 { slot } else { x }
+                    }
+                };
+                moving |= x != slot && self.drag.is_none_or(|(dragged, _)| dragged != *id);
+                self.positions.insert(*id, x);
+                x
+            })
+            .collect();
+        self.positions.retain(|id, _| tabs.iter().any(|(t, _)| t == id));
+        self.glide_tick = moving.then_some(now);
+        xs
     }
 
     pub fn set_tabs(&mut self, tabs: usize) {
         self.tabs = tabs;
     }
 
-    /// The strip's tab width and where it starts, if there is a strip.
-    fn tab_layout(&self, width: f32) -> Option<(f32, f32)> {
+    /// Where the strip starts and its tab width, if there is a strip.
+    pub fn tab_layout(&self, width: f32) -> Option<(f32, f32)> {
         if self.tabs < 2 {
             return None;
         }
-        let left = MARGIN * self.scale;
-        let room = (width - 3.0 * BUTTON * self.scale - 2.0 * left).max(0.0);
+        let left = MARGIN * self.scale + self.content_left();
+        let room = (width - 3.0 * BUTTON * self.scale - left - MARGIN * self.scale).max(0.0);
         Some((left, (room / self.tabs as f32).min(TAB_MAX * self.scale)))
     }
 
@@ -76,16 +170,45 @@ impl Chrome {
     /// Follows the cursor (`None` when it left the window). Returns whether
     /// the bar needs redrawing.
     pub fn pointer(&mut self, pos: Option<(f32, f32)>, width: f32) -> bool {
-        let near = pos.is_some_and(|(_, y)| y >= 0.0 && y < APPEAR * self.bar());
-        let target = if near { 1.0 } else { 0.0 };
+        self.near = pos.is_some_and(|(_, y)| y >= 0.0 && y < APPEAR * self.bar());
         let hover = pos.and_then(|p| self.hit_raw(p, width));
-        let changed = target != self.target || (hover != self.hover && self.opacity > 0.0);
-        if target != self.target {
-            self.target = target;
-            self.last_tick = Some(Instant::now());
-        }
+        let changed = self.retarget() || (hover != self.hover && self.opacity > 0.0);
         self.hover = hover;
         changed
+    }
+
+    /// Fades toward shown while the cursor is near or a reveal lasts.
+    /// Returns whether that changed.
+    fn retarget(&mut self) -> bool {
+        let shown = self.near || self.reveal_until.is_some_and(|t| t > Instant::now());
+        let target = if shown { 1.0 } else { 0.0 };
+        if target == self.target {
+            return false;
+        }
+        self.target = target;
+        self.last_tick = Some(Instant::now());
+        true
+    }
+
+    /// Shows the bar for `time` without the cursor (e.g. the tab strip
+    /// after a tab switch from the keys), then lets it fade.
+    pub fn reveal(&mut self, time: Duration) {
+        self.reveal_until = Some(Instant::now() + time);
+        self.retarget();
+    }
+
+    /// When a reveal ends (the viewer wakes then, `end_reveal`).
+    pub fn reveal_deadline(&self) -> Option<Instant> {
+        self.reveal_until
+    }
+
+    /// Ends a reveal that ran out. Returns whether the bar must redraw.
+    pub fn end_reveal(&mut self) -> bool {
+        if self.reveal_until.is_some_and(|t| t <= Instant::now()) {
+            self.reveal_until = None;
+            return self.retarget();
+        }
+        false
     }
 
     /// What a click at `pos` lands on, if the bar is visible enough to use.
@@ -109,6 +232,8 @@ impl Chrome {
             Hit::Maximize
         } else if from_right < 3.0 * button {
             Hit::Minimize
+        } else if self.locked && x < MARGIN * self.scale + self.content_left() {
+            Hit::Lock
         } else if let Some(i) = tab {
             Hit::Tab(i)
         } else {
@@ -136,10 +261,14 @@ impl Chrome {
 
     /// Draws the bar; with two or more `tabs` (labels in strip order) the
     /// strip takes the title's place.
-    pub fn draw(&mut self, context: &ID2D1DeviceContext, width: f32, title: &str, tabs: &[String], active: usize, maximized: bool) {
+    pub fn draw(&mut self, context: &ID2D1DeviceContext, width: f32, title: &str, tabs: &[(u64, String)], active: usize, maximized: bool) {
         if self.opacity <= 0.0 {
+            // Hidden: tabs settle at once, nothing keeps redrawing.
+            self.positions.clear();
+            self.glide_tick = None;
             return;
         }
+        let strip = self.tab_layout(width).map(|(left, tab)| (tab, self.glide(tabs, left, tab)));
         if self.text.as_ref().is_none_or(|(_, scale)| *scale != self.scale) {
             self.text = text_format(14.0 * self.scale).ok().map(|f| (f, self.scale));
         }
@@ -147,8 +276,9 @@ impl Chrome {
         let brush = |r: f32, g: f32, b: f32, alpha: f32| -> Option<ID2D1SolidColorBrush> {
             unsafe { context.CreateSolidColorBrush(&D2D1_COLOR_F { r, g, b, a: alpha * a }, None).ok() }
         };
-        // Light, as in Honeyview: pale grey bar, dark text and glyphs.
-        let (Some(panel), Some(ink), Some(on_red)) = (brush(0.94, 0.94, 0.94, 0.94), brush(0.10, 0.10, 0.10, 1.0), brush(1.0, 1.0, 1.0, 1.0)) else {
+        // Light, as in Honeyview, in the window's pastel; dark text and glyphs.
+        let [r, g, b] = PALETTE[self.color % PALETTE.len()].1;
+        let (Some(panel), Some(ink), Some(on_red)) = (brush(r, g, b, 0.95), brush(0.10, 0.10, 0.10, 1.0), brush(1.0, 1.0, 1.0, 1.0)) else {
             return;
         };
         let button = BUTTON * s;
@@ -195,28 +325,41 @@ impl Chrome {
                 let wide: Vec<u16> = label.encode_utf16().collect();
                 context.DrawText(&wide, format, &rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, DWRITE_MEASURING_MODE_NATURAL);
             };
-            match self.tab_layout(width) {
+            if self.locked {
+                // A padlock: shackle over a body, centred in its room.
+                let (cx, cy) = (MARGIN * s + LOCK_WIDTH * s / 2.0, bar / 2.0);
+                let body = D2D_RECT_F { left: cx - 6.0 * s, top: cy - 1.0 * s, right: cx + 6.0 * s, bottom: cy + 8.0 * s };
+                context.FillRectangle(&body, &ink);
+                let shackle = D2D_RECT_F { left: cx - 4.0 * s, top: cy - 8.0 * s, right: cx + 4.0 * s, bottom: cy + 2.0 * s };
+                context.DrawRoundedRectangle(&D2D1_ROUNDED_RECT { rect: shackle, radiusX: 4.0 * s, radiusY: 4.0 * s }, &ink, 1.6 * s, None);
+            }
+            match strip {
                 None => {
-                    let rect = D2D_RECT_F { left: 14.0 * s, top: 0.0, right: (width - 3.0 * button - 14.0 * s).max(14.0 * s), bottom: bar };
+                    let left = 14.0 * s + self.content_left();
+                    let rect = D2D_RECT_F { left, top: 0.0, right: (width - 3.0 * button - 14.0 * s).max(left), bottom: bar };
                     text(title, rect, &ink);
                 }
-                Some((left, tab)) => {
-                    // The active tab lifts out of the bar; the others are quieter.
+                Some((tab, xs)) => {
+                    // The active tab lifts out of the bar; the others are
+                    // quieter; a dragged one is lifted too, and drawn last.
                     let (Some(lifted), Some(quiet), Some(hover_fill), Some(rule)) =
                         (brush(1.0, 1.0, 1.0, 1.0), brush(0.10, 0.10, 0.10, 0.62), brush(0.0, 0.0, 0.0, 0.06), brush(0.0, 0.0, 0.0, 0.12))
                     else {
                         return;
                     };
                     let pad = 4.0 * s;
-                    for (i, label) in tabs.iter().enumerate() {
-                        let x = left + tab * i as f32;
+                    let dragged = |i: usize| self.drag.is_some_and(|(id, _)| id == tabs[i].0);
+                    let mut order: Vec<usize> = (0..tabs.len()).filter(|&i| !dragged(i)).collect();
+                    order.extend((0..tabs.len()).filter(|&i| dragged(i)));
+                    for i in order {
+                        let (x, label) = (xs[i], &tabs[i].1);
                         let cell = D2D_RECT_F { left: x + 1.0 * s, top: pad, right: x + tab - 1.0 * s, bottom: bar - pad };
-                        if i == active {
+                        if i == active || dragged(i) {
                             context.FillRectangle(&cell, &lifted);
-                        } else if self.hover == Some(Hit::Tab(i)) {
+                        } else if self.hover == Some(Hit::Tab(i)) && self.drag.is_none() {
                             context.FillRectangle(&cell, &hover_fill);
                         }
-                        if i > 0 && i != active && i != active + 1 {
+                        if i > 0 && i != active && i != active + 1 && self.drag.is_none() {
                             context.FillRectangle(&D2D_RECT_F { left: x, top: 10.0 * s, right: x + 1.0 * s, bottom: bar - 10.0 * s }, &rule);
                         }
                         let rect = D2D_RECT_F { left: x + 10.0 * s, top: 0.0, right: x + tab - 10.0 * s, bottom: bar };

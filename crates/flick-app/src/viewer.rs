@@ -31,15 +31,17 @@ use crate::gpu::{Gpu, Sharpen, Surface};
 use crate::instance::Request;
 use crate::placement::{self, Placement};
 use crate::pool::Pool;
-use crate::settings::Prefs;
+use crate::menu;
+use crate::settings::{Global, Prefs};
 use crate::view::{self, Affine, Filter, Fit, Mode, View};
 
 pub type ViewerId = u64;
 
-const BACKGROUND: D2D1_COLOR_F = D2D1_COLOR_F { r: 0.08, g: 0.08, b: 0.08, a: 1.0 };
 /// Resize band at the window edge, in pixels at 100 % display scaling.
 const EDGE: f64 = 8.0;
 const ZOOM_STEP: f32 = 1.25;
+/// How long the tab strip shows after a tab switch from the keys or wheel.
+const REVEAL: Duration = Duration::from_secs(2);
 /// Left-drag zoom: this much horizontal travel (at 100 % scaling) doubles
 /// or halves the picture.
 const ZOOM_DRAG: f64 = 200.0;
@@ -74,6 +76,16 @@ pub enum Action {
     /// The user changed a menu setting: new windows start with it, it is
     /// saved, and (sort order) preloading follows the new order.
     PrefsChanged(Prefs),
+    /// Right click: the app opens the menu (`show_menu`), which needs the
+    /// other windows for Move to Window.
+    Menu,
+    /// Move the active tab to that window, or to a new one (None).
+    MoveTab(Option<ViewerId>),
+    /// Preferences ▸ changed (app-wide, saved).
+    GlobalChanged(Global),
+    /// The menu closed on a right click elsewhere: open it in the window
+    /// under the cursor (this one or another).
+    ReopenMenu,
 }
 
 /// A `Screen` level on the GPU. Cloning shares the texture.
@@ -244,6 +256,10 @@ impl Tab {
     fn label(&self) -> String {
         file_name(self.wanted.as_deref().unwrap_or(&self.request.file))
     }
+
+    pub fn is_listed(&self) -> bool {
+        self.folder.is_some()
+    }
 }
 
 /// An inactive tab keeps its picture on the GPU this long (switching back
@@ -272,6 +288,8 @@ fn park(mut tab: Tab) -> Tab {
 
 pub struct Viewer {
     pub id: ViewerId,
+    /// The window's colour (chrome::PALETTE index), shown on its hover bar.
+    pub color: usize,
     /// Where to open (the remembered placement), unless `--size` is given.
     placement: Option<Placement>,
     pub window: Option<Arc<Window>>,
@@ -299,7 +317,12 @@ pub struct Viewer {
     right_press: Option<DragZoom>,
     /// Tells the current animation's events from those of pictures passed.
     anim_serial: u64,
+    /// Tab Lock: the wheel and arrows switch tabs (this window only, not saved).
+    locked: bool,
 }
+
+/// When a right-click menu (of any window) last closed.
+static MENU_CLOSED: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 /// A left press whose meaning waits for the release or for movement.
 #[derive(Clone, Copy)]
@@ -313,6 +336,10 @@ enum Press {
     /// A tab: dragging moves the window (as the title does); a click,
     /// released without dragging, switches to it.
     Tab(usize, (f64, f64)),
+    /// Ctrl+left or right on a tab: dragging moves the tab along the strip,
+    /// held `grab` px from its left edge (`at` is where it is now). Without
+    /// moving, a left click switches to it, a right click opens the menu.
+    Reorder { at: usize, from: (f64, f64), grab: f64, moved: bool, right: bool },
 }
 
 /// A right press: zooms by horizontal travel from `from`, starting at
@@ -325,10 +352,11 @@ struct DragZoom {
 }
 
 impl Viewer {
-    pub fn new(id: ViewerId, tab: Tab, placement: Option<Placement>, prefs: Prefs) -> Viewer {
+    pub fn new(id: ViewerId, tab: Tab, placement: Option<Placement>, prefs: Prefs, color: usize) -> Viewer {
         let placement = if tab.request.size.is_none() { placement } else { None };
         Viewer {
             id,
+            color,
             placement,
             window: None,
             hwnd: None,
@@ -340,7 +368,7 @@ impl Viewer {
             modifiers: ModifiersState::default(),
             debug: None,
             show_debug: false,
-            chrome: Chrome::new(1.0),
+            chrome: Chrome::new(1.0, color),
             cursor: (0.0, 0.0),
             panning: None,
             last_click: None,
@@ -348,6 +376,7 @@ impl Viewer {
             prefs,
             right_press: None,
             anim_serial: 0,
+            locked: false,
         }
     }
 
@@ -355,14 +384,22 @@ impl Viewer {
         self.surface.is_some()
     }
 
+    pub fn hwnd(&self) -> Option<HWND> {
+        self.hwnd
+    }
+
+    pub fn has_tab(&self, id: TabId) -> bool {
+        self.tab.id == id || self.others.iter().any(|t| t.id == id)
+    }
+
     pub fn tab_mut(&mut self, id: TabId) -> Option<&mut Tab> {
         if self.tab.id == id { Some(&mut self.tab) } else { self.others.iter_mut().find(|t| t.id == id) }
     }
 
-    /// Labels of all tabs, in strip order.
-    fn tab_labels(&self) -> Vec<String> {
-        let mut labels: Vec<String> = self.others.iter().map(Tab::label).collect();
-        labels.insert(self.active_at, self.tab.label());
+    /// All tabs' ids and labels, in strip order.
+    fn tab_labels(&self) -> Vec<(TabId, String)> {
+        let mut labels: Vec<(TabId, String)> = self.others.iter().map(|t| (t.id, t.label())).collect();
+        labels.insert(self.active_at, (self.tab.id, self.tab.label()));
         labels
     }
 
@@ -439,7 +476,64 @@ impl Viewer {
             }
             self.redraw();
         }
+        if self.others.is_empty() {
+            self.set_locked(false); // one picture left: nothing to lock to
+        }
         Action::Navigated
+    }
+
+    /// Moves the tab at strip position `from` to `to` (Ctrl-drag).
+    fn move_tab(&mut self, from: usize, to: usize) {
+        let count = self.others.len() + 1;
+        if from == to || from >= count || to >= count {
+            return;
+        }
+        let active = self.tab.id;
+        let mut tabs = std::mem::take(&mut self.others);
+        tabs.insert(self.active_at, std::mem::take(&mut self.tab));
+        let moved = tabs.remove(from);
+        tabs.insert(to, moved);
+        self.active_at = tabs.iter().position(|t| t.id == active).unwrap_or(0);
+        self.tab = tabs.remove(self.active_at);
+        self.others = tabs;
+        self.redraw();
+    }
+
+    /// Takes the active tab out, to move it to another window. This window
+    /// shows its neighbour, or is left empty (true) if it was the only tab.
+    pub fn take_active(&mut self, shared: &Shared) -> (Tab, bool) {
+        if self.others.is_empty() {
+            return (park(std::mem::take(&mut self.tab)), true);
+        }
+        let next = if self.active_at < self.others.len() { self.active_at } else { self.active_at - 1 };
+        let tab = std::mem::replace(&mut self.tab, self.others.remove(next));
+        self.active_at = next;
+        self.wake(shared);
+        if self.others.is_empty() {
+            self.set_locked(false); // one picture left: nothing to lock to
+        }
+        (park(tab), false)
+    }
+
+    /// A tab moved here from another window: the first tab, made active,
+    /// paging in this window's sort order.
+    pub fn adopt(&mut self, mut tab: Tab, shared: &Shared) {
+        if let Some(folder) = tab.folder.as_mut().filter(|f| f.sort != self.prefs.sort) {
+            folder.sort(self.prefs.sort);
+            tab.target = folder.index;
+        }
+        let old = park(std::mem::replace(&mut self.tab, tab));
+        self.others.insert(self.active_at, old);
+        self.active_at = 0;
+        self.wake(shared);
+        if let Some(window) = &self.window {
+            window.set_minimized(false);
+            window.focus_window();
+        }
+    }
+
+    pub fn tab_count(&self) -> usize {
+        self.others.len() + 1
     }
 
     /// Inactive tabs past COOL_AFTER give up their picture, and the GPU
@@ -539,27 +633,37 @@ impl Viewer {
     /// Once the first picture, the GPU and the window are all ready: draw the
     /// picture, then show the window with it. Returns true when it did.
     pub fn try_show(&mut self, shared: &mut Shared) -> Result<bool, String> {
-        if self.surface.is_some() || self.tab.picture.is_none() || shared.gpu.is_none() || self.window.is_none() {
+        // A first picture just decoded, or a tab moved here already showing one.
+        let ready = self.tab.picture.is_some() || self.tab.current.is_some();
+        if self.surface.is_some() || !ready || shared.gpu.is_none() || self.window.is_none() {
             return Ok(false);
         }
-        let (Some(picture), Some(gpu), Some(window), Some(hwnd)) = (self.tab.picture.take(), shared.gpu.as_ref(), self.window.clone(), self.hwnd) else {
+        let (Some(gpu), Some(window), Some(hwnd)) = (shared.gpu.as_ref(), self.window.clone(), self.hwnd) else {
             return Ok(false);
         };
-        let display = view::oriented_size(picture.orientation, picture.full_size);
+        let display = match (&self.tab.picture, &self.tab.current) {
+            (Some(picture), _) => view::oriented_size(picture.orientation, picture.full_size),
+            (None, Some(current)) => view::oriented_size(current.screen.orientation, current.screen.full_size),
+            (None, None) => return Ok(false),
+        };
         // The remembered placement (also maximized), else sized to the picture.
         let size = match &self.placement {
             Some(saved) => placement::prepare(hwnd, saved),
             None => self.place_window(&window, display),
         };
-        let surface = Surface::new(gpu, hwnd, size)?;
-        let screen = Screen::upload(gpu, &picture)?;
-        drop(picture); // the CPU copy of the screen level isn't kept
-        self.tab.timeline.mark("uploaded");
-        self.surface = Some(surface);
-        let path = self.tab.request.file.clone();
-        shared.cache.insert(path.clone(), screen.clone());
-        self.tab.wanted = Some(path.clone());
-        self.tab.current = Some(Current::new(path, screen, size, self.prefs.mode));
+        self.surface = Some(Surface::new(gpu, hwnd, size)?);
+        if let Some(picture) = self.tab.picture.take() {
+            let screen = Screen::upload(gpu, &picture)?;
+            drop(picture); // the CPU copy of the screen level isn't kept
+            self.tab.timeline.mark("uploaded");
+            let path = self.tab.request.file.clone();
+            shared.cache.insert(path.clone(), screen.clone());
+            self.tab.wanted = Some(path.clone());
+            self.tab.current = Some(Current::new(path, screen, size, self.prefs.mode));
+        } else if let Some(current) = &mut self.tab.current {
+            current.view.resize(size);
+        }
+        self.tab.parked = None;
         self.tab.shown_at = Some(Instant::now());
         self.render(shared)?;
         if let Some(saved) = self.placement.as_ref().filter(|p| p.maximized) {
@@ -705,6 +809,9 @@ impl Viewer {
     /// The `deadline` came: the next paging step and/or animation frame.
     /// Returns whether the folder position moved.
     pub fn tick(&mut self, shared: &Shared) -> bool {
+        if self.chrome.end_reveal() {
+            self.redraw(); // the bar fades out
+        }
         self.cool_tabs(shared);
         self.next_frame(shared);
         self.advance(shared)
@@ -730,7 +837,7 @@ impl Viewer {
         let frame = self.tab.current.as_ref().and_then(|c| c.anim.as_ref()).and_then(|a| a.due);
         let step = self.tab.folder.as_ref().filter(|f| f.index != self.tab.target).and_then(|_| self.tab.shown_at).map(|t| t + DWELL);
         let cool = self.others.iter().filter_map(|t| t.parked).min().map(|t| t + cool_after());
-        [frame, step, cool].into_iter().flatten().min()
+        [frame, step, cool, self.chrome.reveal_deadline()].into_iter().flatten().min()
     }
 
     /// If the current picture is animated, schedules its playback: frames
@@ -993,7 +1100,9 @@ impl Viewer {
         };
         let (debug, notice, chrome) = (self.debug.as_ref(), self.tab.notice.as_deref(), &mut self.chrome);
         let fading = chrome.animate();
-        surface.frame(BACKGROUND, |context| unsafe {
+        let grey = chrome::BACKGROUNDS[self.color % chrome::BACKGROUNDS.len()];
+        let background = D2D1_COLOR_F { r: grey, g: grey, b: grey, a: 1.0 };
+        surface.frame(background, |context| unsafe {
             if let Some((bitmap, to_window, interpolation)) = &picture {
                 match &sharpen {
                     Some(sharpen) => {
@@ -1017,7 +1126,8 @@ impl Viewer {
         if sharpen.is_some() {
             surface.sharpen = sharpen;
         }
-        if fading {
+        // The bar fading, or tabs gliding into place: one more frame.
+        if fading || self.chrome.moving() {
             self.redraw();
         }
         Ok(())
@@ -1153,8 +1263,10 @@ impl Viewer {
 
         if let Some(hit) = self.chrome.hit(cursor, self.width()) {
             match hit {
+                chrome::Hit::Lock => self.set_locked(false),
                 chrome::Hit::Title | chrome::Hit::Tab(_) if double => window.set_maximized(!window.is_maximized()),
                 chrome::Hit::Title => self.pressed = Some(Press::Move(self.cursor)),
+                chrome::Hit::Tab(i) if self.modifiers.control_key() => self.pressed = Some(self.reorder_press(i, false)),
                 chrome::Hit::Tab(i) => self.pressed = Some(Press::Tab(i, self.cursor)),
                 button => self.pressed = Some(Press::Button(button)),
             }
@@ -1178,14 +1290,98 @@ impl Viewer {
     }
 
     fn on_right_press(&mut self) {
+        // On a tab: a drag reorders (as Ctrl+left does).
+        if let Some(chrome::Hit::Tab(i)) = self.chrome.hit(self.cursor_f32(), self.width()) {
+            self.pressed = Some(self.reorder_press(i, true));
+            return;
+        }
         let scale = self.tab.current.as_ref().map_or(1.0, |c| c.view.scale);
         self.right_press = Some(DragZoom { from: self.cursor, scale, active: false });
     }
 
-    /// A right drag zooms; a right click (no drag) opens the menu.
+    /// A right drag zooms (or reorders tabs); a right click (no drag) opens the menu.
     fn on_right_release(&mut self) -> Action {
-        let dragged = self.right_press.take().is_some_and(|z| z.active);
-        if dragged { Action::None } else { self.show_menu() }
+        if let Some(Press::Reorder { moved, right: true, .. }) = self.pressed {
+            self.pressed = None;
+            return if moved { self.end_reorder() } else { Action::Menu };
+        }
+        // A release whose press Flick never saw (e.g. the click that closed
+        // the menu) does nothing.
+        let Some(press) = self.right_press.take() else { return Action::None };
+        if press.active { Action::None } else { Action::Menu }
+    }
+
+    /// Not a click left over from closing the menu (queued during its modal
+    /// loop, handled right after it), in this window or any other: a
+    /// right-click on another window closes the menu too, and that window
+    /// gets the press.
+    fn fresh_press(&self) -> bool {
+        MENU_CLOSED.lock().map_or(true, |closed| closed.is_none_or(|t| t.elapsed() > Duration::from_millis(50)))
+    }
+
+    /// A drag lasts only while its button is down: a release can go missing
+    /// (a menu's modal loop takes it), and the next move must not zoom or
+    /// pan on a button nobody holds.
+    fn drop_released_drags(&mut self) {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
+        // The buttons as they are now (not as of the messages handled so far,
+        // which lags when a menu swallowed a release). GetAsyncKeyState
+        // reports the physical buttons: swap them back for left-handed setups.
+        let held = |vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY| unsafe { GetAsyncKeyState(i32::from(vk.0)) } < 0;
+        let (physical_left, physical_right) = (held(VK_LBUTTON), held(VK_RBUTTON));
+        let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
+        let (left, right) = if swapped { (physical_right, physical_left) } else { (physical_left, physical_right) };
+        if !right {
+            self.right_press = None;
+        }
+        let pressed_by_right = matches!(self.pressed, Some(Press::Reorder { right: true, .. }));
+        if self.pressed.is_some() && !(if pressed_by_right { right } else { left }) {
+            self.pressed = None;
+            self.chrome.set_drag(None);
+        }
+        if self.panning.is_some() && !left {
+            self.panning = None;
+            self.update_cursor_icon();
+        }
+    }
+
+    /// A press on tab `i` that may become a drag along the strip.
+    fn reorder_press(&self, i: usize, right: bool) -> Press {
+        let left = self.chrome.tab_layout(self.width()).map_or(0.0, |(left, tab)| left + tab * i as f32);
+        Press::Reorder { at: i, from: self.cursor, grab: self.cursor.0 - f64::from(left), moved: false, right }
+    }
+
+    /// The tab id at strip position `at`.
+    fn tab_id_at(&self, at: usize) -> Option<TabId> {
+        match at.cmp(&self.active_at) {
+            std::cmp::Ordering::Equal => Some(self.tab.id),
+            std::cmp::Ordering::Less => self.others.get(at).map(|t| t.id),
+            std::cmp::Ordering::Greater => self.others.get(at - 1).map(|t| t.id),
+        }
+    }
+
+    /// The dragged tab follows the cursor; it takes another slot when its
+    /// centre passes a neighbour's (the others glide aside, chrome.rs).
+    fn drag_tab(&mut self) {
+        let Some(Press::Reorder { at, from, grab, moved, right }) = self.pressed else { return };
+        if !moved && !beyond_drag_threshold(from, self.cursor) {
+            return;
+        }
+        let Some((left, tab)) = self.chrome.tab_layout(self.width()) else { return };
+        let x = (self.cursor.0 - grab) as f32;
+        let slot = (((x - left) / tab).round().max(0.0) as usize).min(self.tab_count() - 1);
+        self.move_tab(at, slot);
+        self.pressed = Some(Press::Reorder { at: slot, from, grab, moved: true, right });
+        self.chrome.set_drag(self.tab_id_at(slot).map(|id| (id, x)));
+        self.redraw();
+    }
+
+    /// Dropped: the tab glides into its slot.
+    fn end_reorder(&mut self) -> Action {
+        self.chrome.set_drag(None);
+        self.redraw();
+        Action::None
     }
 
     /// A right drag on the picture: horizontal travel sets the zoom, around
@@ -1209,8 +1405,10 @@ impl Viewer {
             self.update_cursor_icon();
         }
         let pressed = self.pressed.take();
-        if let Some(Press::Tab(i, _)) = pressed {
-            return self.activate(i, shared);
+        match pressed {
+            Some(Press::Tab(i, _) | Press::Reorder { at: i, moved: false, .. }) => return self.activate(i, shared),
+            Some(Press::Reorder { .. }) => return self.end_reorder(),
+            _ => {}
         }
         let (Some(Press::Button(button)), Some(window)) = (pressed, self.window.clone()) else { return Action::None };
         // Released somewhere else: cancelled, as with native buttons.
@@ -1221,7 +1419,7 @@ impl Viewer {
             chrome::Hit::Close => return Action::Close,
             chrome::Hit::Minimize => window.set_minimized(true),
             chrome::Hit::Maximize => window.set_maximized(!window.is_maximized()),
-            chrome::Hit::Title | chrome::Hit::Tab(_) => {}
+            chrome::Hit::Title | chrome::Hit::Tab(_) | chrome::Hit::Lock => {}
         }
         Action::None
     }
@@ -1253,12 +1451,68 @@ impl Viewer {
         Action::PrefsChanged(prefs)
     }
 
-    fn show_menu(&mut self) -> Action {
+    /// The right-click menu; `others` are the other windows (id, colour,
+    /// the file each shows) for Move to Window.
+    pub fn show_menu(&mut self, others: &[(ViewerId, usize, String)], global: Global) -> Action {
         let Some(hwnd) = self.hwnd else { return Action::None };
-        match crate::menu::show(hwnd, self.prefs) {
-            Some(prefs) => self.set_prefs(prefs),
+        let targets: Vec<menu::Target> = others.iter().map(|(_, color, label)| menu::Target { color: *color, label: label.clone() }).collect();
+        // A tab can leave for a new window if it isn't the only one, and tabs are on.
+        let can_split = self.tab_count() > 1 && global.tabs;
+        // Tab Lock only means something with tabs.
+        let lock = (self.tab_count() > 1).then_some(self.locked);
+        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global);
+        // Whatever the clicks that closed the menu left half-done (a press
+        // without its release) is dropped, and presses queued while it was
+        // open are ignored when they arrive just after (`fresh_press`).
+        self.pressed = None;
+        self.right_press = None;
+        self.panning = None;
+        if let Ok(mut closed) = MENU_CLOSED.lock() {
+            *closed = Some(Instant::now());
+        }
+        match chosen {
+            Some(menu::Choice::Prefs(prefs)) => self.set_prefs(prefs),
+            Some(menu::Choice::MoveTo(i)) => Action::MoveTab(others.get(i).map(|(id, _, _)| *id)),
+            Some(menu::Choice::NewWindow) => Action::MoveTab(None),
+            Some(menu::Choice::Lock) => self.toggle_lock(),
+            Some(menu::Choice::Global(global)) => Action::GlobalChanged(global),
+            Some(menu::Choice::Reopen) => Action::ReopenMenu,
             None => Action::None,
         }
+    }
+
+    /// Tab Lock (L): the wheel and arrows switch tabs instead of pages. Only
+    /// with tabs (L does nothing in a single-picture window).
+    fn toggle_lock(&mut self) -> Action {
+        self.set_locked(!self.locked && self.tab_count() > 1);
+        Action::None
+    }
+
+    fn set_locked(&mut self, locked: bool) {
+        if locked != self.locked {
+            self.locked = locked;
+            self.chrome.set_locked(locked);
+            self.redraw();
+        }
+    }
+
+    /// Tab Lock's paging: `delta` tabs along the strip, wrapping around.
+    fn step_tab(&mut self, delta: i64, shared: &Shared) -> Action {
+        let count = self.tab_count() as i64;
+        self.switch_tab((self.active_at as i64 + delta).rem_euclid(count) as usize, shared)
+    }
+
+    /// A tab switch from the keys or the wheel: the strip shows for a
+    /// moment, so it is clear which tab this is.
+    fn switch_tab(&mut self, at: usize, shared: &Shared) -> Action {
+        self.chrome.reveal(REVEAL);
+        self.redraw();
+        self.activate(at, shared)
+    }
+
+    /// What Move to Window shows for this window: its colour and file.
+    pub fn menu_entry(&self) -> (ViewerId, usize, String) {
+        (self.id, self.color, self.tab.label())
     }
 
     /// One step in the window's shuffled order (S/Down forward, W/Up back).
@@ -1287,6 +1541,9 @@ impl Viewer {
             return Action::None;
         }
         self.wheel -= whole;
+        if self.locked {
+            return self.step_tab(-whole as i64, shared);
+        }
         self.step(-whole as i64, shared)
     }
 
@@ -1308,12 +1565,12 @@ impl Viewer {
             let action = match (event.physical_key, event.logical_key.as_ref()) {
                 (_, Key::Named(NamedKey::Tab)) => {
                     let step = if self.modifiers.shift_key() { count - 1 } else { 1 };
-                    Some(self.activate((self.active_at + step) % count, shared))
+                    Some(self.switch_tab((self.active_at + step) % count, shared))
                 }
                 (PhysicalKey::Code(KeyCode::KeyW), _) => Some(self.close_tab(self.active_at, shared)),
                 (PhysicalKey::Code(code), _) => {
                     let digits = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9];
-                    digits.iter().position(|&d| d == code).map(|i| self.activate(i, shared))
+                    digits.iter().position(|&d| d == code).filter(|&i| i < count).map(|i| self.switch_tab(i, shared))
                 }
                 _ => None,
             };
@@ -1326,6 +1583,10 @@ impl Viewer {
         if let PhysicalKey::Code(code) = event.physical_key {
             let prefs = self.prefs;
             let action = match code {
+                // Tab Lock: what pages pictures switches tabs instead.
+                KeyCode::KeyD | KeyCode::KeyS if self.locked => Some(self.step_tab(1, shared)),
+                KeyCode::KeyA | KeyCode::KeyW if self.locked => Some(self.step_tab(-1, shared)),
+                KeyCode::KeyL => Some(self.toggle_lock()),
                 KeyCode::KeyD if page => Some(self.step(1, shared)),
                 KeyCode::KeyA if page => Some(self.step(-1, shared)),
                 KeyCode::KeyS if page => Some(self.random(true, shared)),
@@ -1347,6 +1608,8 @@ impl Viewer {
         match event.logical_key.as_ref() {
             // Closes the tab; the window's last one closes the window.
             Key::Named(NamedKey::Escape) => self.close_tab(self.active_at, shared),
+            Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown) if self.locked => self.step_tab(1, shared),
+            Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp) if self.locked => self.step_tab(-1, shared),
             Key::Named(NamedKey::ArrowRight | NamedKey::PageDown | NamedKey::Space) if page => self.step(1, shared),
             Key::Named(NamedKey::ArrowLeft | NamedKey::PageUp | NamedKey::Backspace) if page => self.step(-1, shared),
             Key::Named(NamedKey::ArrowDown) if page => self.random(true, shared),
@@ -1364,7 +1627,7 @@ impl Viewer {
                 self.redraw();
                 Action::None
             }
-            Key::Named(NamedKey::ContextMenu) => self.show_menu(),
+            Key::Named(NamedKey::ContextMenu) => Action::Menu,
             Key::Character("+" | "=") => {
                 self.zoom(None, ZOOM_STEP);
                 Action::None
@@ -1397,12 +1660,14 @@ impl Viewer {
             WindowEvent::CursorMoved { position, .. } => {
                 let previous = self.cursor;
                 self.cursor = (position.x, position.y);
+                self.drop_released_drags();
                 if let (Some(Press::Move(from) | Press::Tab(_, from)), Some(window)) = (self.pressed, &self.window) {
                     if beyond_drag_threshold(from, self.cursor) {
                         self.pressed = None;
                         let _ = window.drag_window();
                     }
                 }
+                self.drag_tab();
                 self.drag_zoom();
                 if self.panning.is_none() && self.chrome.pointer(Some(self.cursor_f32()), self.width()) {
                     self.redraw();
@@ -1432,13 +1697,16 @@ impl Viewer {
                 Action::None
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => match state {
-                ElementState::Pressed => self.on_left_press(),
+                ElementState::Pressed if self.fresh_press() => self.on_left_press(),
+                ElementState::Pressed => Action::None,
                 ElementState::Released => self.on_left_release(shared),
             },
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Middle, .. } => self.on_middle_release(shared),
             WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => match state {
                 ElementState::Pressed => {
-                    self.on_right_press();
+                    if self.fresh_press() {
+                        self.on_right_press();
+                    }
                     Action::None
                 }
                 // The menu opens on release, like Windows' own context menus.

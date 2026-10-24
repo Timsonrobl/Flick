@@ -85,6 +85,8 @@ struct App {
     placement: Option<placement::Placement>,
     /// The menu settings last chosen in any window: new windows start with them.
     prefs: settings::Prefs,
+    /// Preferences ▸: app-wide.
+    global: settings::Global,
     /// The resident instance (not `--standalone`).
     resident: bool,
     serving: bool,
@@ -120,7 +122,7 @@ impl App {
         self.idle_since = None;
         let tab_id = self.new_id();
         let last = self.focus_order.iter().copied().find(|id| self.viewers.get(id).is_some_and(Viewer::is_shown));
-        if let (Some(id), None) = (last, request.size) {
+        if let (Some(id), None, true) = (last, request.size, self.global.tabs) {
             self.spawn_decode(id, tab_id, &request);
             if let Some(viewer) = self.viewers.get_mut(&id) {
                 viewer.add_tab(Tab::new(tab_id, request, timeline));
@@ -128,20 +130,61 @@ impl App {
             self.plan();
             return;
         }
-        let id = self.new_id();
-        // Cascade from the remembered placement while other windows are open.
-        let open = self.viewers.len() as i32;
-        let placement = self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) });
+        let id = self.next_id; // the id new_window gives it
         self.spawn_decode(id, tab_id, &request);
-        let mut viewer = Viewer::new(id, Tab::new(tab_id, request, timeline), placement, self.prefs);
+        // Tabs off: beside the window used last (benchmark runs keep their own placement).
+        let beside = last.filter(|_| request.size.is_none());
+        self.new_window(event_loop, Tab::new(tab_id, request, timeline), beside);
+    }
+
+    /// A new (still hidden) window for `tab`, in the first colour no open
+    /// window uses, placed `beside` the window it comes from (else where
+    /// windows were last). It shows once its picture is drawn (`try_show`).
+    fn new_window(&mut self, event_loop: &ActiveEventLoop, tab: Tab, beside: Option<ViewerId>) -> Option<ViewerId> {
+        let id = self.new_id();
+        let open = self.viewers.len() as i32;
+        let placement = beside.and_then(|v| self.viewers.get(&v)).and_then(|v| v.hwnd()).and_then(placement::beside).or_else(|| {
+            // Cascade from the remembered placement while other windows are open.
+            self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) })
+        });
+        let used: Vec<usize> = self.viewers.values().map(|v| v.color).collect();
+        let color = (0..chrome::PALETTE.len()).find(|c| !used.contains(c)).unwrap_or(self.viewers.len() % chrome::PALETTE.len());
+        let mut viewer = Viewer::new(id, tab, placement, self.prefs, color);
         if let Err(e) = viewer.create_window(event_loop) {
-            return report(&e);
+            report(&e);
+            return None;
         }
         if let Some(window) = &viewer.window {
             self.windows.insert(window.id(), id);
         }
         self.viewers.insert(id, viewer);
         self.focus_order.insert(0, id);
+        Some(id)
+    }
+
+    /// Move to Window: the active tab of `from` goes to `to`, or to a new
+    /// window; a window left without tabs closes.
+    fn move_tab(&mut self, event_loop: &ActiveEventLoop, from: ViewerId, to: Option<ViewerId>) {
+        let Some(source) = self.viewers.get_mut(&from) else { return };
+        let (tab, emptied) = source.take_active(&self.shared);
+        match to.and_then(|to| self.viewers.get_mut(&to)) {
+            Some(target) => target.adopt(tab, &self.shared),
+            None => {
+                if let Some(id) = self.new_window(event_loop, tab, Some(from)) {
+                    self.try_show(id);
+                }
+            }
+        }
+        if emptied {
+            self.close(event_loop, from);
+        }
+        self.plan();
+    }
+
+    /// The window holding `tab` (a tab can move between windows while its
+    /// decode or listing is under way).
+    fn window_of(&self, tab: TabId) -> Option<ViewerId> {
+        self.viewers.values().find(|v| v.has_tab(tab)).map(|v| v.id)
     }
 
     /// Shows a window whose first picture, GPU and window are all ready.
@@ -193,10 +236,13 @@ impl App {
         if let Some(&(_, request)) = t.timeline.stages.iter().find(|(stage, _)| *stage == "request") {
             clock::trace(format_args!("open into a tab: {:.0} ms from request to on screen", at - request));
         }
-        let (file, proxy) = (t.request.file.clone(), self.shared.proxy.clone());
-        std::thread::spawn(move || {
-            let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
-        });
+        // A tab moved into a new window keeps the folder (and place) it has.
+        if !t.is_listed() {
+            let (file, proxy) = (t.request.file.clone(), self.shared.proxy.clone());
+            std::thread::spawn(move || {
+                let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
+            });
+        }
         // Off the open path: listen for later launches, show the tray icon.
         if self.resident && !self.serving {
             self.serving = true;
@@ -386,6 +432,7 @@ impl ApplicationHandler<Event> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
             Event::Decoded { viewer, tab, picture, at } => {
+                let viewer = self.window_of(tab).unwrap_or(viewer);
                 let Some(v) = self.viewers.get_mut(&viewer) else { return };
                 if let Some(t) = v.tab_mut(tab) {
                     t.timeline.push("decoded", at);
@@ -415,8 +462,8 @@ impl ApplicationHandler<Event> for App {
                     Err(e) => self.error = Some(e),
                 }
             }
-            Event::OnScreen { viewer, tab, at } => self.on_screen(viewer, tab, at),
-            Event::Listed { viewer, tab, folder } => self.on_listed(viewer, tab, folder),
+            Event::OnScreen { viewer, tab, at } => self.on_screen(self.window_of(tab).unwrap_or(viewer), tab, at),
+            Event::Listed { viewer, tab, folder } => self.on_listed(self.window_of(tab).unwrap_or(viewer), tab, folder),
             Event::Preloaded { path, picture, decode_ms } => self.on_preloaded(path, picture, decode_ms),
             Event::FullDecoded { viewer, path, image, at } => {
                 if let Some(v) = self.viewers.get_mut(&viewer) {
@@ -455,14 +502,51 @@ impl ApplicationHandler<Event> for App {
         if traced {
             clock::trace(format_args!("viewer {id}: {event:?}"));
         }
-        match viewer.window_event(event, &self.shared) {
+        let result = viewer.window_event(event, &self.shared);
+        self.act(event_loop, id, result);
+        self.exit_if_failed(event_loop);
+    }
+}
+
+impl App {
+    /// Carries out what a window's event handling asked for.
+    fn act(&mut self, event_loop: &ActiveEventLoop, id: ViewerId, result: Result<Action, String>) {
+        match result {
             Ok(Action::None) => {}
             Ok(Action::Navigated) => self.plan(),
             Ok(Action::PrefsChanged(prefs)) => {
                 self.prefs = prefs;
-                settings::save(prefs);
+                settings::save(prefs, self.global);
                 self.plan(); // a new sort order moves the preload ring
             }
+            Ok(Action::Menu) => {
+                // Move to Window lists the other windows, oldest first.
+                let mut others: Vec<_> = self.viewers.values().filter(|v| v.id != id && v.is_shown()).map(Viewer::menu_entry).collect();
+                others.sort_by_key(|(other, _, _)| *other);
+                let Some(viewer) = self.viewers.get_mut(&id) else { return };
+                let chosen = viewer.show_menu(&others, self.global);
+                self.act(event_loop, id, Ok(chosen));
+            }
+            Ok(Action::ReopenMenu) => {
+                // The window the right click landed on, if it is one of ours.
+                let under = unsafe {
+                    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetCursorPos, GA_ROOT, WindowFromPoint};
+                    let mut at = windows::Win32::Foundation::POINT::default();
+                    let _ = GetCursorPos(&mut at);
+                    GetAncestor(WindowFromPoint(at), GA_ROOT)
+                };
+                let Some(viewer) = self.viewers.values().find(|v| v.hwnd() == Some(under)) else { return };
+                let target = viewer.id;
+                if let Some(window) = &viewer.window {
+                    window.focus_window();
+                }
+                self.act(event_loop, target, Ok(Action::Menu));
+            }
+            Ok(Action::GlobalChanged(global)) => {
+                self.global = global;
+                settings::save(self.prefs, global);
+            }
+            Ok(Action::MoveTab(to)) => self.move_tab(event_loop, id, to),
             Ok(Action::Close) => {
                 clock::trace(format_args!("viewer {id}: close"));
                 self.close(event_loop, id)
@@ -472,7 +556,6 @@ impl ApplicationHandler<Event> for App {
                 self.fail_viewer(id, e)
             }
         }
-        self.exit_if_failed(event_loop);
     }
 }
 
@@ -604,16 +687,17 @@ fn main() {
 
     let placement = if request.size.is_none() { placement::load() } else { None };
     // `--size` benchmark runs keep the defaults, as they keep the default placement.
-    let prefs = if request.size.is_none() { settings::load() } else { settings::Prefs::default() };
+    let (prefs, global) = if request.size.is_none() { settings::load() } else { Default::default() };
     let last_file = Some(request.file.clone());
     let mut app = App {
         shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
-        viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs))]),
+        viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs, 0))]),
         windows: HashMap::new(),
         next_id: first_tab + 1,
         focus_order: vec![first],
         placement,
         prefs,
+        global,
         resident,
         serving: false,
         tray: None,

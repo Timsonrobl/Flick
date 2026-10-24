@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect};
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect, MonitorFromWindow};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -89,6 +89,53 @@ pub fn prepare(hwnd: HWND, placement: &Placement) -> (u32, u32) {
         let _ = SetWindowPlacement(hwnd, &wp);
         let r = placement.normal;
         ((r.right - r.left) as u32, (r.bottom - r.top) as u32)
+    }
+}
+
+/// Where a new window opens next to the window `hwnd` it came from (Move to
+/// New Window, or a file opened with tabs off): maximized if that one is;
+/// the other side of the screen if that one is snapped to a side; else the
+/// same size, beside it without overlapping (or as little as fits).
+pub fn beside(hwnd: HWND) -> Option<Placement> {
+    unsafe {
+        let mut wp = WINDOWPLACEMENT { length: size_of::<WINDOWPLACEMENT>() as u32, ..Default::default() };
+        GetWindowPlacement(hwnd, &mut wp).ok()?;
+        if IsZoomed(hwnd).as_bool() {
+            return Some(Placement { normal: wp.rcNormalPosition, maximized: true });
+        }
+        let mut rect = RECT::default();
+        GetWindowRect(hwnd, &mut rect).ok()?;
+        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if !GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mut info).as_bool() {
+            return None;
+        }
+        let (work, screen) = (info.rcWork, info.rcMonitor);
+        // SetWindowPlacement takes workspace coordinates: screen coordinates
+        // less a taskbar on the left or top.
+        let (dx, dy) = (work.left - screen.left, work.top - screen.top);
+        let placed = |left: i32, top: i32, right: i32, bottom: i32| {
+            Some(Placement { normal: RECT { left: left - dx, top: top - dy, right: right - dx, bottom: bottom - dy }, maximized: false })
+        };
+        const NEAR: i32 = 8;
+        if IsWindowArranged(hwnd).as_bool() {
+            if rect.left <= work.left + NEAR && rect.right < work.right - NEAR {
+                return placed(rect.right, rect.top, work.right, rect.bottom);
+            }
+            if rect.right >= work.right - NEAR && rect.left > work.left + NEAR {
+                return placed(work.left, rect.top, rect.left, rect.bottom);
+            }
+        }
+        let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+        let fits = |x: i32, y: i32| x >= work.left && y >= work.top && x + w <= work.right && y + h <= work.bottom;
+        let (x, y) = [(rect.right, rect.top), (rect.left - w, rect.top), (rect.left, rect.bottom), (rect.left, rect.top - h)]
+            .into_iter()
+            .find(|&(x, y)| fits(x, y))
+            // No room anywhere: against the edge with more space, overlapping least.
+            .unwrap_or_else(|| {
+                let x = if rect.left - work.left > work.right - rect.right { work.left } else { (work.right - w).max(work.left) };
+                (x, rect.top.clamp(work.top, (work.bottom - h).max(work.top)))
+            });
+        placed(x, y, x + w, y + h)
     }
 }
 

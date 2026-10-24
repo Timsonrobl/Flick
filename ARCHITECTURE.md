@@ -440,8 +440,47 @@ decides whether tabs stay, so these are the goal, not all built in 3b):**
 - Dragging the tab strip **moves the window**, like the title; **Ctrl-drag**
   reorders tabs.
 - Built in 3b: the first two, tab switching and closing, per-tab memory
-  tiers; measured against the 3b exit criterion (§15). The rest follows if
-  tabs stay.
+  tiers; measured against the 3b exit criterion (§15). Tabs stayed (user,
+  2026-10-24), and the rest is built: eight pastels (`chrome::PALETTE`),
+  each new window taking the first one no open window uses; Move to Window
+  lists the other windows with a colour swatch and the file each shows,
+  then New Window (absent for a window's only tab). Up to three
+  destinations stand in the main menu as a block of "Move to …" items; four
+  or more go into the Move to Window submenu; with none, nothing shows. A window left without tabs
+  closes. The moved tab keeps its picture, place and zoom, and pages in the
+  receiving window's sort order. Tabs are reordered by Ctrl+left-drag or
+  right-drag (a right click without moving still opens the menu), Chrome
+  style: the dragged tab follows the cursor and takes a new slot when its
+  centre passes a neighbour's; the others glide aside (exponential easing,
+  50 ms time constant, redrawing only while something moves). Dragging a
+  tab out to another window is not built (Move to Window covers it).
+- **New windows open beside the window they come from** (Move to New
+  Window; files opened with tabs off): maximized if it is; on the other
+  side of the screen if it is snapped to one (`IsWindowArranged`); else the
+  same size, right of it, else left, below or above, wherever it fits
+  without overlapping. Only the first window uses the remembered placement.
+- **Preferences ▸ Open Files in Tabs** (app-wide, saved; on by default): off
+  opens every file in its own window and removes Move to New Window;
+  windows that already have tabs keep them.
+- **Tab Lock** (`L`, or the menu; per window, not saved; only with two or
+  more tabs, else hidden and `L` ignored, and it turns off when a window is
+  down to one): the wheel, the arrows and A/D/W/S switch tabs (wrapping)
+  instead of pictures; PgUp/PgDn and Space/Backspace still page. A padlock
+  shows at the bar's left; clicking it unlocks.
+- A tab switch from the keys or wheel (Tab Lock, Ctrl+Tab, Ctrl+1..9) shows
+  the bar for 2 s (`Chrome::reveal`, on the viewer's deadline timer).
+- Each window's background behind the picture is a slightly different dark
+  grey (`chrome::BACKGROUNDS`, 0.055-0.135, paired with its pastel), so
+  overlapping windows are told apart.
+- The menu's items are chosen with the left button only. Clicks that close
+  the menu can leave a press without its release, or presses queued during
+  its modal loop: Flick drops drag state when the menu closes, ignores
+  presses for 50 ms after in every window (a right-click on another window
+  also closes the menu, and that window gets the press), acts on a release
+  only if it saw the press, and keeps a drag only while the button is
+  physically down (`GetAsyncKeyState`, mapped through swapped buttons). A
+  menu closed by a right click reopens where that click was, in the Flick
+  window under the cursor (brought forward), as Explorer's menus do.
 
 **Model.** `Tab { id, folder: FolderCursor, image: ImageId, view: Transform,
 state: TabState, last_active: Instant }`. A window has `Vec<Tab>` and an

@@ -1,16 +1,19 @@
 //! The right-click menu: Honeyview's View items (without the double-page
-//! modes), its render filters and Sort by. A native popup menu: Windows
-//! draws it in the system style, and it costs nothing until opened.
+//! modes), its render filters, Sort by, and Move to Window. A native popup
+//! menu: Windows draws it in the system style, and it costs nothing until
+//! opened.
 
 use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HBITMAP};
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, HMENU, MF_CHECKED, MF_POPUP, MF_SEPARATOR, MF_STRING, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TrackPopupMenu,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HMENU, MENUITEMINFOW, MF_CHECKED, MF_POPUP, MF_SEPARATOR,
+    MF_STRING, MIIM_BITMAP, SM_CXMENUCHECK, SM_SWAPBUTTON, SetMenuItemInfoW, TPM_RETURNCMD, TrackPopupMenu,
 };
-use windows::core::{PCWSTR, w};
+use windows::core::{HSTRING, PCWSTR, w};
 
+use crate::chrome::PALETTE;
 use crate::folder::SortKey;
-use crate::settings::Prefs;
+use crate::settings::{Global, Prefs};
 use crate::view::{Filter, Fit};
 
 /// One menu item: its label and what choosing it does to the settings.
@@ -72,24 +75,136 @@ unsafe fn append(menu: HMENU, sections: &[Vec<Item>], prefs: &Prefs, first: usiz
     id
 }
 
-/// Shows the menu at the cursor and returns the settings with the choice
-/// applied, if one was made.
-pub fn show(hwnd: HWND, prefs: Prefs) -> Option<Prefs> {
+/// What a menu choice asks for.
+pub enum Choice {
+    Prefs(Prefs),
+    /// Move to Window: the active tab goes to `targets[i]`.
+    MoveTo(usize),
+    /// Move to Window ▸ New Window.
+    NewWindow,
+    /// Tab Lock on or off (this window).
+    Lock,
+    /// Preferences ▸ changed.
+    Global(Global),
+    /// Closed by a right click elsewhere: the menu opens again where that
+    /// click was (in this window or another), as in Explorer.
+    Reopen,
+}
+
+/// Another window, as Move to Window lists it: its colour
+/// (chrome::PALETTE index) and the file it shows.
+pub struct Target {
+    pub color: usize,
+    pub label: String,
+}
+
+const NEW_WINDOW: usize = 900;
+const LOCK: usize = 901;
+const OPEN_IN_TABS: usize = 902;
+const MOVE_TO: usize = 1000;
+
+/// Whether the (logical) right button is down right now: the menu closed on
+/// a right press. GetAsyncKeyState reports physical buttons, hence the swap.
+pub fn right_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+    let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
+    let button = if swapped { VK_LBUTTON } else { VK_RBUTTON };
+    unsafe { GetAsyncKeyState(i32::from(button.0)) < 0 }
+}
+
+/// A colour swatch for a menu item: the window's pastel with a darker rim.
+unsafe fn swatch(color: usize) -> HBITMAP {
+    let size = unsafe { GetSystemMetrics(SM_CXMENUCHECK) }.max(12) as usize;
+    let [r, g, b] = PALETTE[color % PALETTE.len()].1;
+    let bgra = |k: f32| [(b * k * 255.0) as u8, (g * k * 255.0) as u8, (r * k * 255.0) as u8, 255];
+    let (fill, rim) = (bgra(1.0), bgra(0.72));
+    let mut pixels = Vec::with_capacity(size * size * 4);
+    for y in 0..size {
+        for x in 0..size {
+            let edge = x == 0 || y == 0 || x == size - 1 || y == size - 1;
+            pixels.extend_from_slice(if edge { &rim } else { &fill });
+        }
+    }
+    unsafe { CreateBitmap(size as i32, size as i32, 1, 32, Some(pixels.as_ptr().cast())) }
+}
+
+/// Shows the menu at the cursor and returns what was chosen. `targets` are
+/// the other windows; `can_split` whether the active tab can leave for a
+/// new window (not when it is the window's only tab, nor with tabs off);
+/// `lock` this window's Tab Lock (None: no tabs, no item).
+pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock: Option<bool>, global: Global) -> Option<Choice> {
     let (main, sort) = (main_items(), sort_items());
+    let mut swatches = Vec::new();
     unsafe {
         let menu = CreatePopupMenu().ok()?;
-        let submenu = CreatePopupMenu().ok()?;
+        let sort_menu = CreatePopupMenu().ok()?;
+        let move_menu = CreatePopupMenu().ok()?;
+        let prefs_menu = CreatePopupMenu().ok()?;
         let after_main = append(menu, &main, &prefs, 1);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-        let _ = AppendMenuW(menu, MF_POPUP, submenu.0 as usize, w!("Sort by"));
-        append(submenu, &sort, &prefs, after_main);
+        let _ = AppendMenuW(menu, MF_POPUP, sort_menu.0 as usize, w!("Sort by"));
+        append(sort_menu, &sort, &prefs, after_main);
+
+        // Move to Window: up to three destinations stand in the main menu as
+        // a block of "Move to …" items, more go into a submenu; none, nothing.
+        // Each section below has its own separator, only when present.
+        let destinations = targets.len() + usize::from(can_split);
+        if destinations > 0 {
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        }
+        let inline = destinations < 4;
+        let (into, prefix) = if inline { (menu, "Move to ") } else { (move_menu, "") };
+        for (i, target) in targets.iter().enumerate() {
+            let text = HSTRING::from(format!("{prefix}{}   {}", PALETTE[target.color % PALETTE.len()].0, target.label));
+            let _ = AppendMenuW(into, MF_STRING, MOVE_TO + i, &text);
+            let bitmap = swatch(target.color);
+            let info = MENUITEMINFOW { cbSize: size_of::<MENUITEMINFOW>() as u32, fMask: MIIM_BITMAP, hbmpItem: bitmap, ..Default::default() };
+            let _ = SetMenuItemInfoW(into, (MOVE_TO + i) as u32, false, &info);
+            swatches.push(bitmap);
+        }
+        if can_split {
+            if !targets.is_empty() && !inline {
+                let _ = AppendMenuW(into, MF_SEPARATOR, 0, None);
+            }
+            let _ = AppendMenuW(into, MF_STRING, NEW_WINDOW, if inline { w!("Move to New Window") } else { w!("New Window") });
+        }
+        let attached = !inline;
+        if attached {
+            let _ = AppendMenuW(menu, MF_POPUP, move_menu.0 as usize, w!("Move to Window"));
+        } else {
+            let _ = DestroyMenu(move_menu);
+        }
+        let checked = |on: bool| if on { MF_STRING | MF_CHECKED } else { MF_STRING };
+        if let Some(locked) = lock {
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+            let _ = AppendMenuW(menu, checked(locked), LOCK, w!("Tab Lock\tL"));
+        }
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
+        let _ = AppendMenuW(menu, MF_POPUP, prefs_menu.0 as usize, w!("Preferences"));
+
         let mut at = POINT::default();
         let _ = GetCursorPos(&mut at);
-        let chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, at.x, at.y, None, hwnd, None).0 as usize;
-        let _ = DestroyMenu(menu); // and its submenu
-        let item = main.iter().chain(sort.iter()).flatten().nth(chosen.checked_sub(1)?)?;
-        let mut prefs = prefs;
-        (item.choose)(&mut prefs);
-        Some(prefs)
+        // Items are chosen with the left button only (no TPM_RIGHTBUTTON):
+        // a second right click elsewhere just closes the menu.
+        let chosen = TrackPopupMenu(menu, TPM_RETURNCMD, at.x, at.y, None, hwnd, None).0 as usize;
+        let _ = DestroyMenu(menu); // and its submenus
+        for bitmap in swatches {
+            let _ = DeleteObject(bitmap.into());
+        }
+        match chosen {
+            0 if right_button_down() => Some(Choice::Reopen),
+            0 => None,
+            NEW_WINDOW => Some(Choice::NewWindow),
+            LOCK => Some(Choice::Lock),
+            OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs })),
+            id if id >= MOVE_TO => Some(Choice::MoveTo(id - MOVE_TO)),
+            id => {
+                let item = main.iter().chain(sort.iter()).flatten().nth(id - 1)?;
+                let mut prefs = prefs;
+                (item.choose)(&mut prefs);
+                Some(Choice::Prefs(prefs))
+            }
+        }
     }
 }

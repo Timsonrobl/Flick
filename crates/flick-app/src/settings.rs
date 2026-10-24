@@ -31,9 +31,22 @@ fn name<T: PartialEq>(table: &[(T, &'static str)], value: T) -> &'static str {
     table.iter().find(|(v, _)| *v == value).map_or("", |(_, name)| name)
 }
 
-pub fn load() -> Prefs {
-    let mut prefs = Prefs::default();
-    let Some(text) = path().and_then(|p| std::fs::read_to_string(p).ok()) else { return prefs };
+/// Preferences ▸ in the menu: app-wide, unlike `Prefs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Global {
+    /// Opened files become tabs of the window used last (else new windows).
+    pub tabs: bool,
+}
+
+impl Default for Global {
+    fn default() -> Global {
+        Global { tabs: true }
+    }
+}
+
+pub fn load() -> (Prefs, Global) {
+    let (mut prefs, mut global) = (Prefs::default(), Global::default());
+    let Some(text) = path().and_then(|p| std::fs::read_to_string(p).ok()) else { return (prefs, global) };
     for line in text.lines() {
         let Some((key, value)) = line.split_once('=').map(|(k, v)| (k.trim(), v.trim())) else { continue };
         match key {
@@ -42,24 +55,26 @@ pub fn load() -> Prefs {
             "filter" => prefs.filter = find(&FILTERS, value).unwrap_or(prefs.filter),
             "sort" => prefs.sort.key = find(&SORTS, value).unwrap_or(prefs.sort.key),
             "descending" => prefs.sort.descending = value == "1",
+            "tabs" => global.tabs = value != "0",
             _ => {}
         }
     }
-    prefs
+    (prefs, global)
 }
 
-pub fn save(prefs: Prefs) {
+pub fn save(prefs: Prefs, global: Global) {
     let Some(path) = path() else { return };
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
     let text = format!(
-        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\n",
+        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ntabs={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
         name(&FILTERS, prefs.filter),
         name(&SORTS, prefs.sort.key),
         u8::from(prefs.sort.descending),
+        u8::from(global.tabs),
     );
     let _ = std::fs::write(path, text);
 }
