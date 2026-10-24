@@ -1,0 +1,59 @@
+[
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 106.1823,
+    "image_ms": 116.7605,
+    "final_ms": 116.7605,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 165.94140625,
+    "working_set_mb": 72.0390625,
+    "peak_private_mb": 231.72265625,
+    "capture_ms": 6.948099999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 104.4382,
+    "image_ms": 116.5896,
+    "final_ms": 116.5896,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 166.09375,
+    "working_set_mb": 72.19921875,
+    "peak_private_mb": 231.921875,
+    "capture_ms": 6.911300000000001,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 104.2044,
+    "image_ms": 117.8485,
+    "final_ms": 117.8485,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 170.4765625,
+    "working_set_mb": 76.64453125,
+    "peak_private_mb": 232.03125,
+    "capture_ms": 6.9473,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]

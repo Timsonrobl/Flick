@@ -1,0 +1,582 @@
+[
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 195.0486,
+    "image_ms": 210.1148,
+    "final_ms": 210.1148,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 164.5546875,
+    "working_set_mb": 70.92578125,
+    "peak_private_mb": 180.9921875,
+    "capture_ms": 11.7636,
+    "pages": [
+      {
+        "image_ms": 118.7606,
+        "final_ms": 118.7606,
+        "private_mb": 198.0390625,
+        "working_set_mb": 71.4140625,
+        "pressed_wall": 13437344878543.898
+      },
+      {
+        "image_ms": 7.886000000000001,
+        "final_ms": 7.886000000000001,
+        "private_mb": 214.9375,
+        "working_set_mb": 71.6328125,
+        "pressed_wall": 13437344879373.908
+      },
+      {
+        "image_ms": 35.0627,
+        "final_ms": 35.0627,
+        "private_mb": 264.4453125,
+        "working_set_mb": 71.71875,
+        "pressed_wall": 13437344880083.73
+      },
+      {
+        "image_ms": 41.815,
+        "final_ms": 41.815,
+        "private_mb": 264.47265625,
+        "working_set_mb": 71.74609375,
+        "pressed_wall": 13437344880821.934
+      },
+      {
+        "image_ms": 42.0841,
+        "final_ms": 42.0841,
+        "private_mb": 264.73046875,
+        "working_set_mb": 72.14453125,
+        "pressed_wall": 13437344881566.395
+      },
+      {
+        "image_ms": 31.348300000000002,
+        "final_ms": 31.348300000000002,
+        "private_mb": 264.82421875,
+        "working_set_mb": 72.23046875,
+        "pressed_wall": 13437344882320.182
+      },
+      {
+        "image_ms": 36.1198,
+        "final_ms": 36.1198,
+        "private_mb": 265.7109375,
+        "working_set_mb": 73.1171875,
+        "pressed_wall": 13437344883051.719
+      },
+      {
+        "image_ms": 69.201,
+        "final_ms": 69.201,
+        "private_mb": 289.83984375,
+        "working_set_mb": 80.80859375,
+        "pressed_wall": 13437344883801.678
+      },
+      {
+        "image_ms": 55.66780000000001,
+        "final_ms": 55.66780000000001,
+        "private_mb": 290.15625,
+        "working_set_mb": 80.9921875,
+        "pressed_wall": 13437344884574.889
+      },
+      {
+        "image_ms": 20.5339,
+        "final_ms": 20.5339,
+        "private_mb": 290.15625,
+        "working_set_mb": 80.9921875,
+        "pressed_wall": 13437344885342.129
+      },
+      {
+        "image_ms": 27.724,
+        "final_ms": 27.724,
+        "private_mb": 290.15625,
+        "working_set_mb": 81.046875,
+        "pressed_wall": 13437344886064.863
+      },
+      {
+        "image_ms": 35.3668,
+        "final_ms": 35.3668,
+        "private_mb": 290.1640625,
+        "working_set_mb": 81.0546875,
+        "pressed_wall": 13437344886795.773
+      },
+      {
+        "image_ms": 34.9899,
+        "final_ms": 34.9899,
+        "private_mb": 290.1640625,
+        "working_set_mb": 81.09375,
+        "pressed_wall": 13437344887533.19
+      },
+      {
+        "image_ms": 7.762899999999999,
+        "final_ms": 7.762899999999999,
+        "private_mb": 290.265625,
+        "working_set_mb": 81.22265625,
+        "pressed_wall": 13437344888279.545
+      },
+      {
+        "image_ms": 48.6194,
+        "final_ms": 48.6194,
+        "private_mb": 290.265625,
+        "working_set_mb": 81.2265625,
+        "pressed_wall": 13437344888988.99
+      },
+      {
+        "image_ms": 41.814499999999995,
+        "final_ms": 41.814499999999995,
+        "private_mb": 290.19140625,
+        "working_set_mb": 81.15234375,
+        "pressed_wall": 13437344889739.129
+      },
+      {
+        "image_ms": 48.6104,
+        "final_ms": 48.6104,
+        "private_mb": 290.19140625,
+        "working_set_mb": 81.15234375,
+        "pressed_wall": 13437344890483.367
+      },
+      {
+        "image_ms": 42.4631,
+        "final_ms": 42.4631,
+        "private_mb": 290.1953125,
+        "working_set_mb": 81.15625,
+        "pressed_wall": 13437344891237.445
+      },
+      {
+        "image_ms": 41.544200000000004,
+        "final_ms": 41.544200000000004,
+        "private_mb": 290.1953125,
+        "working_set_mb": 81.15625,
+        "pressed_wall": 13437344891987.332
+      },
+      {
+        "image_ms": 56.2941,
+        "final_ms": 56.2941,
+        "private_mb": 290.1953125,
+        "working_set_mb": 81.15625,
+        "pressed_wall": 13437344892735.457
+      },
+      {
+        "image_ms": 84.1552,
+        "final_ms": 84.1552,
+        "private_mb": 290.1953125,
+        "working_set_mb": 81.15625,
+        "pressed_wall": 13437344893496.262
+      },
+      {
+        "image_ms": 14.9351,
+        "final_ms": 14.9351,
+        "private_mb": 293.34375,
+        "working_set_mb": 84.296875,
+        "pressed_wall": 13437344894290.506
+      },
+      {
+        "image_ms": 91.3567,
+        "final_ms": 91.3567,
+        "private_mb": 298.73046875,
+        "working_set_mb": 89.671875,
+        "pressed_wall": 13437344895005.836
+      },
+      {
+        "image_ms": 35.1971,
+        "final_ms": 35.1971,
+        "private_mb": 298.73046875,
+        "working_set_mb": 89.671875,
+        "pressed_wall": 13437344895798.594
+      },
+      {
+        "image_ms": 35.006299999999996,
+        "final_ms": 35.006299999999996,
+        "private_mb": 298.82421875,
+        "working_set_mb": 89.765625,
+        "pressed_wall": 13437344896536.146
+      },
+      {
+        "image_ms": 48.983,
+        "final_ms": 48.983,
+        "private_mb": 299.01171875,
+        "working_set_mb": 89.83203125,
+        "pressed_wall": 13437344897273.309
+      },
+      {
+        "image_ms": 34.913,
+        "final_ms": 34.913,
+        "private_mb": 299.01171875,
+        "working_set_mb": 89.8359375,
+        "pressed_wall": 13437344898025.332
+      },
+      {
+        "image_ms": 35.0118,
+        "final_ms": 35.0118,
+        "private_mb": 299.015625,
+        "working_set_mb": 89.87109375,
+        "pressed_wall": 13437344898763.012
+      },
+      {
+        "image_ms": 34.6974,
+        "final_ms": 34.6974,
+        "private_mb": 299.015625,
+        "working_set_mb": 89.87109375,
+        "pressed_wall": 13437344899504.967
+      },
+      {
+        "image_ms": 42.4271,
+        "final_ms": 42.4271,
+        "private_mb": 299.015625,
+        "working_set_mb": 89.90625,
+        "pressed_wall": 13437344900239.863
+      },
+      {
+        "image_ms": 62.7182,
+        "final_ms": 62.7182,
+        "private_mb": 298.93359375,
+        "working_set_mb": 89.82421875,
+        "pressed_wall": 13437344900985.078
+      },
+      {
+        "image_ms": 34.7603,
+        "final_ms": 34.7603,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344901749.637
+      },
+      {
+        "image_ms": 28.9324,
+        "final_ms": 28.9324,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344902487.23
+      },
+      {
+        "image_ms": 35.0126,
+        "final_ms": 35.0126,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344903217.8
+      },
+      {
+        "image_ms": 35.7271,
+        "final_ms": 35.7271,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344903954.895
+      },
+      {
+        "image_ms": 35.8994,
+        "final_ms": 35.8994,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344904693.625
+      },
+      {
+        "image_ms": 48.8493,
+        "final_ms": 48.8493,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344905433.303
+      },
+      {
+        "image_ms": 63.4879,
+        "final_ms": 63.4879,
+        "private_mb": 299.03125,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344906184.766
+      },
+      {
+        "image_ms": 55.7176,
+        "final_ms": 55.7176,
+        "private_mb": 298.9921875,
+        "working_set_mb": 89.91015625,
+        "pressed_wall": 13437344906954.605
+      },
+      {
+        "image_ms": 42.4571,
+        "final_ms": 42.4571,
+        "private_mb": 298.9921875,
+        "working_set_mb": 89.91015625,
+        "pressed_wall": 13437344907712.35
+      },
+      {
+        "image_ms": 34.8005,
+        "final_ms": 34.8005,
+        "private_mb": 298.9921875,
+        "working_set_mb": 89.91015625,
+        "pressed_wall": 13437344908458.361
+      },
+      {
+        "image_ms": 28.9112,
+        "final_ms": 28.9112,
+        "private_mb": 298.9921875,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344909198.2
+      },
+      {
+        "image_ms": 33.7267,
+        "final_ms": 33.7267,
+        "private_mb": 298.9921875,
+        "working_set_mb": 89.921875,
+        "pressed_wall": 13437344909934.656
+      },
+      {
+        "image_ms": 36.158,
+        "final_ms": 36.158,
+        "private_mb": 298.9921875,
+        "working_set_mb": 89.92578125,
+        "pressed_wall": 13437344910672.842
+      },
+      {
+        "image_ms": 48.862700000000004,
+        "final_ms": 48.862700000000004,
+        "private_mb": 299.05078125,
+        "working_set_mb": 90.0390625,
+        "pressed_wall": 13437344911409.941
+      },
+      {
+        "image_ms": 56.4561,
+        "final_ms": 56.4561,
+        "private_mb": 299.05078125,
+        "working_set_mb": 90.0390625,
+        "pressed_wall": 13437344912160.766
+      },
+      {
+        "image_ms": 42.8998,
+        "final_ms": 42.8998,
+        "private_mb": 299.2890625,
+        "working_set_mb": 90.27734375,
+        "pressed_wall": 13437344912918.412
+      },
+      {
+        "image_ms": 62.81870000000001,
+        "final_ms": 62.81870000000001,
+        "private_mb": 299.19140625,
+        "working_set_mb": 90.1796875,
+        "pressed_wall": 13437344913661.793
+      },
+      {
+        "image_ms": 70.0795,
+        "final_ms": 70.0795,
+        "private_mb": 299.19140625,
+        "working_set_mb": 90.1796875,
+        "pressed_wall": 13437344914431.291
+      },
+      {
+        "image_ms": 63.2069,
+        "final_ms": 63.2069,
+        "private_mb": 299.2890625,
+        "working_set_mb": 90.27734375,
+        "pressed_wall": 13437344915202.832
+      },
+      {
+        "image_ms": 56.2196,
+        "final_ms": 56.2196,
+        "private_mb": 299.2890625,
+        "working_set_mb": 90.27734375,
+        "pressed_wall": 13437344915968.627
+      },
+      {
+        "image_ms": 92.6815,
+        "final_ms": 92.6815,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.55859375,
+        "pressed_wall": 13437344916728.326
+      },
+      {
+        "image_ms": 69.1115,
+        "final_ms": 69.1115,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.55859375,
+        "pressed_wall": 13437344917522.004
+      },
+      {
+        "image_ms": 21.310699999999997,
+        "final_ms": 21.310699999999997,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.55859375,
+        "pressed_wall": 13437344918302.506
+      },
+      {
+        "image_ms": 55.955799999999996,
+        "final_ms": 55.955799999999996,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.55859375,
+        "pressed_wall": 13437344919027.787
+      },
+      {
+        "image_ms": 36.142,
+        "final_ms": 36.142,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344919784.352
+      },
+      {
+        "image_ms": 35.147200000000005,
+        "final_ms": 35.147200000000005,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344920522.314
+      },
+      {
+        "image_ms": 55.9506,
+        "final_ms": 55.9506,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344921259.785
+      },
+      {
+        "image_ms": 34.8981,
+        "final_ms": 34.8981,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344922018.61
+      },
+      {
+        "image_ms": 41.7854,
+        "final_ms": 41.7854,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344922756.723
+      },
+      {
+        "image_ms": 41.8725,
+        "final_ms": 41.8725,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344923501.227
+      },
+      {
+        "image_ms": 63.4999,
+        "final_ms": 63.4999,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344924243.234
+      },
+      {
+        "image_ms": 42.744499999999995,
+        "final_ms": 42.744499999999995,
+        "private_mb": 303.58203125,
+        "working_set_mb": 94.5625,
+        "pressed_wall": 13437344925012.445
+      },
+      {
+        "image_ms": 48.7625,
+        "final_ms": 48.7625,
+        "private_mb": 303.3515625,
+        "working_set_mb": 94.33203125,
+        "pressed_wall": 13437344925756.42
+      },
+      {
+        "image_ms": 50.047399999999996,
+        "final_ms": 50.047399999999996,
+        "private_mb": 303.3515625,
+        "working_set_mb": 94.33203125,
+        "pressed_wall": 13437344926506.945
+      },
+      {
+        "image_ms": 63.484100000000005,
+        "final_ms": 63.484100000000005,
+        "private_mb": 303.2734375,
+        "working_set_mb": 94.26171875,
+        "pressed_wall": 13437344927260.297
+      },
+      {
+        "image_ms": 69.58300000000001,
+        "final_ms": 69.58300000000001,
+        "private_mb": 303.3515625,
+        "working_set_mb": 94.34375,
+        "pressed_wall": 13437344928026.975
+      },
+      {
+        "image_ms": 55.5475,
+        "final_ms": 55.5475,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344928802.33
+      },
+      {
+        "image_ms": 76.9162,
+        "final_ms": 76.9162,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344929558.756
+      },
+      {
+        "image_ms": 33.5113,
+        "final_ms": 33.5113,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344930346.08
+      },
+      {
+        "image_ms": 35.611700000000006,
+        "final_ms": 35.611700000000006,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344931082.121
+      },
+      {
+        "image_ms": 35.6056,
+        "final_ms": 35.6056,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344931822.678
+      },
+      {
+        "image_ms": 34.9979,
+        "final_ms": 34.9979,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344932560.203
+      },
+      {
+        "image_ms": 7.630999999999999,
+        "final_ms": 7.630999999999999,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344933306.766
+      },
+      {
+        "image_ms": 34.8552,
+        "final_ms": 34.8552,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344934014.51
+      },
+      {
+        "image_ms": 35.1194,
+        "final_ms": 35.1194,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344934752.219
+      },
+      {
+        "image_ms": 41.946999999999996,
+        "final_ms": 41.946999999999996,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344935488.451
+      },
+      {
+        "image_ms": 42.541799999999995,
+        "final_ms": 42.541799999999995,
+        "private_mb": 303.44921875,
+        "working_set_mb": 94.44140625,
+        "pressed_wall": 13437344936235.332
+      },
+      {
+        "image_ms": 42.211400000000005,
+        "final_ms": 42.211400000000005,
+        "private_mb": 303.35546875,
+        "working_set_mb": 94.38671875,
+        "pressed_wall": 13437344936984.803
+      },
+      {
+        "image_ms": 76.1283,
+        "final_ms": 76.1283,
+        "private_mb": 303.35546875,
+        "working_set_mb": 94.38671875,
+        "pressed_wall": 13437344937738.47
+      }
+    ],
+    "page_error": null,
+    "error": null
+  }
+]

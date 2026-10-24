@@ -63,9 +63,11 @@ pub struct Options {
 pub fn parse_key(name: &str) -> Result<VIRTUAL_KEY> {
     Ok(match name {
         "right" => VK_RIGHT,
+        // Flick: the next picture in the window's random order.
+        "down" => VK_DOWN,
         "pagedown" => VK_NEXT,
         "space" => VK_SPACE,
-        other => bail!("unknown key {other} (right, pagedown, space)"),
+        other => bail!("unknown key {other} (right, down, pagedown, space)"),
     })
 }
 

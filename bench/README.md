@@ -461,6 +461,43 @@ Idle CPU while resident: 0.0 ms over 5 s.
   for the device and is not trimmed. The working set, i.e. RAM actually in
   use, drops to ~0 after the trim.
 
+## Baseline before milestone 3b (2026-10-24)
+
+The milestone 2/3a runs again after the features added since (app icon,
+elevation hand-off, View menu and settings, render filters, sorting, random
+paging, animated GIF, held-key paging), same burst file, `--size 3377x1440`,
+`ext-viewer` as above. Benchmark runs use default settings, not the saved
+ones. Raw data: `bench/results/pre3b-*.json`.
+
+| | milestone 3a | now | budget |
+|---|---|---|---|
+| cold open, `--standalone` (10 runs) | 241 ms | **220 ms** (213–259) | ≤ 300 |
+| warm open (10 runs) | 120 ms | **116 ms** (112–132) | ≤ 150 |
+| warm open after the 30 s trim (3 + 3 runs) | 137 ms | **135–176 ms**, see below | ≤ 150 |
+| page turn, key → screen (median / p90 / max) | 50 / 83 / 90 ms | **42 / 56 / 85 ms** | |
+| random page turn (↓, new) | | **42 / 56 / 88 ms** | |
+| blank / flicker frames | 0 | **0 in every run** | 0 |
+| resident idle CPU over 5 s | 0.0 ms | **0.0 ms** | 0 |
+| resident private / working set, window closed | 149 / 71 MB | 165 / 71 MB | |
+| working set after the trim | ~0 MB | **0 MB** | |
+
+- **Warm open after the trim varies between sessions:** 170 / 168 / 176 ms
+  in the first run, 159 / 135 / 132 ms in a second one minutes later
+  (milestone 3a: 133–138). The window appears on time in all of them
+  (105–110 ms). Flick's own timeline (`--timeline-out`) puts the extra
+  time after decoding, which takes the same ~85 ms trimmed or not: the
+  upload and first draw take ~15 ms instead of ~9, and the wait for the
+  compositor to show the first frame (`DwmFlush`) 28 ms instead of 9, i.e.
+  driver and compositor memory coming back in. Not clearly caused by the
+  new features; to settle with an A/B against the 3a build if it matters.
+- **Random paging levels off higher:** private commit 290 → 303 MB and
+  working set 81 → 94 MB over 80 turns (`pre3b-random-long.json`), flat for
+  the last 30. Paging in order sits at 199 / 72 MB. A random step replaces
+  more of the ring than an in-order one, and the ring keeps 7 screen
+  levels instead of 5 while paging randomly. Not a leak.
+- **Private commit while resident** is 16 MB above milestone 3a, all in
+  the graphics driver's reserve (the working set is unchanged).
+
 ## Disk cache of screen levels (2026-10-24)
 
 `flick-bench disk-cache --screen 3377x1440 bench/photos/burst`: decode each

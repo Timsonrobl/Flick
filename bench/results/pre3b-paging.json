@@ -1,0 +1,238 @@
+[
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 210.0662,
+    "image_ms": 221.1759,
+    "final_ms": 221.1759,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 164.75,
+    "working_set_mb": 71.0078125,
+    "peak_private_mb": 181.1875,
+    "capture_ms": 7.0126,
+    "pages": [
+      {
+        "image_ms": 35.433600000000006,
+        "final_ms": 35.433600000000006,
+        "private_mb": 181.73828125,
+        "working_set_mb": 71.4921875,
+        "pressed_wall": 13437344373167.125
+      },
+      {
+        "image_ms": 35.1107,
+        "final_ms": 35.1107,
+        "private_mb": 198.2109375,
+        "working_set_mb": 71.50390625,
+        "pressed_wall": 13437344373906.766
+      },
+      {
+        "image_ms": 34.882799999999996,
+        "final_ms": 34.882799999999996,
+        "private_mb": 198.2109375,
+        "working_set_mb": 71.5078125,
+        "pressed_wall": 13437344374647.447
+      },
+      {
+        "image_ms": 48.5596,
+        "final_ms": 48.5596,
+        "private_mb": 198.2109375,
+        "working_set_mb": 71.51953125,
+        "pressed_wall": 13437344375387.055
+      },
+      {
+        "image_ms": 42.6121,
+        "final_ms": 42.6121,
+        "private_mb": 198.23828125,
+        "working_set_mb": 71.55078125,
+        "pressed_wall": 13437344376140.217
+      },
+      {
+        "image_ms": 41.694700000000005,
+        "final_ms": 41.694700000000005,
+        "private_mb": 198.265625,
+        "working_set_mb": 71.57421875,
+        "pressed_wall": 13437344376888.016
+      },
+      {
+        "image_ms": 27.9399,
+        "final_ms": 27.9399,
+        "private_mb": 198.265625,
+        "working_set_mb": 71.57421875,
+        "pressed_wall": 13437344377632.822
+      },
+      {
+        "image_ms": 34.969500000000004,
+        "final_ms": 34.969500000000004,
+        "private_mb": 198.265625,
+        "working_set_mb": 71.57421875,
+        "pressed_wall": 13437344378363.635
+      },
+      {
+        "image_ms": 28.0392,
+        "final_ms": 28.0392,
+        "private_mb": 198.25390625,
+        "working_set_mb": 71.6796875,
+        "pressed_wall": 13437344379101.24
+      },
+      {
+        "image_ms": 27.655099999999997,
+        "final_ms": 27.655099999999997,
+        "private_mb": 198.25390625,
+        "working_set_mb": 71.6875,
+        "pressed_wall": 13437344379833.998
+      },
+      {
+        "image_ms": 34.6987,
+        "final_ms": 34.6987,
+        "private_mb": 198.82421875,
+        "working_set_mb": 72.08203125,
+        "pressed_wall": 13437344380561.852
+      },
+      {
+        "image_ms": 41.9144,
+        "final_ms": 41.9144,
+        "private_mb": 198.953125,
+        "working_set_mb": 72.21484375,
+        "pressed_wall": 13437344381303.055
+      },
+      {
+        "image_ms": 55.5176,
+        "final_ms": 55.5176,
+        "private_mb": 198.953125,
+        "working_set_mb": 72.296875,
+        "pressed_wall": 13437344382045.355
+      },
+      {
+        "image_ms": 42.3588,
+        "final_ms": 42.3588,
+        "private_mb": 198.9609375,
+        "working_set_mb": 72.3125,
+        "pressed_wall": 13437344382805.408
+      },
+      {
+        "image_ms": 55.6522,
+        "final_ms": 55.6522,
+        "private_mb": 199.30859375,
+        "working_set_mb": 72.66015625,
+        "pressed_wall": 13437344383547.92
+      },
+      {
+        "image_ms": 85.35239999999999,
+        "final_ms": 85.35239999999999,
+        "private_mb": 199.43359375,
+        "working_set_mb": 72.7890625,
+        "pressed_wall": 13437344384306.607
+      },
+      {
+        "image_ms": 55.7222,
+        "final_ms": 55.7222,
+        "private_mb": 199.40625,
+        "working_set_mb": 72.76171875,
+        "pressed_wall": 13437344385101.395
+      },
+      {
+        "image_ms": 56.4939,
+        "final_ms": 56.4939,
+        "private_mb": 199.38671875,
+        "working_set_mb": 72.7421875,
+        "pressed_wall": 13437344385860.797
+      },
+      {
+        "image_ms": 34.7444,
+        "final_ms": 34.7444,
+        "private_mb": 199.38671875,
+        "working_set_mb": 72.7421875,
+        "pressed_wall": 13437344386622.164
+      },
+      {
+        "image_ms": 34.7861,
+        "final_ms": 34.7861,
+        "private_mb": 199.38671875,
+        "working_set_mb": 72.7421875,
+        "pressed_wall": 13437344387359.75
+      }
+    ],
+    "page_error": "page turn 21: image did not settle within 15s (0 changes seen)",
+    "error": null
+  },
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 211.1452,
+    "image_ms": 221.0302,
+    "final_ms": 221.0302,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 162.1796875,
+    "working_set_mb": 66.9453125,
+    "peak_private_mb": 178.62109375,
+    "capture_ms": 6.914949999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 196.0031,
+    "image_ms": 207.5474,
+    "final_ms": 207.5474,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 164.87109375,
+    "working_set_mb": 71.12890625,
+    "peak_private_mb": 181.3125,
+    "capture_ms": 6.908799999999999,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 201.9554,
+    "image_ms": 213.8737,
+    "final_ms": 213.8737,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 165.62890625,
+    "working_set_mb": 71.07421875,
+    "peak_private_mb": 182.0703125,
+    "capture_ms": 6.8987,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  },
+  {
+    "file": "bench\\photos\\burst\\burst-02.jpeg",
+    "window_ms": 200.6725,
+    "image_ms": 213.9561,
+    "final_ms": 213.9561,
+    "glitch_ms": [],
+    "blank_ms": 0.0,
+    "window_size": [
+      3377,
+      1440
+    ],
+    "private_mb": 166.55859375,
+    "working_set_mb": 70.984375,
+    "peak_private_mb": 183.00390625,
+    "capture_ms": 6.9073,
+    "pages": [],
+    "page_error": null,
+    "error": null
+  }
+]
