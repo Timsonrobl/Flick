@@ -614,7 +614,9 @@ fn text_format(size: f32) -> windows::core::Result<IDWriteTextFormat> {
         let format = factory.CreateTextFormat(w!("Segoe UI"), None, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, w!(""))?;
         format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
         format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
-        let trimming = DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER, delimiter: 0, delimiterCount: 0 };
+        // A path too long is cut in the middle, keeping its file name (and
+        // what follows it): "D:\Photos\2024\…\IMG_0042.jpg   [3/40]".
+        let trimming = DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER, delimiter: u32::from('\\'), delimiterCount: 1 };
         let ellipsis = factory.CreateEllipsisTrimmingSign(&format)?;
         format.SetTrimming(&trimming, &ellipsis)?;
         Ok(format)

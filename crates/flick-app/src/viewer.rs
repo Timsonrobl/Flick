@@ -1833,15 +1833,16 @@ impl Viewer {
         self.redraw();
     }
 
-    /// "folder › file  [i/n]" for the hover bar.
+    /// "full\path\file  [i/n]" for the hover bar (a tab of the strip: "file  [i/n]").
     fn title(&self) -> String {
         let path = self.tab.wanted.as_deref().unwrap_or(&self.tab.request.file);
-        let folder = path.parent().and_then(|p| p.file_name()).map(|f| f.to_string_lossy().into_owned());
         let position = self.tab.folder.as_ref().map(|f| format!("   [{}/{}]", f.index + 1, f.files.len())).unwrap_or_default();
-        match folder {
+        if self.others.is_empty() {
+            // The whole path (cut short in the middle if it must be: chrome.rs).
+            format!("{}{position}", path.display())
+        } else {
             // In a tab of the strip: no room for the folder.
-            Some(folder) if self.others.is_empty() => format!("{folder}  ›  {}{position}", file_name(path)),
-            _ => format!("{}{position}", file_name(path)),
+            format!("{}{position}", file_name(path))
         }
     }
 

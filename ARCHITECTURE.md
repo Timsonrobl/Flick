@@ -433,8 +433,9 @@ Full decode that would only be refused.
   single top bar, drawn over the picture (never shrinking it), fades in
   (100 ms) when the cursor is within **2× the bar height** of the window's
   top edge, and fades out (200 ms) when it leaves the zone or the window.
-  Contents: "folder › file" title (ellipsised; index/count and tag chips
-  later), and minimize / maximize-restore / close buttons on the right
+  Contents: the file's full path and its [index/count] as the title (cut
+  in the middle when too long, keeping the file name; a cut-short title or
+  tab shows the whole path in a tip after a second's hover), and minimize / maximize-restore / close buttons on the right
   (46 px each, close hovers red). Dragging the title moves the window (with
   Snap); double-clicking it maximizes. The move starts only once the cursor
   passes the system drag threshold, so a click never enters Windows' move
