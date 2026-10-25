@@ -2572,7 +2572,17 @@ impl Viewer {
         self.window.as_ref().map_or(0.0, |w| w.inner_size().width as f32)
     }
 
+    /// The right button holds a press (a tab dragged along the strip, a
+    /// zoom, a menu click): the left one waits. One drag at a time; a left
+    /// press mid-drag took the drag's place and left its tab hanging.
+    fn right_held(&self) -> bool {
+        matches!(self.pressed, Some(Press::Reorder { right: true, .. })) || self.right_press.is_some()
+    }
+
     fn on_left_press(&mut self) -> Action {
+        if self.right_held() {
+            return Action::None;
+        }
         let Some(window) = self.window.clone() else { return Action::None };
         if let Some(direction) = self.edge() {
             let _ = window.drag_resize_window(direction);
@@ -2622,6 +2632,10 @@ impl Viewer {
     }
 
     fn on_right_press(&mut self) {
+        // The left button holds a press or pans: the right one waits.
+        if self.pressed.is_some() || self.panning.is_some() {
+            return;
+        }
         // On a tab: a drag reorders (as Ctrl+left does).
         if let Some(chrome::Hit::Tab(i)) = self.chrome.hit(self.cursor_f32(), self.width()) {
             self.pressed = Some(self.reorder_press(i, true));
@@ -2755,6 +2769,10 @@ impl Viewer {
     fn on_left_release(&mut self, shared: &Shared) -> Action {
         if self.panning.take().is_some() {
             self.update_cursor_icon();
+        }
+        // The right button's drag goes on (this release's press was ignored).
+        if self.right_held() {
+            return Action::None;
         }
         let pressed = self.pressed.take();
         match pressed {
