@@ -89,6 +89,8 @@ pub enum Action {
     /// The user closed a tab, at strip position `at`, of a window that
     /// stays open: Ctrl+Shift+T reopens it.
     TabClosed { at: usize, tab: SavedTab },
+    /// Ctrl+Shift+T: reopen the last close.
+    Reopen,
     /// The folder position changed: re-plan preloading.
     Navigated,
     /// The user changed a menu setting: new windows start with it, it is
@@ -856,6 +858,30 @@ impl Viewer {
         self.redraw();
     }
 
+    /// A reopened tab (Ctrl+Shift+T) at strip position `at` (else right
+    /// after the active one), made active.
+    pub fn reopen_tab(&mut self, tab: Tab, at: Option<usize>, shared: &Shared) {
+        self.hold_picture();
+        let mut tabs = std::mem::take(&mut self.others);
+        tabs.insert(self.active_at, park(std::mem::replace(&mut self.tab, tab)));
+        self.active_at = at.unwrap_or(self.active_at + 1).min(tabs.len());
+        self.others = tabs;
+        self.wake(shared);
+        self.chrome.reveal(REVEAL);
+        if let Some(window) = &self.window {
+            window.set_minimized(false);
+            window.focus_window();
+        }
+    }
+
+    /// A reopened window's other tabs, around its active one (at `active_at`),
+    /// and its Tab Lock.
+    pub fn reopen_others(&mut self, others: Vec<Tab>, active_at: usize, locked: bool) {
+        self.active_at = active_at.min(others.len());
+        self.others = others;
+        self.set_locked(locked && !self.others.is_empty());
+    }
+
     /// Ctrl+D: the copy goes right after the active tab, in the background;
     /// the bar shows for a moment so the new tab is seen arriving.
     pub fn add_duplicate(&mut self, tab: Tab) {
@@ -1080,6 +1106,7 @@ impl Viewer {
         shared.cache.insert(path.clone(), screen.clone());
         target.wanted = Some(path.clone());
         target.current = Some(Current::new(path, screen, size, mode, target.turn.unwrap_or(default_turn)));
+        target.restore_view();
         target.shown_at = Some(Instant::now());
         if active {
             self.render(shared)?;
@@ -1166,6 +1193,7 @@ impl Viewer {
             shared.cache.insert(path.clone(), screen.clone());
             self.tab.wanted = Some(path.clone());
             self.tab.current = Some(Current::new(path, screen, size, self.prefs.mode, turn));
+            self.tab.restore_view(); // a reopened window's zoom and pan
         } else if let Some(current) = &mut self.tab.current {
             current.view.resize(size);
         }
@@ -2890,7 +2918,8 @@ impl Viewer {
                 return self.set_turn(turn);
             }
         }
-        // Tabs: Ctrl+Tab / Ctrl+Shift+Tab cycle, Ctrl+1..9 jump, Ctrl+W closes.
+        // Tabs: Ctrl+Tab / Ctrl+Shift+Tab cycle, Ctrl+1..9 jump, Ctrl+W
+        // closes, Ctrl+Shift+T reopens the last closed (once per press).
         if self.modifiers.control_key() {
             let count = self.others.len() + 1;
             let action = match (event.physical_key, event.logical_key.as_ref()) {
@@ -2899,6 +2928,7 @@ impl Viewer {
                     Some(self.switch_tab((self.active_at + step) % count, shared))
                 }
                 (PhysicalKey::Code(KeyCode::KeyW), _) => Some(self.close_tab(self.active_at, shared)),
+                (PhysicalKey::Code(KeyCode::KeyT), _) if self.modifiers.shift_key() => Some(if event.repeat { Action::None } else { Action::Reopen }),
                 // Once per press, not per key repeat.
                 (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyN | KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyR), _) | (_, Key::Named(NamedKey::Enter))
                     if event.repeat =>

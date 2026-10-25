@@ -224,15 +224,29 @@ impl App {
     /// window uses, placed `beside` the window it comes from (else where
     /// windows were last). It shows once its picture is drawn (`try_show`).
     fn new_window(&mut self, event_loop: &ActiveEventLoop, tab: Tab, beside: Option<ViewerId>) -> Option<ViewerId> {
-        let id = self.new_id();
+        let placement = beside.and_then(|v| self.viewers.get(&v)).and_then(|v| v.hwnd()).and_then(placement::beside);
+        let viewer = Viewer::new(self.new_id(), tab, placement.or_else(|| self.cascade()), self.prefs, self.global, self.free_color(None));
+        self.add_window(event_loop, viewer)
+    }
+
+    /// Where a new window goes by default: the remembered placement,
+    /// cascaded while other windows are open.
+    fn cascade(&self) -> Option<placement::Placement> {
         let open = self.viewers.len() as i32;
-        let placement = beside.and_then(|v| self.viewers.get(&v)).and_then(|v| v.hwnd()).and_then(placement::beside).or_else(|| {
-            // Cascade from the remembered placement while other windows are open.
-            self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) })
-        });
+        self.placement.map(|p| if p.maximized || open == 0 { p } else { p.offset(32 * open, 32 * open) })
+    }
+
+    /// `wanted` if no open window uses it, else the first colour none does.
+    fn free_color(&self, wanted: Option<usize>) -> usize {
         let used: Vec<usize> = self.viewers.values().map(|v| v.color).collect();
-        let color = (0..chrome::PALETTE.len()).find(|c| !used.contains(c)).unwrap_or(self.viewers.len() % chrome::PALETTE.len());
-        let mut viewer = Viewer::new(id, tab, placement, self.prefs, self.global, color);
+        wanted
+            .filter(|c| *c < chrome::PALETTE.len() && !used.contains(c))
+            .or_else(|| (0..chrome::PALETTE.len()).find(|c| !used.contains(c)))
+            .unwrap_or(self.viewers.len() % chrome::PALETTE.len())
+    }
+
+    fn add_window(&mut self, event_loop: &ActiveEventLoop, mut viewer: Viewer) -> Option<ViewerId> {
+        let id = viewer.id;
         if let Err(e) = viewer.create_window(event_loop) {
             report(&e);
             return None;
@@ -618,6 +632,58 @@ impl App {
         }
     }
 
+    /// Ctrl+Shift+T, or the tray icon with no window open: undoes the last
+    /// close. A tab goes back to its window and place if that is still open,
+    /// else after the active tab of the window used last (or into a window
+    /// of its own); windows come back as they were. False: nothing to reopen.
+    fn reopen(&mut self, event_loop: &ActiveEventLoop) -> bool {
+        let Some(closed) = self.recording.then(session::pop).flatten() else { return false };
+        self.idle_since = None;
+        match closed {
+            session::Closed::Tab { run, window, at, tab } => {
+                let shown = |id: &ViewerId| self.viewers.get(id).is_some_and(Viewer::is_shown);
+                let home = Some(window).filter(|id| run == session::run() && shown(id));
+                let target = home.map(|id| (id, Some(at))).or_else(|| self.focus_order.iter().find(|id| shown(id)).map(|&id| (id, None)));
+                let tab = Tab::reopened(self.new_id(), tab);
+                match target.and_then(|(id, at)| self.viewers.get_mut(&id).map(|v| (v, at))) {
+                    Some((viewer, at)) => viewer.reopen_tab(tab, at, &self.shared),
+                    None => {
+                        let prefs = settings::prefs_text(self.prefs);
+                        self.reopen_window(event_loop, tab, Vec::new(), session::SavedWindow { placement: None, color: usize::MAX, prefs, locked: false, active: 0, tabs: Vec::new() });
+                    }
+                }
+            }
+            session::Closed::Windows(windows) => {
+                for mut saved in windows {
+                    let mut tabs: Vec<Tab> = std::mem::take(&mut saved.tabs).into_iter().map(|t| Tab::reopened(self.new_id(), t)).collect();
+                    if tabs.is_empty() {
+                        continue;
+                    }
+                    let active = tabs.remove(saved.active.min(tabs.len() - 1));
+                    self.reopen_window(event_loop, active, tabs, saved);
+                }
+            }
+        }
+        self.save_session();
+        self.plan();
+        true
+    }
+
+    /// A reopened window: `active` its drawn tab (decoded at once, as an
+    /// opened file is), `others` around it, as `saved` says.
+    fn reopen_window(&mut self, event_loop: &ActiveEventLoop, mut active: Tab, others: Vec<Tab>, saved: session::SavedWindow) {
+        let placement = saved.placement.and_then(placement::Placement::from_parts).or_else(|| self.cascade());
+        let prefs = settings::parse(&saved.prefs, self.prefs).0;
+        active.wanted = None; // decoded on the open path, not by the pool
+        let request = active.request.clone();
+        let mut viewer = Viewer::new(self.new_id(), active, placement, prefs, self.global, self.free_color(Some(saved.color)));
+        viewer.reopen_others(others, saved.active, saved.locked);
+        let tab = viewer.tab.id;
+        if let Some(id) = self.add_window(event_loop, viewer) {
+            self.spawn_decode(id, tab, &request);
+        }
+    }
+
     /// Quit: all the windows close as one close, to reopen together.
     fn quit(&mut self, event_loop: &ActiveEventLoop) {
         if self.recording {
@@ -643,7 +709,9 @@ impl App {
                     }
                 }
                 None => {
-                    if let Some(file) = self.last_file.clone() {
+                    if !self.reopen(event_loop)
+                        && let Some(file) = self.last_file.clone()
+                    {
                         self.open(event_loop, Request { file, ..Default::default() });
                     }
                 }
@@ -897,6 +965,9 @@ impl App {
                 self.close(event_loop, id, true)
             }
             Ok(Action::Emptied) => self.close(event_loop, id, false),
+            Ok(Action::Reopen) => {
+                self.reopen(event_loop);
+            }
             Ok(Action::TabClosed { at, tab }) => {
                 if self.recording {
                     session::push(session::Closed::Tab { run: session::run(), window: id, at, tab });
