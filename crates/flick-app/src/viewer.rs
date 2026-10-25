@@ -1419,6 +1419,9 @@ impl Viewer {
         if self.chrome.end_reveal() {
             self.redraw(); // the bar fades out
         }
+        if self.chrome.show_tip() {
+            self.redraw(); // a cut-short tab's full path
+        }
         if self.note.as_ref().is_some_and(|(_, until)| *until <= Instant::now()) {
             self.note = None;
             self.redraw();
@@ -1453,7 +1456,7 @@ impl Viewer {
         let step = self.tab.folder.as_ref().filter(|f| f.index != self.tab.target).and_then(|_| self.tab.shown_at).map(|t| t + DWELL);
         let cool = self.others.iter().filter_map(|t| t.parked).min().map(|t| t + cool_after());
         let note = self.note.as_ref().map(|(_, until)| *until);
-        [frame, step, cool, self.chrome.reveal_deadline(), note, self.slide_due(), self.prefetch_due()].into_iter().flatten().min()
+        [frame, step, cool, self.chrome.reveal_deadline(), self.chrome.tip_deadline(), note, self.slide_due(), self.prefetch_due()].into_iter().flatten().min()
     }
 
     /// When Load Full Resolution Ahead decodes the picture's sharpest level:
@@ -2298,6 +2301,8 @@ impl Viewer {
         let title = self.title();
         let (tabs, active) = (self.tab_labels(), self.active_at);
         self.chrome.set_tabs(tabs.len());
+        let mut paths: Vec<PathBuf> = self.others.iter().map(|t| t.file().to_path_buf()).collect();
+        paths.insert(self.active_at, self.tab.file().to_path_buf());
         let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
         let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
         let info = if self.prefs.info { self.info_lines(shared) } else { None };
@@ -2424,7 +2429,7 @@ impl Viewer {
             if let (Some(osd), Some(text)) = (osd, &note) {
                 osd.draw_note(context, text, window);
             }
-            chrome.draw(context, window.0, &title, &tabs, active, maximized);
+            chrome.draw(context, window.0, &title, &tabs, &paths, active, maximized);
         })?;
         self.info_rect = info_rect;
         if sharpen.is_some() {

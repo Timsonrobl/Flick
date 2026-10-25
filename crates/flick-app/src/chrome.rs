@@ -5,10 +5,11 @@
 //! its text resources are created on first appearance, off the open path.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_COLOR_F};
-use windows::Win32::Graphics::Direct2D::{D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_ROUNDED_RECT, ID2D1DeviceContext, ID2D1SolidColorBrush};
+use windows::Win32::Graphics::Direct2D::{D2D1_DRAW_TEXT_OPTIONS_CLIP, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_ROUNDED_RECT, ID2D1DeviceContext, ID2D1SolidColorBrush};
 use windows::Win32::Graphics::DirectWrite::*;
 use windows::core::w;
 use windows_numerics::Vector2;
@@ -162,7 +163,16 @@ pub struct Chrome {
     reveal_until: Option<Instant>,
     /// Preferences ▸ Multi-row Tabs: off keeps one row, however narrow.
     multirow: bool,
+    /// The cursor rests on a tab (or the title): its full path shows from
+    /// then (`TIP_AFTER`), if its name is cut short.
+    tip_at: Option<Instant>,
+    tip_shown: bool,
+    /// The tip's text: wraps, no ellipsis.
+    tip_text: Option<(IDWriteTextFormat, f32)>,
 }
+
+/// How long the cursor rests on a tab before its full path shows.
+const TIP_AFTER: Duration = Duration::from_secs(1);
 
 /// Room for the Tab Lock padlock at 100 % scaling.
 const LOCK_WIDTH: f32 = 30.0;
@@ -173,7 +183,41 @@ const GLIDE_TAU: f32 = 0.05;
 
 impl Chrome {
     pub fn new(scale: f32, color: usize, multirow: bool) -> Chrome {
-        Chrome { scale, opacity: 0.0, target: 0.0, last_tick: None, hover: None, text: None, tabs: 1, color, positions: HashMap::new(), drag: None, glide_tick: None, locked: false, near: false, reveal_until: None, multirow }
+        Chrome {
+            scale,
+            opacity: 0.0,
+            target: 0.0,
+            last_tick: None,
+            hover: None,
+            text: None,
+            tabs: 1,
+            color,
+            positions: HashMap::new(),
+            drag: None,
+            glide_tick: None,
+            locked: false,
+            near: false,
+            reveal_until: None,
+            multirow,
+            tip_at: None,
+            tip_shown: false,
+            tip_text: None,
+        }
+    }
+
+    /// When a resting cursor's tip is due (the viewer wakes then, `show_tip`).
+    pub fn tip_deadline(&self) -> Option<Instant> {
+        self.tip_at
+    }
+
+    /// The tip came due. Returns whether the bar must redraw.
+    pub fn show_tip(&mut self) -> bool {
+        if self.tip_at.is_some_and(|t| t <= Instant::now()) {
+            self.tip_at = None;
+            self.tip_shown = true;
+            return true;
+        }
+        false
     }
 
     pub fn set_multirow(&mut self, multirow: bool) {
@@ -286,7 +330,12 @@ impl Chrome {
         let zone = self.height(width) + (APPEAR - 1.0) * self.bar();
         self.near = pos.is_some_and(|(_, y)| y >= 0.0 && y < zone);
         let hover = pos.and_then(|p| self.hit_raw(p, width));
-        let changed = self.retarget() || (hover != self.hover && self.opacity > 0.0);
+        let mut changed = self.retarget() || (hover != self.hover && self.opacity > 0.0);
+        if hover != self.hover {
+            // A new place to rest on: its tip waits again; one shown goes.
+            changed |= std::mem::take(&mut self.tip_shown);
+            self.tip_at = matches!(hover, Some(Hit::Tab(_) | Hit::Title)).then(|| Instant::now() + TIP_AFTER);
+        }
         self.hover = hover;
         changed
     }
@@ -372,8 +421,10 @@ impl Chrome {
     }
 
     /// Draws the bar; with two or more `tabs` (labels in strip order) the
-    /// strip takes the title's place.
-    pub fn draw(&mut self, context: &ID2D1DeviceContext, width: f32, title: &str, tabs: &[(u64, String)], active: usize, maximized: bool) {
+    /// strip takes the title's place. `paths`: each tab's file, in strip
+    /// order, for the tip of a tab whose name is cut short.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw(&mut self, context: &ID2D1DeviceContext, width: f32, title: &str, tabs: &[(u64, String)], paths: &[PathBuf], active: usize, maximized: bool) {
         if self.opacity <= 0.0 {
             // Hidden: tabs settle at once, nothing keeps redrawing.
             self.positions.clear();
@@ -385,6 +436,12 @@ impl Chrome {
         if self.text.as_ref().is_none_or(|(_, scale)| *scale != self.scale) {
             self.text = text_format(14.0 * self.scale).ok().map(|f| (f, self.scale));
         }
+        if self.tip_shown && self.tip_text.as_ref().is_none_or(|(_, scale)| *scale != self.scale) {
+            self.tip_text = tip_format(14.0 * self.scale).ok().map(|f| (f, self.scale));
+        }
+        // The tab (or title) under a resting cursor: what it shows, the
+        // room for it, and where the tip goes (left, top).
+        let mut rested: Option<(String, f32, (f32, f32), usize)> = None;
         let (s, bar, a) = (self.scale, self.bar(), self.opacity);
         let brush = |r: f32, g: f32, b: f32, alpha: f32| -> Option<ID2D1SolidColorBrush> {
             unsafe { context.CreateSolidColorBrush(&D2D1_COLOR_F { r, g, b, a: alpha * a }, None).ok() }
@@ -452,6 +509,9 @@ impl Chrome {
                     let left = 14.0 * s + self.content_left();
                     let rect = D2D_RECT_F { left, top: 0.0, right: (width - 3.0 * button - 14.0 * s).max(left), bottom: bar };
                     text(title, rect, &ink);
+                    if self.hover == Some(Hit::Title) {
+                        rested = Some((title.to_owned(), rect.right - rect.left, (left, bar), 0));
+                    }
                 }
                 Some((strip, corners)) => {
                     let tab = strip.tab;
@@ -481,11 +541,58 @@ impl Chrome {
                             context.FillRectangle(&D2D_RECT_F { left: x, top: y + 10.0 * s, right: x + 1.0 * s, bottom: y + bar - 10.0 * s }, &rule);
                         }
                         let rect = D2D_RECT_F { left: x + 10.0 * s, top: y, right: x + tab - 10.0 * s, bottom: y + bar };
-                        text(if i == active { title } else { label }, rect, if i == active { &ink } else { &quiet });
+                        let shown = if i == active { title } else { label };
+                        text(shown, rect, if i == active { &ink } else { &quiet });
+                        if self.hover == Some(Hit::Tab(i)) && self.drag.is_none() {
+                            rested = Some((shown.to_owned(), rect.right - rect.left, (x, y + bar), i));
+                        }
                     }
                 }
             }
+
+            // The full path of a tab whose name is cut short, under it.
+            let Some((shown, room, (x, top), i)) = rested.filter(|_| self.tip_shown) else { return };
+            let (Some(path), Some((tip_format, _))) = (paths.get(i), &self.tip_text) else { return };
+            if text_size(format, &shown, f32::MAX).is_none_or(|(w, _)| w <= room + 0.5) {
+                return; // it fits
+            }
+            let (pad_x, pad_y, margin) = (8.0 * s, 5.0 * s, MARGIN * s);
+            let full = path.display().to_string();
+            let Some((w, h)) = text_size(tip_format, &full, (width - 2.0 * (margin + pad_x)).max(1.0)) else { return };
+            let (w, h) = (w + 2.0 * pad_x, h + 2.0 * pad_y);
+            let left = x.min(width - margin - w).max(margin);
+            let top = top + 2.0 * s;
+            let (Some(back), Some(edge)) = (brush(tone[0] * 0.8, tone[1] * 0.8, tone[2] * 0.8, 0.97), shade(mix(INK, tone, 0.6))) else { return };
+            let rect = D2D_RECT_F { left, top, right: left + w, bottom: top + h };
+            let round = D2D1_ROUNDED_RECT { rect, radiusX: 4.0 * s, radiusY: 4.0 * s };
+            context.FillRoundedRectangle(&round, &back);
+            context.DrawRoundedRectangle(&round, &edge, s, None);
+            let wide: Vec<u16> = full.encode_utf16().collect();
+            let inner = D2D_RECT_F { left: left + pad_x, top: top + pad_y, right: left + w - pad_x, bottom: top + h - pad_y };
+            context.DrawText(&wide, tip_format, &inner, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_NATURAL);
         }
+    }
+}
+
+/// How large `text` lays out in `format`, at most `max_width` wide.
+fn text_size(format: &IDWriteTextFormat, text: &str, max_width: f32) -> Option<(f32, f32)> {
+    unsafe {
+        let factory: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).ok()?;
+        let wide: Vec<u16> = text.encode_utf16().collect();
+        let layout = factory.CreateTextLayout(&wide, format, max_width, f32::MAX).ok()?;
+        let mut metrics = DWRITE_TEXT_METRICS::default();
+        layout.GetMetrics(&mut metrics).ok()?;
+        Some((metrics.widthIncludingTrailingWhitespace, metrics.height))
+    }
+}
+
+/// A tip's text: wraps anywhere (a path has few spaces), never cut short.
+fn tip_format(size: f32) -> windows::core::Result<IDWriteTextFormat> {
+    unsafe {
+        let factory: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
+        let format = factory.CreateTextFormat(w!("Segoe UI"), None, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, w!(""))?;
+        format.SetWordWrapping(DWRITE_WORD_WRAPPING_CHARACTER)?;
+        Ok(format)
     }
 }
 
