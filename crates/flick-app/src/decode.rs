@@ -536,6 +536,85 @@ mod tests {
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
     }
 
+    /// What a folder of JPEGs is made of, and how each decode path does on
+    /// them: markers (frame type, components and sampling, scans, restart
+    /// interval, segment sizes), what WIC reports, and the preview, zune-jpeg
+    /// and WIC times. `$env:FLICK_SAMPLE_DIR = "<folder>"; cargo test
+    /// --release -p flick-app inspect_jpegs -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn inspect_jpegs() {
+        use zune_jpeg::zune_core::{bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions};
+        let dir = std::path::PathBuf::from(std::env::var_os("FLICK_SAMPLE_DIR").expect("FLICK_SAMPLE_DIR"));
+        let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1000.0;
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            let data = std::fs::read(&path).unwrap();
+            println!("\n{} ({:.1} MB)", path.file_name().unwrap().to_string_lossy(), data.len() as f64 / 1048576.0);
+            // Markers up to the end of image.
+            let (mut at, mut scans, mut segments) = (2usize, 0, Vec::new());
+            while at + 4 <= data.len() {
+                if data[at] != 0xFF {
+                    at += 1;
+                    continue;
+                }
+                let code = data[at + 1];
+                if code == 0xFF || code == 0x00 || (0xD0..=0xD7).contains(&code) || code == 0x01 {
+                    at += 2;
+                    continue;
+                }
+                if code == 0xD9 {
+                    break;
+                }
+                let len = u16::from_be_bytes([data[at + 2], data[at + 3]]) as usize;
+                match code {
+                    0xC0..=0xCF if code != 0xC4 && code != 0xC8 && code != 0xCC => {
+                        let comps = data[at + 9];
+                        let factors: Vec<String> = (0..comps as usize).map(|c| format!("{}x{}", data[at + 11 + c * 3] >> 4, data[at + 11 + c * 3] & 15)).collect();
+                        println!("  SOF{:X}: {} bits, {}x{}, {comps} components, sampling {}", code - 0xC0, data[at + 4], u16::from_be_bytes([data[at + 7], data[at + 8]]), u16::from_be_bytes([data[at + 5], data[at + 6]]), factors.join(" "));
+                    }
+                    0xDD => println!("  DRI: restart every {} MCUs", u16::from_be_bytes([data[at + 4], data[at + 5]])),
+                    0xDA => {
+                        scans += 1;
+                        // Skip the entropy-coded data to the next marker.
+                        let mut end = at + 2 + len;
+                        while end + 1 < data.len() && !(data[end] == 0xFF && data[end + 1] != 0 && !(0xD0..=0xD7).contains(&data[end + 1])) {
+                            end += 1;
+                        }
+                        segments.push((format!("scan {scans}"), end - at));
+                        at = end;
+                        continue;
+                    }
+                    0xE0..=0xEF | 0xFE => segments.push((format!("APP{:X}", code & 15), len)),
+                    _ => {}
+                }
+                at += 2 + len;
+            }
+            let big: Vec<String> = segments.iter().filter(|(_, n)| *n > 100_000).map(|(s, n)| format!("{s} {:.1} MB", *n as f64 / 1048576.0)).collect();
+            println!("  {scans} scans; segments over 100 KB: {}", big.join(", "));
+            // WIC.
+            let source = open(&path).unwrap();
+            let format = unsafe { source.frame.GetPixelFormat() }.unwrap();
+            let levels = unsafe { source.frame.cast::<IWICProgressiveLevelControl>().ok().and_then(|l| l.GetLevelCount().ok()) };
+            println!("  WIC: pixel format {format:?}, progressive levels {levels:?}, profile {}", source.profile.is_some());
+            let t = std::time::Instant::now();
+            let preview = decode_preview(&path);
+            println!("  preview: {} in {:.0} ms", preview.map_or("none".into(), |p| format!("{}x{}", p.screen.width, p.screen.height)), ms(t));
+            let t = std::time::Instant::now();
+            let zune = zune_raw(&path, &source);
+            println!("  zune (Flick's path): {} in {:.0} ms", if zune.is_some() { "ok" } else { "refused or failed" }, ms(t));
+            if zune.is_none() {
+                let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::BGRA).set_max_width(1 << 16).set_max_height(1 << 16);
+                let t = std::time::Instant::now();
+                let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&data), options);
+                println!("  zune directly: {:?} in {:.0} ms", decoder.decode().map(|p| p.len()).map_err(|e| format!("{e:?}")), ms(t));
+            }
+            let t = std::time::Instant::now();
+            let wic = full(&source).unwrap();
+            println!("  WIC full: {}x{} in {:.0} ms", wic.width, wic.height, ms(t));
+        }
+    }
+
     /// How fast WIC gives a progressive JPEG's early levels (scans), each from
     /// a fresh open at 1/8 size: for a preview while paging fast. `$env:FLICK_SAMPLE`.
     #[test]
