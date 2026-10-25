@@ -49,6 +49,8 @@ pub struct Options {
     pub runs: usize,
     pub page: usize,
     pub page_key: VIRTUAL_KEY,
+    /// Wheel flicks after the key presses: bursts, notches each, between notches.
+    pub wheel: (usize, usize, Duration),
     pub settle: Duration,
     pub timeout: Duration,
     /// Save every distinct sample as a PNG here, to see what each change was.
@@ -92,6 +94,9 @@ pub struct Launch {
     pub capture_ms: f64,
     /// Page turns after the image settled.
     pub pages: Vec<Page>,
+    /// Wheel flicks after the page turns.
+    #[serde(default)]
+    pub flicks: Vec<Flick>,
     /// A failed page turn (e.g. past the last file) keeps the open timings.
     pub page_error: Option<String>,
     pub error: Option<String>,
@@ -109,6 +114,20 @@ pub struct Page {
     /// with timestamps a viewer logs itself).
     #[serde(default)]
     pub pressed_wall: f64,
+}
+
+/// A fast wheel flick: several notches in quick succession.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Flick {
+    /// ms from the last notch to the last change before the screen held
+    /// still: how long the viewer goes on after the wheel stopped.
+    pub lag_ms: f64,
+    /// ms from the last notch to the first sample that already looked like
+    /// the final picture (a preview counts): when the destination showed.
+    #[serde(default)]
+    pub image_ms: f64,
+    /// Distinct pictures (screen changes) shown from the first notch on.
+    pub changes: usize,
 }
 
 pub fn run(files: &[PathBuf], opts: &Options) -> Result<Vec<Launch>> {
@@ -274,8 +293,47 @@ fn observe(watch: &Watch, mut child: Option<&mut Child>, opts: &Options, page: u
             }
         }
     }
+    let (bursts, notches, interval) = opts.wheel;
+    for i in 0..if launch.page_error.is_none() { bursts } else { 0 } {
+        let started = Instant::now();
+        flick(hwnd, notches, interval);
+        let last_notch = started.elapsed().as_secs_f64() * 1000.0;
+        let since_start = || started.elapsed().as_secs_f64() * 1000.0;
+        match wait_until_settled(hwnd, capturer, opts, Some(&previous), dump(&format!("flick{}", i + 1)), &mut captures, since_start) {
+            Ok(settled) => {
+                launch.flicks.push(Flick { lag_ms: (settled.final_ms - last_notch).max(0.0), image_ms: (settled.image_ms - last_notch).max(0.0), changes: settled.changes });
+                previous = settled.last;
+            }
+            Err(e) => {
+                launch.page_error = Some(format!("wheel flick {}: {e:#}", i + 1));
+                break;
+            }
+        }
+    }
     launch.capture_ms = median(&mut captures);
     Ok(())
+}
+
+/// `notches` wheel notches down (onward), `interval` apart, with the cursor
+/// over the window's centre (the wheel goes to the window under it).
+fn flick(hwnd: HWND, notches: usize, interval: Duration) {
+    let mut rect = RECT::default();
+    unsafe {
+        let _ = SetForegroundWindow(hwnd);
+        if GetWindowRect(hwnd, &mut rect).is_ok() {
+            let _ = SetCursorPos((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+        }
+    }
+    let notch = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 { mi: MOUSEINPUT { mouseData: (-(WHEEL_DELTA as i32)) as u32, dwFlags: MOUSEEVENTF_WHEEL, ..Default::default() } },
+    };
+    for i in 0..notches {
+        if i > 0 {
+            std::thread::sleep(interval);
+        }
+        unsafe { SendInput(&[notch], size_of::<INPUT>() as i32) };
+    }
 }
 
 struct Settled {
@@ -287,6 +345,8 @@ struct Settled {
     /// How long a flat (blank) frame was on screen before the picture.
     blank_ms: f64,
     last: Vec<u8>,
+    /// Distinct samples seen.
+    changes: usize,
 }
 
 /// Samples the window until its centre holds still for `opts.settle` with an
@@ -339,8 +399,9 @@ fn wait_until_settled(
             // A window shown before its first draw lands composes as a flat
             // (black or white) frame; the desktop behind it rarely is flat.
             let blank_ms = timeline.iter().find(|(t, s)| *t < image_ms && stddev(s) <= CONTENT_STDDEV).map_or(0.0, |(t, _)| image_ms - t);
+            let changes = timeline.len();
             let (final_ms, last) = timeline.pop().unwrap_or_default();
-            return Ok(Settled { size, image_ms, final_ms, glitch_ms, blank_ms, last });
+            return Ok(Settled { size, image_ms, final_ms, glitch_ms, blank_ms, last, changes });
         }
         if Instant::now() > deadline {
             bail!("image did not settle within {:?} ({} changes seen)", opts.timeout, timeline.len());
@@ -560,6 +621,9 @@ pub fn print(all: &[Launch]) {
                 p.private_mb,
                 p.working_set_mb
             );
+        }
+        for (i, f) in first.flicks.iter().enumerate() {
+            println!("  wheel flick {:>2}: destination showing {:>5.0} ms, settled {:>5.0} ms after the last notch, {} pictures shown", i + 1, f.image_ms, f.lag_ms, f.changes);
         }
     }
     let ok: Vec<&Launch> = all.iter().filter(|l| l.error.is_none()).collect();

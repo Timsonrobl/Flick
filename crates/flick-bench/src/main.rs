@@ -178,6 +178,15 @@ struct ExtViewerArgs {
     page: usize,
     #[arg(long, default_value = "right")]
     page_key: String,
+    /// After the key presses: this many fast wheel flicks (down: onward),
+    /// each `--wheel-notches` notches `--wheel-interval-ms` apart; timed from
+    /// the last notch to the screen holding still (the lag a flick leaves).
+    #[arg(long, default_value_t = 0)]
+    wheel_bursts: usize,
+    #[arg(long, default_value_t = 6)]
+    wheel_notches: usize,
+    #[arg(long, default_value_t = 40)]
+    wheel_interval_ms: u64,
     /// How long the window must hold still to count as final.
     #[arg(long, default_value_t = 700)]
     settle_ms: u64,
@@ -236,6 +245,7 @@ fn main() -> Result<()> {
                 runs: args.runs,
                 page: args.page,
                 page_key: external::parse_key(&args.page_key)?,
+                wheel: (args.wheel_bursts, args.wheel_notches, std::time::Duration::from_millis(args.wheel_interval_ms)),
                 settle: std::time::Duration::from_millis(args.settle_ms),
                 timeout: std::time::Duration::from_millis(args.timeout_ms),
                 dump: args.dump,
