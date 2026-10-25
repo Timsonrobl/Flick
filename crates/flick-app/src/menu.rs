@@ -1,5 +1,6 @@
 //! The right-click menu: Honeyview's View items (without the double-page
-//! modes), its render filters, Sort by, and Move to Window. A native popup
+//! modes), its render filters, Sort by, Move to Window, and every hotkey
+//! as an item beside what it does (the mouse's gestures listed). A native popup
 //! menu: Windows draws it in the system style, and it costs nothing until
 //! opened.
 
@@ -115,9 +116,94 @@ pub enum Choice {
     Slideshow,
     /// Slideshow ▸ an interval (ms): set, and the slideshow runs.
     SlideInterval(u32),
-    /// Delete (to the Recycle Bin, after asking).
-    Delete,
+    /// What a hotkey does, chosen from the menu instead.
+    Command(Command),
 }
+
+/// The menu's items that do what a hotkey does: every key is in the menu,
+/// beside what it does, to be learnt there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Command {
+    ZoomIn,
+    ZoomOut,
+    Next,
+    Previous,
+    RandomNext,
+    RandomBack,
+    First,
+    Last,
+    NextFolder,
+    PreviousFolder,
+    Back,
+    Forward,
+    NextTab,
+    PreviousTab,
+    DuplicateTab,
+    DuplicateInNewWindow,
+    CloseTab,
+    ReopenClosed,
+    AddStar,
+    RemoveStar,
+    Copy,
+    ShowInExplorer,
+    Delete,
+    DeletePermanently,
+    DebugInfo,
+    NextRotation,
+    NextFlip,
+}
+
+/// Each command's label and keys; its menu id is COMMAND + its place here.
+const COMMANDS: [(Command, PCWSTR); 27] = [
+    (Command::ZoomIn, w!("Zoom In\t+")),
+    (Command::ZoomOut, w!("Zoom Out\t−")),
+    (Command::Next, w!("Next\t→, Space, PgDn, D")),
+    (Command::Previous, w!("Previous\t←, Backspace, PgUp, A")),
+    (Command::RandomNext, w!("Random Next\t↓, S")),
+    (Command::RandomBack, w!("Random Back\t↑, W")),
+    (Command::First, w!("First\tHome")),
+    (Command::Last, w!("Last\tEnd")),
+    (Command::NextFolder, w!("Next Folder\t]")),
+    (Command::PreviousFolder, w!("Previous Folder\t[")),
+    (Command::Back, w!("Back\tMouse Back")),
+    (Command::Forward, w!("Forward\tMouse Forward")),
+    (Command::NextTab, w!("Next Tab\tCtrl+Tab")),
+    (Command::PreviousTab, w!("Previous Tab\tCtrl+Shift+Tab")),
+    (Command::DuplicateTab, w!("Duplicate Tab\tCtrl+D")),
+    (Command::DuplicateInNewWindow, w!("Duplicate in New Window\tCtrl+N")),
+    (Command::CloseTab, w!("Close Tab\tCtrl+W")),
+    (Command::ReopenClosed, w!("Reopen Closed\tCtrl+Shift+T")),
+    (Command::AddStar, w!("Add Star\tCtrl+F")),
+    (Command::RemoveStar, w!("Remove Star\tShift+F")),
+    (Command::Copy, w!("Copy\tCtrl+C")),
+    (Command::ShowInExplorer, w!("Show in Explorer\tCtrl+Enter")),
+    (Command::Delete, w!("Delete\tDel")),
+    (Command::DeletePermanently, w!("Delete Permanently\tShift+Del")),
+    (Command::DebugInfo, w!("Debug Info\tF12")),
+    (Command::NextRotation, w!("Next rotation\tCtrl+R")),
+    (Command::NextFlip, w!("Next flip\tAlt+F")),
+];
+const COMMAND: usize = 800;
+
+/// Appends `command`'s item to `menu`.
+unsafe fn append_command(menu: HMENU, command: Command) {
+    if let Some(at) = COMMANDS.iter().position(|(c, _)| *c == command) {
+        let _ = unsafe { AppendMenuW(menu, MF_STRING, COMMAND + at, COMMANDS[at].1) };
+    }
+}
+
+/// Mouse ▸: what the mouse does, for reference (no keys to show).
+const MOUSE: [PCWSTR; 9] = [
+    w!("Turn Pages\tWheel"),
+    w!("Zoom\tCtrl+Wheel"),
+    w!("Zoom\tRight-drag"),
+    w!("Pan\tDrag"),
+    w!("Next View Mode\tMiddle click"),
+    w!("Duplicate Tab\tDouble-click"),
+    w!("Back / Forward\tSide buttons"),
+    w!("Close Tab\tMiddle click on it"),
+    w!("Reorder Tabs\tCtrl+drag"),
+];
 
 /// Slideshow ▸ intervals offered (`[` and `]` adjust in between).
 const SLIDE_PRESETS: [u32; 8] = [250, 500, 1000, 2000, 3000, 5000, 10_000, 30_000];
@@ -143,7 +229,6 @@ const PERSIST_TURN: usize = 916;
 const SLIDESHOW: usize = 920;
 /// Slideshow ▸ 921 + preset index.
 const SLIDE_INTERVAL: usize = 921;
-const DELETE: usize = 940;
 const MOVE_TO: usize = 1000;
 
 /// Whether the (logical) right button is down right now: the menu closed on
@@ -198,7 +283,7 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 /// Shows the menu at the cursor and returns what was chosen. `targets` are
 /// the other windows; `can_split` whether the active tab can leave for a
 /// new window (not when it is the window's only tab, nor with tabs off);
-/// `lock` this window's Tab Lock (None: no tabs, no item); `starred` the
+/// `lock` this window's Tab Lock (None: one tab, greyed); `starred` the
 /// starred folder, if chosen; `turn` this tab's Rotate ▸ choice;
 /// `slideshow` whether one is running.
 #[allow(clippy::too_many_arguments)]
@@ -223,10 +308,29 @@ pub fn show(
         let prefs_menu = CreatePopupMenu().ok()?;
         // Settings items take ids from 1 in this order: main, sort, filter, info.
         let after_main = append(menu, &main, &prefs, 1);
+        append_command(menu, Command::ZoomIn);
+        append_command(menu, Command::ZoomOut);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(menu, MF_POPUP, sort_menu.0 as usize, w!("Sort by"));
         let after_sort = append(sort_menu, &sort, &prefs, after_main);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+
+        // Go ▸ paging, folders, the tab's history.
+        let go_menu = CreatePopupMenu().ok()?;
+        let go = [
+            &[Command::Next, Command::Previous, Command::RandomNext, Command::RandomBack, Command::First, Command::Last][..],
+            &[Command::NextFolder, Command::PreviousFolder],
+            &[Command::Back, Command::Forward],
+        ];
+        for (i, section) in go.iter().enumerate() {
+            if i > 0 {
+                let _ = AppendMenuW(go_menu, MF_SEPARATOR, 0, None);
+            }
+            for command in *section {
+                append_command(go_menu, *command);
+            }
+        }
+        let _ = AppendMenuW(menu, MF_POPUP, go_menu.0 as usize, w!("Go"));
         let _ = AppendMenuW(menu, MF_POPUP, filter_menu.0 as usize, w!("Filter"));
         let after_filter = append(filter_menu, &filter, &prefs, after_sort);
         let checked = |on: bool| if on { MF_STRING | MF_CHECKED } else { MF_STRING };
@@ -238,11 +342,11 @@ pub fn show(
             let _ = AppendMenuW(rotate_menu, checked(turn.quarter == quarter), TURN + usize::from(quarter), text);
         }
         let _ = AppendMenuW(rotate_menu, MF_SEPARATOR, 0, None);
-        let _ = AppendMenuW(rotate_menu, MF_STRING | MF_GRAYED, 0, w!("Next rotation\tCtrl+R"));
+        append_command(rotate_menu, Command::NextRotation);
         let _ = AppendMenuW(rotate_menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(rotate_menu, checked(turn.flip_h), FLIP_H, w!("Flip horizontally\tAlt+H"));
         let _ = AppendMenuW(rotate_menu, checked(turn.flip_v), FLIP_V, w!("Flip vertically\tAlt+V"));
-        let _ = AppendMenuW(rotate_menu, MF_STRING | MF_GRAYED, 0, w!("Next flip\tAlt+F"));
+        append_command(rotate_menu, Command::NextFlip);
         let _ = AppendMenuW(rotate_menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(rotate_menu, checked(prefs.persist_turn), PERSIST_TURN, w!("Persist"));
         let _ = AppendMenuW(menu, MF_POPUP, rotate_menu.0 as usize, w!("Rotate"));
@@ -264,13 +368,28 @@ pub fn show(
         let _ = AppendMenuW(slide_menu, MF_STRING | MF_GRAYED, 0, w!("Shorter / longer\tCtrl+[  ]"));
         let _ = AppendMenuW(menu, MF_POPUP, slide_menu.0 as usize, w!("Slideshow"));
 
-        // Move to Window: up to three destinations stand in the main menu as
-        // a block of "Move to …" items, more go into a submenu; none, nothing.
-        // Each section below has its own separator, only when present.
-        let destinations = targets.len() + usize::from(can_split);
-        if destinations > 0 {
-            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        // Tabs ▸ switching, duplicating, closing and reopening, Tab Lock
+        // (greyed with one tab: nothing to lock to).
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        let tabs_menu = CreatePopupMenu().ok()?;
+        append_command(tabs_menu, Command::NextTab);
+        append_command(tabs_menu, Command::PreviousTab);
+        let _ = AppendMenuW(tabs_menu, MF_STRING | MF_GRAYED, 0, w!("Tab 1 to 9\tCtrl+1 … Ctrl+9"));
+        let _ = AppendMenuW(tabs_menu, MF_SEPARATOR, 0, None);
+        for command in [Command::DuplicateTab, Command::DuplicateInNewWindow, Command::CloseTab, Command::ReopenClosed] {
+            append_command(tabs_menu, command);
         }
+        let _ = AppendMenuW(tabs_menu, MF_SEPARATOR, 0, None);
+        let lock_flags = match lock {
+            Some(locked) => checked(locked),
+            None => MF_STRING | MF_GRAYED,
+        };
+        let _ = AppendMenuW(tabs_menu, lock_flags, LOCK, w!("Tab Lock\tL"));
+        let _ = AppendMenuW(menu, MF_POPUP, tabs_menu.0 as usize, w!("Tabs"));
+
+        // Move to Window, beside Tabs: up to three destinations stand in the
+        // main menu as a block of "Move to …" items, more go into a submenu.
+        let destinations = targets.len() + usize::from(can_split);
         let inline = destinations < 4;
         let (into, prefix) = if inline { (menu, "Move to ") } else { (move_menu, "") };
         for (i, target) in targets.iter().enumerate() {
@@ -293,14 +412,18 @@ pub fn show(
         } else {
             let _ = DestroyMenu(move_menu);
         }
-        if let Some(locked) = lock {
-            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-            let _ = AppendMenuW(menu, checked(locked), LOCK, w!("Tab Lock\tL"));
+        // The picture's file: stars, copying, Explorer, deleting.
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        for command in [Command::AddStar, Command::RemoveStar, Command::Copy, Command::ShowInExplorer, Command::Delete, Command::DeletePermanently] {
+            append_command(menu, command);
         }
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-        let _ = AppendMenuW(menu, MF_STRING, DELETE, w!("Delete\tDel"));
-        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         append(menu, &info, &prefs, after_filter);
+        let mouse_menu = CreatePopupMenu().ok()?;
+        for text in MOUSE {
+            let _ = AppendMenuW(mouse_menu, MF_STRING | MF_GRAYED, 0, text);
+        }
+        let _ = AppendMenuW(menu, MF_POPUP, mouse_menu.0 as usize, w!("Mouse"));
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.prefetch), PREFETCH, w!("Load Full Resolution Ahead"));
@@ -310,6 +433,8 @@ pub fn show(
             None => HSTRING::from("Choose Starred Folder…"),
         };
         let _ = AppendMenuW(prefs_menu, MF_STRING, STARRED_FOLDER, &folder);
+        let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
+        append_command(prefs_menu, Command::DebugInfo);
         let _ = AppendMenuW(menu, MF_POPUP, prefs_menu.0 as usize, w!("Preferences"));
 
         let mut at = POINT::default();
@@ -336,7 +461,7 @@ pub fn show(
             PERSIST_TURN => Some(Choice::PersistTurn),
             SLIDESHOW => Some(Choice::Slideshow),
             id if (SLIDE_INTERVAL..SLIDE_INTERVAL + SLIDE_PRESETS.len()).contains(&id) => Some(Choice::SlideInterval(SLIDE_PRESETS[id - SLIDE_INTERVAL])),
-            DELETE => Some(Choice::Delete),
+            id if (COMMAND..COMMAND + COMMANDS.len()).contains(&id) => Some(Choice::Command(COMMANDS[id - COMMAND].0)),
             id if id >= MOVE_TO => Some(Choice::MoveTo(id - MOVE_TO)),
             id => {
                 let item = main.iter().chain(&sort).chain(&filter).chain(&info).flatten().nth(id - 1)?;

@@ -558,6 +558,16 @@ impl Tab {
     }
 }
 
+/// Alt+F: not flipped → horizontally → vertically → not flipped. (Both ways
+/// is a 180° turn, which Ctrl+R reaches.)
+fn next_flip(turn: Turn) -> Turn {
+    match (turn.flip_h, turn.flip_v) {
+        (false, false) => Turn { flip_h: true, flip_v: false, ..turn },
+        (true, false) => Turn { flip_h: false, flip_v: true, ..turn },
+        _ => Turn { flip_h: false, flip_v: false, ..turn },
+    }
+}
+
 /// A tab as the close history keeps it.
 fn saved_tab(tab: &Tab) -> SavedTab {
     let file = tab.file().to_path_buf();
@@ -2826,9 +2836,64 @@ impl Viewer {
             Some(menu::Choice::PersistTurn) => self.toggle_persist_turn(),
             Some(menu::Choice::Slideshow) => self.toggle_slideshow(),
             Some(menu::Choice::SlideInterval(ms)) => self.set_slide_interval(ms),
-            Some(menu::Choice::Delete) => self.delete(false, shared),
+            Some(menu::Choice::Command(command)) => self.run(command, shared),
             None => Action::None,
         }
+    }
+
+    /// A hotkey's command, chosen from the menu: what the key does.
+    fn run(&mut self, command: menu::Command, shared: &Shared) -> Action {
+        use menu::Command as C;
+        let count = self.tab_count();
+        match command {
+            C::ZoomIn | C::ZoomOut => {
+                self.zoom(None, if command == C::ZoomIn { ZOOM_STEP } else { 1.0 / ZOOM_STEP });
+                Action::None
+            }
+            C::Next => self.step(1, shared),
+            C::Previous => self.step(-1, shared),
+            C::RandomNext => self.random(true, shared),
+            C::RandomBack => self.random(false, shared),
+            C::First => self.jump(0, shared),
+            C::Last => match self.tab.folder.as_ref().map(|f| f.files.len().saturating_sub(1)) {
+                Some(last) => self.jump(last, shared),
+                None => Action::None,
+            },
+            C::NextFolder => self.sibling(true, shared),
+            C::PreviousFolder => self.sibling(false, shared),
+            C::Back => self.history(true, shared),
+            C::Forward => self.history(false, shared),
+            C::NextTab => self.switch_tab((self.active_at + 1) % count, shared),
+            C::PreviousTab => self.switch_tab((self.active_at + count - 1) % count, shared),
+            C::DuplicateTab => self.duplicate(false),
+            C::DuplicateInNewWindow => self.duplicate(true),
+            C::CloseTab => self.close_tab(self.active_at, shared),
+            C::ReopenClosed => Action::Reopen,
+            C::AddStar => self.star(1, shared),
+            C::RemoveStar => self.star(-1, shared),
+            C::Copy => self.copy(shared),
+            C::ShowInExplorer => self.show_in_explorer(),
+            C::Delete => self.delete(false, shared),
+            C::DeletePermanently => self.delete(true, shared),
+            C::DebugInfo => {
+                self.toggle_debug();
+                Action::None
+            }
+            C::NextRotation => {
+                let turn = self.turn_of(&self.tab);
+                self.set_turn(Turn { quarter: (turn.quarter + 1) % 4, ..turn })
+            }
+            C::NextFlip => self.set_turn(next_flip(self.turn_of(&self.tab))),
+        }
+    }
+
+    /// F12: the debug overlay, on or off.
+    fn toggle_debug(&mut self) {
+        if self.debug.is_none() {
+            self.debug = DebugText::new().ok();
+        }
+        self.show_debug = !self.show_debug;
+        self.redraw();
     }
 
     /// Tab Lock (L): the wheel and arrows switch tabs instead of pages. Only
@@ -2956,13 +3021,7 @@ impl Viewer {
                 (_, Key::Named(NamedKey::ArrowLeft)) => quarter(3),
                 (PhysicalKey::Code(KeyCode::KeyH), _) => Some(Turn { flip_h: !turn.flip_h, ..turn }),
                 (PhysicalKey::Code(KeyCode::KeyV), _) => Some(Turn { flip_v: !turn.flip_v, ..turn }),
-                // Alt+F: not flipped → horizontally → vertically → not flipped.
-                // (Both ways is a 180° turn, which Ctrl+R reaches.)
-                (PhysicalKey::Code(KeyCode::KeyF), _) => Some(match (turn.flip_h, turn.flip_v) {
-                    (false, false) => Turn { flip_h: true, flip_v: false, ..turn },
-                    (true, false) => Turn { flip_h: false, flip_v: true, ..turn },
-                    _ => Turn { flip_h: false, flip_v: false, ..turn },
-                }),
+                (PhysicalKey::Code(KeyCode::KeyF), _) => Some(next_flip(turn)),
                 _ => None,
             };
             if let Some(turn) = chosen {
@@ -3104,11 +3163,7 @@ impl Viewer {
                 None => Action::None,
             },
             Key::Named(NamedKey::F12) => {
-                if self.debug.is_none() {
-                    self.debug = DebugText::new().ok();
-                }
-                self.show_debug = !self.show_debug;
-                self.redraw();
+                self.toggle_debug();
                 Action::None
             }
             Key::Named(NamedKey::ContextMenu) => Action::Menu,
