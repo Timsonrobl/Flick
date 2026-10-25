@@ -31,13 +31,10 @@ macro_rules! item {
     };
 }
 
-/// Sections of the main menu, separated by lines.
-fn main_items() -> [Vec<Item>; 3] {
+/// The main menu's first sections, separated by lines.
+fn main_items() -> [Vec<Item>; 2] {
     [
-        vec![
-            item!(w!("File Info\tTab"), |p| p.info, |p| p.info = !p.info),
-            item!(w!("Stretch Small Images\tZ"), |p| p.mode.stretch_small, |p| p.mode.stretch_small = !p.mode.stretch_small),
-        ],
+        vec![item!(w!("Stretch Small Images\tZ"), |p| p.mode.stretch_small, |p| p.mode.stretch_small = !p.mode.stretch_small)],
         vec![
             // In middle click's order (view.rs).
             item!(w!("Fit in Window\t9"), |p| p.mode.fit == Fit::Window, |p| p.mode.fit = Fit::Window),
@@ -46,12 +43,21 @@ fn main_items() -> [Vec<Item>; 3] {
             item!(w!("Fit to Height\t7"), |p| p.mode.fit == Fit::Height, |p| p.mode.fit = Fit::Height),
             item!(w!("Original Size (100%)\t0"), |p| p.mode.fit == Fit::Original, |p| p.mode.fit = Fit::Original),
         ],
-        vec![
-            item!(w!("No Filter\tU"), |p| p.filter == Filter::Nearest, |p| p.filter = Filter::Nearest),
-            item!(w!("Soften\tI"), |p| p.filter == Filter::Soften, |p| p.filter = Filter::Soften),
-            item!(w!("Soften+Sharpen"), |p| p.filter == Filter::Sharpen, |p| p.filter = Filter::Sharpen),
-        ],
     ]
+}
+
+/// The Filter submenu.
+fn filter_items() -> [Vec<Item>; 1] {
+    [vec![
+        item!(w!("No Filter\tU"), |p| p.filter == Filter::Nearest, |p| p.filter = Filter::Nearest),
+        item!(w!("Soften\tI"), |p| p.filter == Filter::Soften, |p| p.filter = Filter::Soften),
+        item!(w!("Soften+Sharpen"), |p| p.filter == Filter::Sharpen, |p| p.filter = Filter::Sharpen),
+    ]]
+}
+
+/// The last section's settings item, beside Preferences.
+fn info_items() -> [Vec<Item>; 1] {
+    [vec![item!(w!("File Info\tTab"), |p| p.info, |p| p.info = !p.info)]]
 }
 
 /// The Sort by submenu's sections.
@@ -207,17 +213,22 @@ pub fn show(
     turn: Turn,
     slideshow: bool,
 ) -> Option<Choice> {
-    let (main, sort) = (main_items(), sort_items());
+    let (main, sort, filter, info) = (main_items(), sort_items(), filter_items(), info_items());
     let mut swatches = Vec::new();
     unsafe {
         let menu = CreatePopupMenu().ok()?;
         let sort_menu = CreatePopupMenu().ok()?;
+        let filter_menu = CreatePopupMenu().ok()?;
         let move_menu = CreatePopupMenu().ok()?;
         let prefs_menu = CreatePopupMenu().ok()?;
+        // Settings items take ids from 1 in this order: main, sort, filter, info.
         let after_main = append(menu, &main, &prefs, 1);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(menu, MF_POPUP, sort_menu.0 as usize, w!("Sort by"));
-        append(sort_menu, &sort, &prefs, after_main);
+        let after_sort = append(sort_menu, &sort, &prefs, after_main);
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        let _ = AppendMenuW(menu, MF_POPUP, filter_menu.0 as usize, w!("Filter"));
+        let after_filter = append(filter_menu, &filter, &prefs, after_sort);
         let checked = |on: bool| if on { MF_STRING | MF_CHECKED } else { MF_STRING };
 
         // Rotate ▸ this tab's turn (radio-like), flips, Persist.
@@ -289,6 +300,7 @@ pub fn show(
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(menu, MF_STRING, DELETE, w!("Delete\tDel"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        append(menu, &info, &prefs, after_filter);
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.prefetch), PREFETCH, w!("Load Full Resolution Ahead"));
@@ -327,7 +339,7 @@ pub fn show(
             DELETE => Some(Choice::Delete),
             id if id >= MOVE_TO => Some(Choice::MoveTo(id - MOVE_TO)),
             id => {
-                let item = main.iter().chain(sort.iter()).flatten().nth(id - 1)?;
+                let item = main.iter().chain(&sort).chain(&filter).chain(&info).flatten().nth(id - 1)?;
                 let mut prefs = prefs;
                 (item.choose)(&mut prefs);
                 Some(Choice::Prefs(prefs))
