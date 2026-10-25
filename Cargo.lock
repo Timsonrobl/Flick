@@ -686,6 +686,8 @@ dependencies = [
  "jxl-oxide",
  "resvg",
  "rusqlite",
+ "serde",
+ "serde_json",
  "windows",
  "windows-numerics",
  "winit",

@@ -81,8 +81,19 @@ impl Default for Global {
 }
 
 pub fn load() -> (Prefs, Global) {
-    let (mut prefs, mut global) = (Prefs::default(), Global::default());
-    let Some(text) = path().and_then(|p| std::fs::read_to_string(p).ok()) else { return (prefs, global) };
+    let text = path().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+    parse(&text, Prefs::default())
+}
+
+/// One window's menu settings in the settings file's form (`parse` reads
+/// them back): for the close history (`session.rs`).
+pub fn prefs_text(prefs: Prefs) -> String {
+    text(prefs, Global::default())
+}
+
+/// Settings text over `prefs` (what it doesn't name keeps `prefs`' value).
+pub fn parse(text: &str, prefs: Prefs) -> (Prefs, Global) {
+    let (mut prefs, mut global) = (prefs, Global::default());
     for line in text.lines() {
         let Some((key, value)) = line.split_once('=').map(|(k, v)| (k.trim(), v.trim())) else { continue };
         match key {
@@ -114,7 +125,11 @@ pub fn save(prefs: Prefs, global: Global) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let text = format!(
+    let _ = std::fs::write(path, text(prefs, global));
+}
+
+fn text(prefs: Prefs, global: Global) -> String {
+    format!(
         "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\npersist_turn={}\nturn={},{},{}\nslideshow_ms={}\ntabs={}\nmultirow={}\nprefetch_full={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
@@ -131,6 +146,24 @@ pub fn save(prefs: Prefs, global: Global) {
         u8::from(global.tabs),
         u8::from(global.multirow),
         u8::from(global.prefetch),
-    );
-    let _ = std::fs::write(path, text);
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_windows_settings_read_back_as_they_were() {
+        let prefs = Prefs {
+            mode: Mode { fit: Fit::Height, stretch_small: true },
+            filter: Filter::Nearest,
+            sort: Sort { key: SortKey::Modified, descending: true },
+            info: true,
+            persist_turn: true,
+            turn: Turn { quarter: 3, flip_h: true, flip_v: false },
+            slide_ms: 1500,
+        };
+        assert_eq!(parse(&prefs_text(prefs), Prefs::default()).0, prefs);
+    }
 }
