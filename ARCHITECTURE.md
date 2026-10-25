@@ -743,7 +743,7 @@ only starred / not starred):
 - **Mouse.** Wheel pages (walking through every picture passed); Ctrl+wheel
   zooms. Left-drag pans (nothing moves while the picture fits; only the
   title bar moves the window, so dragging means one thing); double-click on
-  the picture duplicates the tab, as Ctrl+D (it toggled 100 % until
+  the picture duplicates the tab, as Ctrl+T (it toggled 100 % until
   2026-10-25: redundant with middle click's cycle). Right-drag zooms by horizontal
   travel (right: in, left: out; 2× per 200 px) around where it started: the
   picture point pressed stays under the cursor (a picture smaller than the
@@ -838,7 +838,7 @@ only starred / not starred):
 - **Ctrl+C** copies the picture at full resolution, upright (EXIF
   orientation applied), as a 32-bit DIBv5 with straight alpha; decoded on
   a worker thread. **Ctrl+Enter** opens the folder in Explorer with the file
-  selected. **Ctrl+D** duplicates the tab into the background, right after
+  selected. **Ctrl+T** duplicates the tab into the background, right after
   this one (the bar shows for a moment); **Ctrl+N** opens the file again in
   a new window beside this one.
 - **Held keys page as fast as pictures appear** (as Honeyview): a key's

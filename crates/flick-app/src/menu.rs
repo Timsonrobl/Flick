@@ -164,7 +164,7 @@ const COMMANDS: [(Command, PCWSTR); 24] = [
     (Command::Forward, w!("History Forward\tMouse Forward")),
     (Command::NextTab, w!("Next Tab\tCtrl+Tab")),
     (Command::PreviousTab, w!("Previous Tab\tCtrl+Shift+Tab")),
-    (Command::DuplicateTab, w!("Duplicate Tab\tCtrl+D")),
+    (Command::DuplicateTab, w!("Duplicate Tab\tCtrl+T")),
     (Command::DuplicateInNewWindow, w!("Duplicate in New Window\tCtrl+N")),
     (Command::CloseTab, w!("Close Tab\tCtrl+W")),
     (Command::ReopenClosed, w!("Reopen Closed\tCtrl+Shift+T")),

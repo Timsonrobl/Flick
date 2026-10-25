@@ -106,7 +106,7 @@ pub enum Action {
     /// The menu closed on a right click elsewhere: open it in the window
     /// under the cursor (this one or another).
     ReopenMenu,
-    /// Ctrl+D (a background tab beside this one) or Ctrl+N (a new window):
+    /// Ctrl+T (a background tab beside this one) or Ctrl+N (a new window):
     /// the same file again.
     Duplicate { file: PathBuf, new_window: bool },
 }
@@ -913,7 +913,7 @@ impl Viewer {
         self.set_locked(locked && !self.others.is_empty());
     }
 
-    /// Ctrl+D: the copy goes right after the active tab, in the background;
+    /// Ctrl+T: the copy goes right after the active tab, in the background;
     /// the bar shows for a moment so the new tab is seen arriving.
     pub fn add_duplicate(&mut self, tab: Tab) {
         self.add_background_tab(tab, 0);
@@ -2241,7 +2241,7 @@ impl Viewer {
         self.show_index(index, shared)
     }
 
-    /// Ctrl+D (a background tab) or Ctrl+N (a new window) with this file.
+    /// Ctrl+T (a background tab) or Ctrl+N (a new window) with this file.
     fn duplicate(&mut self, new_window: bool) -> Action {
         self.shown_file().map_or(Action::None, |file| Action::Duplicate { file, new_window })
     }
@@ -2609,7 +2609,7 @@ impl Viewer {
             self.pressed = Some(Press::Move(self.cursor));
             return Action::None;
         }
-        // Double-click: the picture again in a tab beside this one, as Ctrl+D
+        // Double-click: the picture again in a tab beside this one, as Ctrl+T
         // (100 % was redundant with middle click's cycle).
         if double {
             return self.duplicate(false);
@@ -3039,7 +3039,7 @@ impl Viewer {
                 (PhysicalKey::Code(KeyCode::KeyW), _) => Some(self.close_tab(self.active_at, shared)),
                 (PhysicalKey::Code(KeyCode::KeyT), _) if self.modifiers.shift_key() => Some(if event.repeat { Action::None } else { Action::Reopen }),
                 // Once per press, not per key repeat.
-                (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyN | KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyR), _) | (_, Key::Named(NamedKey::Enter))
+                (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyT | KeyCode::KeyN | KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyR), _) | (_, Key::Named(NamedKey::Enter))
                     if event.repeat =>
                 {
                     Some(Action::None)
@@ -3055,7 +3055,7 @@ impl Viewer {
                 (PhysicalKey::Code(KeyCode::KeyC), _) => Some(self.copy(shared)),
                 (PhysicalKey::Code(KeyCode::KeyF), _) => Some(self.star(1, shared)),
                 (PhysicalKey::Code(KeyCode::KeyG), _) => Some(self.toggle_slideshow()),
-                (PhysicalKey::Code(KeyCode::KeyD), _) => Some(self.duplicate(false)),
+                (PhysicalKey::Code(KeyCode::KeyT), _) => Some(self.duplicate(false)),
                 (PhysicalKey::Code(KeyCode::KeyN), _) => Some(self.duplicate(true)),
                 (_, Key::Named(NamedKey::Enter)) => Some(self.show_in_explorer()),
                 (PhysicalKey::Code(code), _) => {
