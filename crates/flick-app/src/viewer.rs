@@ -2311,7 +2311,11 @@ impl Viewer {
         let debug_text = self.show_debug.then(|| self.debug_text(shared));
         let title = self.title();
         let (tabs, active) = (self.tab_labels(), self.active_at);
-        self.chrome.set_tabs(tabs.len());
+        // Tabs came or went (opened, closed, moved in or out, reopened): the
+        // bar shows for a moment, so the change is seen.
+        if self.chrome.set_tabs(tabs.len()) {
+            self.chrome.reveal(REVEAL);
+        }
         let mut paths: Vec<PathBuf> = self.others.iter().map(|t| t.file().to_path_buf()).collect();
         paths.insert(self.active_at, self.tab.file().to_path_buf());
         let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());

@@ -147,6 +147,8 @@ pub struct Chrome {
     text: Option<(IDWriteTextFormat, f32)>,
     /// Tabs in the strip; with one, there is no strip (just the title).
     tabs: usize,
+    /// `tabs` has been set by a frame (`set_tabs`).
+    tabs_known: bool,
     /// The window's colour, an index into PALETTE.
     color: usize,
     /// Where each tab (by id) is drawn: tabs glide to their slots when the
@@ -194,6 +196,7 @@ impl Chrome {
             hover: None,
             text: None,
             tabs: 1,
+            tabs_known: false,
             color,
             positions: HashMap::new(),
             drag: None,
@@ -279,8 +282,13 @@ impl Chrome {
         corners
     }
 
-    pub fn set_tabs(&mut self, tabs: usize) {
+    /// The window's tab count, each frame. Returns whether it changed (not
+    /// on the first frame: a window opens with the tabs it has).
+    pub fn set_tabs(&mut self, tabs: usize) -> bool {
+        let changed = self.tabs_known && tabs != self.tabs;
         self.tabs = tabs;
+        self.tabs_known = true;
+        changed
     }
 
     /// The tab strip's grid, if there is a strip (two or more tabs): one row
