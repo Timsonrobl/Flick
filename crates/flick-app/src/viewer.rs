@@ -146,6 +146,8 @@ struct Current {
     /// The info panel's details (`meta`), read when the panel first shows it.
     info: Option<meta::Info>,
     info_requested: bool,
+    /// Its file was rewritten: shown until the new version is decoded.
+    stale: bool,
 }
 
 impl Current {
@@ -153,14 +155,14 @@ impl Current {
         let view = View::new(view::oriented_size(screen.orientation, screen.full_size), window, mode);
         // An animation's frames are already full size: nothing to decode for zooming.
         let (full_requested, full_note) = if screen.animated() { (true, "animation frames are full size") } else { (false, "not needed yet") };
-        Current { path, screen, full: None, full_requested, full_note, view, anim: None, info: None, info_requested: false }
+        Current { path, screen, full: None, full_requested, full_note, view, anim: None, info: None, info_requested: false, stale: false }
     }
 
     /// The same picture, drawn as it is, while another tab's decodes.
     fn stand_in(&self) -> Current {
         let full_note = "the previous tab's picture, until this one decodes";
         let (path, screen, view) = (self.path.clone(), self.screen.clone(), self.view);
-        Current { path, screen, full: None, full_requested: true, full_note, view, anim: None, info: None, info_requested: true }
+        Current { path, screen, full: None, full_requested: true, full_note, view, anim: None, info: None, info_requested: true, stale: false }
     }
 }
 
@@ -1175,8 +1177,66 @@ impl Viewer {
 
     /// A screen level arrived from the pool: show it if this window waits for it.
     pub fn on_preloaded(&mut self, path: &Path, screen: &Screen, shared: &Shared) {
-        if self.tab.wanted.as_deref() == Some(path) && self.tab.current.as_ref().map(|c| c.path.as_path()) != Some(path) {
+        let shown = self.tab.current.as_ref().filter(|c| c.path == path && !c.stale).is_some();
+        if self.tab.wanted.as_deref() == Some(path) && !shown {
             self.display(path.to_path_buf(), screen.clone(), "decoded", shared);
+        }
+    }
+
+    /// The folders this window's tabs page through (each watched once).
+    pub fn folder_dirs(&self) -> Vec<PathBuf> {
+        std::iter::once(&self.tab).chain(&self.others).filter_map(|t| t.folder.as_ref()).map(|f| f.dir.clone()).collect()
+    }
+
+    /// The tabs paging through `dir`, with the file each is on (to list
+    /// the folder again from).
+    pub fn files_shown_in(&self, dir: &Path) -> Vec<(TabId, PathBuf)> {
+        std::iter::once(&self.tab)
+            .chain(&self.others)
+            .filter_map(|t| t.folder.as_ref().filter(|f| f.dir == dir).map(|f| (t.id, f.files[f.index].clone())))
+            .collect()
+    }
+
+    /// Changes to a watched folder, for every tab paging through it: the
+    /// list updates in place, the position and paging target stay on their
+    /// files, a renamed current file is followed, and a rewritten one on
+    /// screen is decoded again (the old picture stays until then).
+    pub fn on_folder_changed(&mut self, dir: &Path, changes: &[folder::Change]) {
+        let active = self.tab.id;
+        let mut touched = false;
+        for tab in std::iter::once(&mut self.tab).chain(self.others.iter_mut()) {
+            let Some(folder) = tab.folder.as_mut().filter(|f| f.dir == dir) else { continue };
+            let target = folder.files.get(tab.target).cloned();
+            if !folder.apply(changes) {
+                continue;
+            }
+            tab.target = target.and_then(|t| folder.position(&t)).unwrap_or(folder.index);
+            for change in changes {
+                match change {
+                    folder::Change::Renamed(old, new) => {
+                        if tab.wanted.as_ref() == Some(old) {
+                            tab.wanted = Some(new.clone());
+                        }
+                        if let Some(current) = tab.current.as_mut().filter(|c| &c.path == old) {
+                            current.path = new.clone();
+                        }
+                    }
+                    folder::Change::Modified(path) if tab.id == active => {
+                        if let Some(current) = tab.current.as_mut().filter(|c| &c.path == path) {
+                            current.stale = true;
+                            tab.wanted = Some(path.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            touched |= tab.id == active;
+        }
+        if touched {
+            if let (Some(window), Some(wanted)) = (&self.window, &self.tab.wanted) {
+                window.set_title(&file_name(wanted));
+            }
+            self.redraw(); // the position [i/n]
         }
     }
 

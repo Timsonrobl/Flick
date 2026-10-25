@@ -598,6 +598,23 @@ change, debounced, so a crash or "stay resident" restart restores them as
   "n of ?" until done. Never read EXIF for every file up front.
 - Archives (zip/cbz) are a later extension of the same `Source` abstraction
   (`Source::File`, `Source::Archive`, `Source::Bytes`).
+- **Watched folders** (built 2026-10-25, `watch.rs`). Windows can't count a
+  folder's files without listing them, but it can report changes: one
+  watcher per folder some tab pages through, shared by every tab and window
+  in it (`App::sync_watchers`, after each `plan`), is a thread waiting on
+  `ReadDirectoryChangesW` (new, removed, renamed files; size or date
+  changes), costing nothing while the folder is quiet. A folder's changes
+  are applied once it has been quiet for 250 ms (a file being written
+  reports many), to every tab in it, each with its own sort order:
+  `Folder::apply` inserts new images where the order puts them (binary
+  search), removes and re-sorts in place, keeps the current file current
+  (a removed one is followed by its successor; a renamed one is
+  followed), and the paging target stays on its file. A rewritten file is
+  dropped from the cache and decoded again, the one on screen too (its old
+  picture stays until then). If Windows' change buffer overflows, every tab
+  in that folder lists it again. Random paging starts a new shuffle after
+  a change. Not covered: a file created in the moment between listing a
+  folder and its watcher starting.
 
 ## 13. Configuration and input
 

@@ -36,9 +36,10 @@ mod settings;
 mod tray;
 mod view;
 mod viewer;
+mod watch;
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -49,7 +50,7 @@ use winit::window::WindowId;
 
 use clock::{Timeline, ms_since_start};
 use decode::{Image, Picture};
-use folder::Folder;
+use folder::{Change, Folder};
 use gpu::Gpu;
 use instance::Request;
 use pool::Pool;
@@ -78,6 +79,8 @@ pub enum Event {
     Info { viewer: ViewerId, path: PathBuf, info: meta::Info },
     /// Ctrl+C: the picture at full resolution, ready for the clipboard.
     Copy { viewer: ViewerId, image: Result<Image, String> },
+    /// A watched folder changed (`watch.rs`).
+    FolderChanged { dir: PathBuf, changes: Vec<Change> },
     /// A later launch's request, from the pipe.
     Open(Request),
     /// A newer build took over as the resident instance.
@@ -110,7 +113,15 @@ struct App {
     last_open: Option<Instant>,
     burst: Option<(ViewerId, usize)>,
     error: Option<String>,
+    /// One watcher per folder some tab pages through (`sync_watchers`).
+    watchers: HashMap<PathBuf, watch::Watcher>,
+    /// Changes reported per folder, applied once it has been quiet for
+    /// FOLDER_SETTLE (a file being written reports many).
+    folder_changes: HashMap<PathBuf, (Vec<Change>, Instant)>,
 }
+
+/// A folder's changes wait this long for the next one before they're applied.
+const FOLDER_SETTLE: Duration = Duration::from_millis(250);
 
 impl App {
     fn spawn_decode(&self, viewer: ViewerId, tab: TabId, request: &Request) {
@@ -345,6 +356,53 @@ impl App {
         self.shared.cache.retain(|path, _| keep.contains(path));
         // A background tab woken from the cache needs its folder listed too.
         self.request_listings();
+        self.sync_watchers();
+    }
+
+    /// Watches exactly the folders some tab (in any window) pages through:
+    /// one watcher per folder, however many tabs share it.
+    fn sync_watchers(&mut self) {
+        let dirs: HashSet<PathBuf> = self.viewers.values().flat_map(Viewer::folder_dirs).collect();
+        self.watchers.retain(|dir, _| dirs.contains(dir)); // dropping one stops it
+        for dir in dirs {
+            if self.watchers.contains_key(&dir) {
+                continue;
+            }
+            let (proxy, reported) = (Mutex::new(self.shared.proxy.clone()), dir.clone());
+            let watcher = watch::Watcher::start(&dir, move |changes| {
+                let _ = proxy.lock().unwrap_or_else(|e| e.into_inner()).send_event(Event::FolderChanged { dir: reported.clone(), changes });
+            });
+            if let Some(watcher) = watcher {
+                self.watchers.insert(dir, watcher);
+            }
+        }
+    }
+
+    /// A watched folder's settled changes: rewritten or removed files are
+    /// decoded again (or dropped), every tab paging through the folder
+    /// updates its list in place, or lists it again if too much changed.
+    fn apply_folder_changes(&mut self, dir: &Path, changes: &[Change]) {
+        for change in changes {
+            if let Change::Modified(path) | Change::Removed(path) | Change::Renamed(path, _) = change {
+                self.shared.cache.remove(path);
+                self.shared.failed.remove(path);
+            }
+        }
+        if changes.contains(&Change::Rescan) {
+            for viewer in self.viewers.values() {
+                for (tab, file) in viewer.files_shown_in(dir) {
+                    let (id, sort, proxy) = (viewer.id, viewer.sort(), self.shared.proxy.clone());
+                    std::thread::spawn(move || {
+                        let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
+                    });
+                }
+            }
+        } else {
+            for viewer in self.viewers.values_mut() {
+                viewer.on_folder_changed(dir, changes);
+            }
+        }
+        self.plan();
     }
 
     fn on_preloaded(&mut self, path: PathBuf, picture: Result<Picture, String>, decode_ms: f64) {
@@ -460,7 +518,19 @@ impl ApplicationHandler<Event> for App {
         if moved {
             self.plan();
         }
-        let wake = self.viewers.values().filter_map(Viewer::deadline).chain(self.idle_since.map(|t| t + TRIM_AFTER)).min();
+        let settled: Vec<PathBuf> = self.folder_changes.iter().filter(|(_, (_, due))| *due <= now).map(|(dir, _)| dir.clone()).collect();
+        for dir in settled {
+            if let Some((changes, _)) = self.folder_changes.remove(&dir) {
+                self.apply_folder_changes(&dir, &changes);
+            }
+        }
+        let wake = self
+            .viewers
+            .values()
+            .filter_map(Viewer::deadline)
+            .chain(self.idle_since.map(|t| t + TRIM_AFTER))
+            .chain(self.folder_changes.values().map(|(_, due)| *due))
+            .min();
         event_loop.set_control_flow(wake.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
 
@@ -537,6 +607,11 @@ impl ApplicationHandler<Event> for App {
                 if let Some(v) = self.viewers.get_mut(&viewer) {
                     v.on_copy(image);
                 }
+            }
+            Event::FolderChanged { dir, changes } => {
+                let (pending, due) = self.folder_changes.entry(dir).or_insert_with(|| (Vec::new(), Instant::now()));
+                pending.extend(changes);
+                *due = Instant::now() + FOLDER_SETTLE;
             }
             Event::Open(request) => self.open(event_loop, request),
             Event::Superseded => {
@@ -787,6 +862,8 @@ fn main() {
         burst: Some((first, 0)),
         idle_since: None,
         error: None,
+        watchers: HashMap::new(),
+        folder_changes: HashMap::new(),
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         app.error.get_or_insert(e.to_string());

@@ -42,7 +42,38 @@ struct Meta {
     size: u64,
 }
 
+fn meta_of(m: &std::fs::Metadata) -> Meta {
+    Meta { modified: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64), size: m.len() }
+}
+
+/// Where `a` goes relative to `b` in `sort` order (names lowercased).
+fn compare(sort: Sort, (a, a_meta): (&str, Meta), (b, b_meta): (&str, Meta)) -> Ordering {
+    let ext = |n: &str| n.rsplit_once('.').map_or("", |(_, e)| e).to_string();
+    let key = match sort.key {
+        SortKey::Name => Ordering::Equal,
+        SortKey::Modified => a_meta.modified.cmp(&b_meta.modified),
+        SortKey::Size => a_meta.size.cmp(&b_meta.size),
+        SortKey::Type => ext(a).cmp(&ext(b)),
+    };
+    let order = key.then_with(|| natural_cmp_lower(a, b));
+    if sort.descending { order.reverse() } else { order }
+}
+
+/// A change to a watched folder (`watch.rs`), by full path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Change {
+    Added(PathBuf),
+    Removed(PathBuf),
+    Renamed(PathBuf, PathBuf),
+    /// Its contents (size, date) changed.
+    Modified(PathBuf),
+    /// Too much changed to say what (the change buffer overflowed): list again.
+    Rescan,
+}
+
 pub struct Folder {
+    /// Where the files are (the folder watched for changes).
+    pub dir: PathBuf,
     pub files: Vec<PathBuf>,
     meta: Vec<Meta>,
     pub index: usize,
@@ -78,13 +109,7 @@ pub fn list(file: &Path, sort: Sort) -> Result<Folder, String> {
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()) && is_image(&entry.path()))
-        .map(|entry| {
-            let meta = entry.metadata().map_or_else(|_| Meta::default(), |m| Meta {
-                modified: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64),
-                size: m.len(),
-            });
-            (entry.path(), meta)
-        })
+        .map(|entry| (entry.path(), entry.metadata().map_or_else(|_| Meta::default(), |m| meta_of(&m))))
         .unzip();
     let lower = name(&file).to_lowercase();
     if !files.iter().any(|p| name(p).to_lowercase() == lower) {
@@ -92,7 +117,7 @@ pub fn list(file: &Path, sort: Sort) -> Result<Folder, String> {
         files.push(file.clone());
         meta.push(Meta::default());
     }
-    let mut folder = Folder { files, meta, index: 0, sort, shuffle: None };
+    let mut folder = Folder { dir: dir.to_path_buf(), files, meta, index: 0, sort, shuffle: None };
     folder.sort(sort);
     folder.index = folder.files.iter().position(|p| name(p).to_lowercase() == lower).unwrap_or(0);
     Ok(folder)
@@ -109,6 +134,7 @@ impl Folder {
         let meta = &self.meta;
         let mut order: Vec<usize> = (0..names.len()).collect();
         order.sort_by(|&a, &b| {
+            // As `compare`, without its per-call allocations.
             let by_name = || natural_cmp_lower(&names[a], &names[b]);
             let key = match sort.key {
                 SortKey::Name => Ordering::Equal,
@@ -137,6 +163,100 @@ impl Folder {
                 shuffle.position[file as usize] = at as u32;
             }
         }
+    }
+
+    /// Where `path` is in the list.
+    pub fn position(&self, path: &Path) -> Option<usize> {
+        self.files.iter().position(|p| p == path)
+    }
+
+    /// Changes from the folder's watcher, applied in place: new images go
+    /// where the sort order puts them, removed ones leave, renamed and
+    /// modified ones move if the order says so. The current file stays
+    /// current (a removed one is followed by its successor). Returns whether
+    /// the list changed. (`Rescan` is the caller's: it lists again.)
+    pub fn apply(&mut self, changes: &[Change]) -> bool {
+        let mut current = self.files.get(self.index).cloned();
+        let mut fallback = self.index;
+        let mut changed = false;
+        for change in changes {
+            match change {
+                Change::Added(path) => changed |= self.insert(path),
+                Change::Removed(path) => {
+                    if let Some(i) = self.position(path).filter(|_| self.files.len() > 1) {
+                        self.remove_at(i);
+                        changed = true;
+                        if current.as_ref() == Some(path) {
+                            current = None;
+                            fallback = i;
+                        }
+                    }
+                }
+                Change::Renamed(old, new) => {
+                    // The new name first, so the list never runs empty.
+                    let added = self.insert(new);
+                    if let Some(i) = self.position(old).filter(|_| self.files.len() > 1) {
+                        self.remove_at(i);
+                        changed = true;
+                    }
+                    if added && current.as_ref() == Some(old) {
+                        current = Some(new.clone());
+                    }
+                    changed |= added;
+                }
+                Change::Modified(path) => {
+                    // Its size and date changed: where it sorts may have too.
+                    let Some(i) = self.position(path) else { continue };
+                    let Ok(meta) = std::fs::metadata(path) else { continue };
+                    self.remove_at(i);
+                    self.insert_with(path, meta_of(&meta));
+                    changed = true;
+                }
+                Change::Rescan => {}
+            }
+        }
+        if changed {
+            self.index = current.and_then(|c| self.position(&c)).unwrap_or(fallback.min(self.files.len().saturating_sub(1)));
+            // The shuffle no longer matches the list: random paging starts a new one.
+            self.shuffle = None;
+        }
+        changed
+    }
+
+    fn remove_at(&mut self, i: usize) {
+        self.files.remove(i);
+        self.meta.remove(i);
+    }
+
+    /// Puts a new image where the sort order wants it (binary search).
+    /// Returns false for files that aren't images or are listed already.
+    fn insert(&mut self, path: &Path) -> bool {
+        if !is_image(path) || self.position(path).is_some() {
+            return false;
+        }
+        match std::fs::metadata(path) {
+            Ok(meta) if meta.is_file() => {
+                self.insert_with(path, meta_of(&meta));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn insert_with(&mut self, path: &Path, meta: Meta) {
+        let lower = name(path).to_lowercase();
+        let (mut low, mut high) = (0, self.files.len());
+        while low < high {
+            let mid = (low + high) / 2;
+            let other = name(&self.files[mid]).to_lowercase();
+            if compare(self.sort, (&other, self.meta[mid]), (&lower, meta)) == Ordering::Less {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        self.files.insert(low, path.to_path_buf());
+        self.meta.insert(low, meta);
     }
 
     /// The file one random step from the current one (forward or back), in
@@ -231,6 +351,7 @@ mod tests {
 
     fn folder(names: &[(&str, u64, u64)]) -> Folder {
         Folder {
+            dir: PathBuf::new(),
             files: names.iter().map(|(n, _, _)| PathBuf::from(n)).collect(),
             meta: names.iter().map(|&(_, modified, size)| Meta { modified, size }).collect(),
             index: 0,
@@ -241,6 +362,52 @@ mod tests {
 
     fn names(folder: &Folder) -> Vec<String> {
         folder.files.iter().map(|p| name(p).into_owned()).collect()
+    }
+
+    #[test]
+    fn applies_folder_changes_in_place() {
+        let dir = std::env::temp_dir().join(format!("flick-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = |n: &str| dir.join(n);
+        let touch = |n: &str| std::fs::write(file(n), n).unwrap();
+        for n in ["a1.jpg", "a3.jpg", "a5.jpg"] {
+            touch(n);
+        }
+        let mut f = list(&file("a3.jpg"), Sort::default()).unwrap();
+        assert_eq!(f.index, 1);
+
+        for n in ["a2.jpg", "a6.jpg", "notes.txt"] {
+            touch(n);
+        }
+        let added = [Change::Added(file("a2.jpg")), Change::Added(file("a6.jpg")), Change::Added(file("notes.txt"))];
+        assert!(f.apply(&added));
+        assert_eq!(names(&f), ["a1.jpg", "a2.jpg", "a3.jpg", "a5.jpg", "a6.jpg"], "in name order, images only");
+        assert_eq!(f.files[f.index], file("a3.jpg"), "the current file stays current");
+
+        std::fs::remove_file(file("a3.jpg")).unwrap();
+        f.apply(&[Change::Removed(file("a3.jpg"))]);
+        assert_eq!(f.files[f.index], file("a5.jpg"), "a removed current file: its successor");
+
+        std::fs::rename(file("a5.jpg"), file("a0.jpg")).unwrap();
+        f.apply(&[Change::Renamed(file("a5.jpg"), file("a0.jpg"))]);
+        assert_eq!(names(&f), ["a0.jpg", "a1.jpg", "a2.jpg", "a6.jpg"]);
+        assert_eq!(f.files[f.index], file("a0.jpg"), "a renamed current file stays current");
+
+        // Newest last: a file written to now moves to the end.
+        f.sort(Sort { key: SortKey::Modified, descending: false });
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        std::fs::File::options().write(true).open(file("a1.jpg")).unwrap().set_modified(later).unwrap();
+        f.apply(&[Change::Modified(file("a1.jpg"))]);
+        assert_eq!(f.files.last(), Some(&file("a1.jpg")));
+        assert_eq!(f.files[f.index], file("a0.jpg"));
+
+        // The last file can't be removed from under the viewer.
+        let mut one = list(&file("a0.jpg"), Sort::default()).unwrap();
+        let all: Vec<Change> = one.files.iter().map(|p| Change::Removed(p.clone())).collect();
+        one.apply(&all);
+        assert_eq!(one.files.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
