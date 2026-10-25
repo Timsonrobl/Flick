@@ -164,7 +164,7 @@ pub struct Chrome {
     /// Preferences ▸ Multi-row Tabs: off keeps one row, however narrow.
     multirow: bool,
     /// The cursor rests on a tab (or the title): its full path shows from
-    /// then (`TIP_AFTER`), if its name is cut short.
+    /// then (`TIP_AFTER`), unless the title shows it whole already.
     tip_at: Option<Instant>,
     tip_shown: bool,
     /// A tip was drawn since the cursor came to rest: moving on to another
@@ -561,14 +561,14 @@ impl Chrome {
                 }
             }
 
-            // The full path of a tab whose name is cut short, under it.
+            // The full path of the tab (or title) under it, unless shown whole already.
             let Some((shown, room, (x, top), i)) = rested.filter(|_| self.tip_shown) else { return };
             let (Some(path), Some((tip_format, _))) = (paths.get(i), &self.tip_text) else { return };
-            if text_size(format, &shown, f32::MAX).is_none_or(|(w, _)| w <= room + 0.5) {
-                return; // it fits
+            let full = path.display().to_string();
+            if shown.starts_with(&full) && text_size(format, &shown, f32::MAX).is_some_and(|(w, _)| w <= room + 0.5) {
+                return;
             }
             let (pad_x, pad_y, margin) = (8.0 * s, 5.0 * s, MARGIN * s);
-            let full = path.display().to_string();
             let Some((w, h)) = text_size(tip_format, &full, (width - 2.0 * (margin + pad_x)).max(1.0)) else { return };
             let (w, h) = (w + 2.0 * pad_x, h + 2.0 * pad_y);
             let left = x.min(width - margin - w).max(margin);
