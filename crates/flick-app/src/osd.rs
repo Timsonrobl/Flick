@@ -53,11 +53,12 @@ impl Osd {
     }
 
     /// The info panel: "Label: value" lines on a dark panel at the top left.
-    pub fn draw_info(&self, context: &ID2D1DeviceContext, lines: &[(&str, String)], window: (f32, f32)) {
+    /// Returns where it was drawn (a click there closes it).
+    pub fn draw_info(&self, context: &ID2D1DeviceContext, lines: &[(&str, String)], window: (f32, f32)) -> Option<D2D_RECT_F> {
         let text = lines.iter().map(|(label, value)| format!("{label}: {value}")).collect::<Vec<_>>().join("\n");
         let (s, margin, padding) = (self.scale, MARGIN * self.scale, PADDING * self.scale);
         let max_width = (window.0 - 2.0 * (margin + padding)).min(1000.0 * s);
-        let Some((layout, width, height)) = self.layout(&text, &self.info, max_width) else { return };
+        let (layout, width, height) = self.layout(&text, &self.info, max_width)?;
         let (left, top) = (margin, TOP * s);
         let panel = D2D_RECT_F { left, top, right: left + width + 2.0 * padding, bottom: top + height + 2.0 * padding };
         unsafe {
@@ -65,11 +66,12 @@ impl Osd {
                 context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.45 }, None),
                 context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.95, g: 0.95, b: 0.95, a: 1.0 }, None),
             ) else {
-                return;
+                return None;
             };
             context.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: panel, radiusX: 6.0 * s, radiusY: 6.0 * s }, &fill);
             context.DrawTextLayout(Vector2 { X: left + padding, Y: top + padding }, &layout, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE);
         }
+        Some(panel)
     }
 
     /// A brief note, small, at the top right.

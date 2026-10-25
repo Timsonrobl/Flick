@@ -9,7 +9,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::HWND;
-use windows::Win32::Graphics::Direct2D::Common::D2D1_COLOR_F;
+use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_COLOR_F};
 use windows::Win32::Graphics::Direct2D::{
     D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, ID2D1Bitmap1,
 };
@@ -413,6 +413,8 @@ pub struct Viewer {
     osd: Option<Osd>,
     /// A brief note (zoom level, "Copied to clipboard") and when it goes.
     note: Option<(String, Instant)>,
+    /// Where the info panel was last drawn: a click there closes it.
+    info_rect: Option<D2D_RECT_F>,
 }
 
 /// How long a note stays.
@@ -481,6 +483,7 @@ impl Viewer {
             tab_shuffle: Vec::new(),
             osd: None,
             note: None,
+            info_rect: None,
         }
     }
 
@@ -1406,6 +1409,7 @@ impl Viewer {
             _ => None,
         };
         let (debug, notice, osd, chrome) = (self.debug.as_ref(), self.tab.notice.as_deref(), self.osd.as_ref(), &mut self.chrome);
+        let mut info_rect = None;
         let fading = chrome.animate();
         let grey = chrome::BACKGROUNDS[self.color % chrome::BACKGROUNDS.len()];
         let background = D2D1_COLOR_F { r: grey, g: grey, b: grey, a: 1.0 };
@@ -1429,13 +1433,14 @@ impl Viewer {
                 debug.draw(context, text, 48.0 * scale);
             }
             if let (Some(osd), Some(lines)) = (osd, &info) {
-                osd.draw_info(context, lines, window);
+                info_rect = osd.draw_info(context, lines, window);
             }
             if let (Some(osd), Some(text)) = (osd, &note) {
                 osd.draw_note(context, text, window);
             }
             chrome.draw(context, window.0, &title, &tabs, active, maximized);
         })?;
+        self.info_rect = info_rect;
         if sharpen.is_some() {
             surface.sharpen = sharpen;
         }
@@ -1584,6 +1589,13 @@ impl Viewer {
                 button => self.pressed = Some(Press::Button(button)),
             }
             return Action::None;
+        }
+
+        // A click on the info panel closes it (as Tab does).
+        let on_info = self.info_rect.is_some_and(|r| (r.left..r.right).contains(&cursor.0) && (r.top..r.bottom).contains(&cursor.1));
+        if self.prefs.info && on_info {
+            self.last_click = None;
+            return self.set_prefs(Prefs { info: false, ..self.prefs });
         }
 
         let Some(current) = &mut self.tab.current else {

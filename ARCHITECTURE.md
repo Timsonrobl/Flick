@@ -641,7 +641,7 @@ change, debounced, so a crash or "stay resident" restart restores them as
   bar draws over it): the zoom level shows for 1.2 s, small and faint, at
   the top right after any zoom by hand, as do "Copying…"/"Copied to
   clipboard". `Tab` toggles the info
-  panel at the top left (a setting like the View menu's: per window,
+  panel at the top left, and a click on it closes it (a setting like the View menu's: per window,
   latest wins, saved; also in the menu as File Info): file name and
   position in the folder, picture size, format details (JPEG chroma
   subsampling and progressive scan, 16-bit, animation frames), file size
