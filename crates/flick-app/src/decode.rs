@@ -4,7 +4,9 @@
 //! fastest final-quality picture, measured in milestone 0), or scaled down
 //! to the target with WIC's Fant scaler; `Full` is the native resolution,
 //! for zooming in. Animations are composed frame by frame into whole
-//! pictures (`animate`).
+//! pictures (`animate`). A picture with a colour profile other than sRGB
+//! (Display P3, Adobe RGB...) is converted to sRGB as it decodes
+//! (`to_srgb`); the rest, nearly all, are taken as sRGB at no cost.
 
 use std::path::Path;
 use std::time::Duration;
@@ -50,6 +52,8 @@ struct Source {
     size: (u32, u32),
     frames: u32,
     gif: bool,
+    /// The frame's colour, when it needs converting to sRGB.
+    profile: Option<IWICColorContext>,
 }
 
 /// `image` (as stored) turned to how EXIF orientation `o` (1–8) displays it.
@@ -96,7 +100,74 @@ fn open(path: &Path) -> windows::core::Result<Source> {
         frame.GetSize(&mut w, &mut h)?;
         let frames = decoder.GetFrameCount().unwrap_or(1);
         let gif = decoder.GetContainerFormat().is_ok_and(|f| f == GUID_ContainerFormatGif);
-        Ok(Source { factory, decoder, frame, size: (w, h), frames, gif })
+        let profile = profile(&factory, &frame);
+        Ok(Source { factory, decoder, frame, size: (w, h), frames, gif, profile })
+    }
+}
+
+/// The frame's colour profile if it isn't sRGB: an embedded ICC profile,
+/// or Adobe RGB by EXIF. None (no profile, or sRGB, or gray): shown as is.
+fn profile(factory: &IWICImagingFactory, frame: &IWICBitmapFrameDecode) -> Option<IWICColorContext> {
+    unsafe {
+        let mut count = 0;
+        frame.GetColorContexts(&mut [], &mut count).ok()?;
+        if count == 0 {
+            return None;
+        }
+        let mut contexts: Vec<Option<IWICColorContext>> = (0..count).map(|_| factory.CreateColorContext().ok()).collect();
+        frame.GetColorContexts(&mut contexts, &mut count).ok()?;
+        let contexts: Vec<IWICColorContext> = contexts.into_iter().flatten().collect();
+        for context in &contexts {
+            if context.GetType().ok()? == WICColorContextProfile {
+                // Asked with no buffer, it gives the size (and a "too small" error).
+                let mut size = 0;
+                let _ = context.GetProfileBytes(&mut [], &mut size);
+                let mut bytes = vec![0u8; size as usize];
+                context.GetProfileBytes(&mut bytes, &mut size).ok()?;
+                return (!needs_no_conversion(&bytes)).then(|| context.clone());
+            }
+        }
+        // No profile: EXIF's colour space (2: Adobe RGB, by the DCF rule).
+        contexts.into_iter().find(|c| c.GetType().ok() == Some(WICColorContextExifColorSpace) && c.GetExifColorSpace().ok() == Some(2))
+    }
+}
+
+/// An ICC profile that is sRGB (by its description: "sRGB IEC61966-2.1"
+/// and kin, and Facebook's small "c2"), or gray: converting it would
+/// change nothing worth the time.
+fn needs_no_conversion(icc: &[u8]) -> bool {
+    let be32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]) as usize);
+    if icc.get(16..20) == Some(b"GRAY") {
+        return true;
+    }
+    // The tag table's 'desc' tag: v2 ('desc', ASCII) or v4 ('mluc', UTF-16).
+    let count = be32(icc, 128).min(100);
+    let Some(entry) = (0..count).map(|i| 132 + i * 12).find(|&e| icc.get(e..e + 4) == Some(b"desc")) else { return false };
+    let at = be32(icc, entry + 4);
+    let Some(tag) = icc.get(at..at.saturating_add(be32(icc, entry + 8)).min(icc.len())) else { return false };
+    let text = match tag.get(0..4) {
+        Some(b"desc") => String::from_utf8_lossy(tag.get(12..12 + be32(tag, 8)).unwrap_or(&[])).into_owned(),
+        Some(b"mluc") => {
+            let (n, at) = (be32(tag, 20), be32(tag, 24));
+            let wide: Vec<u16> = tag.get(at..at + n).unwrap_or(&[]).chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+            String::from_utf16_lossy(&wide)
+        }
+        _ => return false,
+    };
+    let text = text.trim_end_matches('\0').trim().to_lowercase();
+    text.contains("srgb") || text.contains("61966") || text == "c2" || text == "c2ci"
+}
+
+/// `bitmap` (pixels of `source`'s frame) in sRGB, as 32bpp BGRA, converted
+/// from the frame's profile; unchanged when it has none to convert from.
+fn to_srgb(source: &Source, bitmap: IWICBitmapSource) -> windows::core::Result<IWICBitmapSource> {
+    let Some(profile) = &source.profile else { return Ok(bitmap) };
+    unsafe {
+        let srgb = source.factory.CreateColorContext()?;
+        srgb.InitializeFromExifColorSpace(1)?;
+        let transform = source.factory.CreateColorTransformer()?;
+        transform.Initialize(&bitmap, profile, &srgb, &GUID_WICPixelFormat32bppBGRA)?;
+        transform.cast()
     }
 }
 
@@ -310,6 +381,36 @@ mod tests {
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
     }
 
+    /// A Display P3 photo (local sample; skipped where it isn't present)
+    /// comes out converted to sRGB, so more saturated than its pixels taken
+    /// as they are, on every WIC path: DCT-scaled, Fant-scaled and full.
+    /// With `--nocapture`, prints what the conversion costs.
+    #[test]
+    fn converts_a_display_p3_photo_to_srgb() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/display-p3.jpg");
+        let Ok(mut source) = open(&file) else { return };
+        assert!(source.profile.is_some(), "a Display P3 profile, to convert from");
+        let spread = |image: &Image| image.pixels.chunks_exact(4).map(|p| f64::from(p[0].max(p[1]).max(p[2]) - p[0].min(p[1]).min(p[2]))).sum::<f64>() / f64::from(image.width * image.height);
+        let paths: [(&str, fn(&Source) -> windows::core::Result<Image>); 3] = [
+            ("DCT-scaled", |s| scaled(s, 4).map(|i| i.unwrap())),
+            ("Fant-scaled", |s| fitted(s, (1000, 667))),
+            ("full", full),
+        ];
+        let profile = source.profile.take();
+        for (name, decode) in paths {
+            let started = std::time::Instant::now();
+            let raw = decode(&source).unwrap();
+            let raw_ms = started.elapsed().as_secs_f64() * 1000.0;
+            source.profile = profile.clone();
+            let started = std::time::Instant::now();
+            let managed = decode(&source).unwrap();
+            let managed_ms = started.elapsed().as_secs_f64() * 1000.0;
+            source.profile = None;
+            println!("{name}: {raw_ms:.1} ms as is, {managed_ms:.1} ms converted; colour spread {:.2} → {:.2}", spread(&raw), spread(&managed));
+            assert!(spread(&managed) > spread(&raw) * 1.03, "{name}: converted to sRGB, P3 colours spread wider");
+        }
+    }
+
     /// Milestone 7: every sample from `bench/gen-formats.ps1`, decoded as a
     /// window would (screen level for a 3377×1440 target, then full), with
     /// times. `cargo test --release -p flick-app formats_report -- --ignored --nocapture`.
@@ -493,21 +594,39 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
         };
         let mut raw = vec![0u8; w as usize * h as usize * bpp];
         transform.CopyPixels(std::ptr::null(), w, h, &format, WICBitmapTransformRotate0, w * bpp as u32, &mut raw)?;
+        if source.profile.is_some() {
+            let bitmap = source.factory.CreateBitmapFromMemory(w, h, &format, w * bpp as u32, &raw)?;
+            let mut pixels = vec![0u8; w as usize * h as usize * 4];
+            to_srgb(source, bitmap.cast()?)?.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
+            return Ok(Some(Image { width: w, height: h, pixels }));
+        }
         let pixels = if bpp == 3 { raw.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect() } else { raw };
         Ok(Some(Image { width: w, height: h, pixels }))
     }
 }
 
 /// Scaled to exactly `size` with the Fant scaler, after conversion to
-/// premultiplied BGRA (so transparent edges don't fringe).
+/// premultiplied BGRA (so transparent edges don't fringe). A colour profile
+/// is converted after scaling, on the small picture (before it, on the whole
+/// one, took ~3× as long): on straight alpha, so a profiled picture with
+/// transparency may fringe slightly at its edges.
 fn fitted(source: &Source, (w, h): (u32, u32)) -> windows::core::Result<Image> {
     unsafe {
-        let converter = source.factory.CreateFormatConverter()?;
-        converter.Initialize(&source.frame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+        let premultiplied = |bitmap: &IWICBitmapSource| -> windows::core::Result<IWICBitmapSource> {
+            let converter = source.factory.CreateFormatConverter()?;
+            converter.Initialize(bitmap, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+            converter.cast()
+        };
         let scaler = source.factory.CreateBitmapScaler()?;
-        scaler.Initialize(&converter, w, h, WICBitmapInterpolationModeFant)?;
+        let out = if source.profile.is_none() {
+            scaler.Initialize(&premultiplied(&source.frame.cast()?)?, w, h, WICBitmapInterpolationModeFant)?;
+            scaler.cast()?
+        } else {
+            scaler.Initialize(&source.frame, w, h, WICBitmapInterpolationModeFant)?;
+            premultiplied(&to_srgb(source, scaler.cast()?)?)?
+        };
         let mut pixels = vec![0u8; w as usize * h as usize * 4];
-        scaler.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
+        out.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
         Ok(Image { width: w, height: h, pixels })
     }
 }
@@ -515,7 +634,7 @@ fn fitted(source: &Source, (w, h): (u32, u32)) -> windows::core::Result<Image> {
 fn full(source: &Source) -> windows::core::Result<Image> {
     unsafe {
         let converter = source.factory.CreateFormatConverter()?;
-        converter.Initialize(&source.frame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+        converter.Initialize(&to_srgb(source, source.frame.cast()?)?, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
         let (w, h) = source.size;
         let mut pixels = vec![0u8; w as usize * h as usize * 4];
         converter.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;

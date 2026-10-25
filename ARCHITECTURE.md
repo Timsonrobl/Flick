@@ -895,8 +895,10 @@ lose by accident.
   replace when it is in the current folder (it's just navigation then).
 - **Tab strip placement.** Top of the overlay, as thumbnails; or a
   side-docked strip for tall screens. Overlay-top first.
-- **Colour management.** v1 passes sRGB through. Wide-gamut and ICC go in a
-  later milestone; the shader path is designed so a 3D LUT can be added.
+- **Colour management.** Embedded profiles other than sRGB are converted to
+  sRGB on decode (WIC colour transform; §17); the display's own profile is
+  not applied (sRGB output assumed). The shader path is designed so a 3D
+  LUT can be added for that.
 - **License.** Decided by the dependencies you accept: all-permissive is
   possible (turbojpeg, png, webp, jxl-oxide, resvg are MIT/BSD/Apache);
   libheif (LGPL) and dav1d (BSD) only affect bundling. GPL code from
@@ -941,9 +943,17 @@ closed by a commit that says so; review this list at every milestone.
   their 40 ms per frame of playback.
 - [ ] **RAW** (milestone 7, skipped by request): the embedded full-size JPEG
   preview, via WIC's Raw Image Extension (installed here) or `rawloader`.
-- [ ] **Colour management.** ICC profiles are ignored (WIC doesn't apply
-  them; jxl-oxide renders to sRGB): wide-gamut photos look duller than in
-  a colour-managed viewer.
+- [x] **Colour management** (closed 2026-10-25, to sRGB). A scan of the
+  user's 164 000 downloads: 90 % no profile, 6 % sRGB, ~2 % wide gamut
+  (Display P3, Adobe RGB, a few others). WIC formats now read the frame's
+  colour contexts; an ICC profile that isn't sRGB (by its description) or
+  gray, or EXIF's Adobe RGB, is converted to sRGB with WIC's colour
+  transform; everything else costs one `GetColorContexts` call. Measured
+  on a 24 MP Display P3 JPEG: DCT-scaled screen level +25 ms (converted
+  after decoding, on the small picture), Fant-scaled none (converted after
+  scaling), full resolution +390 ms (zoom and Ctrl+C only; off screen).
+  Not covered: APNG/animated WebP (image crate) and GIF; JPEG XL renders
+  to sRGB already. The display's own profile isn't applied.
 - [ ] **HDR on HDR displays.** EXR/Radiance HDR are tone-mapped to 8-bit
   sRGB on the CPU; §7's plan is RGBA16F and tone mapping in a shader.
 - [ ] **Format details left out of milestone 7:** multi-page TIFF (first
