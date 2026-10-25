@@ -196,7 +196,7 @@ const MOUSE: [PCWSTR; 9] = [
     w!("Duplicate Tab\tDouble-click"),
     w!("History Back / Forward\tSide buttons"),
     w!("Close Tab\tMiddle click on it"),
-    w!("Reorder Tabs\tCtrl+drag"),
+    w!("Reorder Tabs\tRight-drag, Ctrl+drag"),
 ];
 
 /// Slideshow ▸ intervals offered (`[` and `]` adjust in between).
