@@ -23,6 +23,14 @@ const MARGIN: f32 = 12.0;
 const PADDING: f32 = 10.0;
 /// Below the hover bar's first row (chrome.rs BAR, 36 px) and a margin.
 const TOP: f32 = 36.0 + 8.0;
+/// The info panel's and the notes' text size (100 % scaling), about
+/// Honeyview's (17 px read as too big, 2026-10-25).
+const TEXT: f32 = 14.0;
+/// The info panel wraps at this width where the picture leaves no border
+/// wide enough to hold it (100 % scaling).
+const PANEL_WIDTH: f32 = 400.0;
+/// A border beside the picture at least this wide holds the panel.
+const BORDER_MIN: f32 = 240.0;
 
 impl Osd {
     pub fn new(scale: f32) -> Result<Osd, String> {
@@ -31,11 +39,13 @@ impl Osd {
             let format = |size: f32, weight| {
                 factory.CreateTextFormat(w!("Segoe UI"), None, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size * scale, w!("")).map_err(|e| e.to_string())
             };
-            let info = format(17.0, DWRITE_FONT_WEIGHT_NORMAL)?;
+            let info = format(TEXT, DWRITE_FONT_WEIGHT_NORMAL)?;
             // Airier than the font's own spacing, as Honeyview's panel.
-            info.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, 17.0 * scale * 1.6, 17.0 * scale * 1.2).map_err(|e| e.to_string())?;
+            info.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, TEXT * scale * 1.65, TEXT * scale * 1.25).map_err(|e| e.to_string())?;
+            // A run with nowhere to break (a long file name) still breaks.
+            info.SetWordWrapping(DWRITE_WORD_WRAPPING_EMERGENCY_BREAK).map_err(|e| e.to_string())?;
             // The info panel's font (its own line spacing: one line).
-            let note = format(17.0, DWRITE_FONT_WEIGHT_NORMAL)?;
+            let note = format(TEXT, DWRITE_FONT_WEIGHT_NORMAL)?;
             Ok(Osd { factory, info, note, scale })
         }
     }
@@ -55,14 +65,23 @@ impl Osd {
         }
     }
 
-    /// The info panel: "Label: value" lines on a dark panel at the top left.
-    /// Returns where it was drawn (a click there closes it).
-    pub fn draw_info(&self, context: &ID2D1DeviceContext, lines: &[(&str, String)], window: (f32, f32)) -> Option<D2D_RECT_F> {
-        // An empty label is a gap between groups.
-        let text = lines.iter().map(|(label, value)| if label.is_empty() { String::new() } else { format!("{label}: {value}") }).collect::<Vec<_>>().join("\n");
+    /// The info panel: "Label: value" lines on a dark panel at the top left,
+    /// in small type as Honeyview's. Where the picture leaves a border on the
+    /// left at least BORDER_MIN wide (`picture_left`: where it starts), the
+    /// panel fits in it, off the picture; else it wraps at PANEL_WIDTH.
+    /// Labels make a column and values wrap within their own (a long file
+    /// name continues under itself, not under "File:"). Returns where it was
+    /// drawn (a click there closes it).
+    pub fn draw_info(&self, context: &ID2D1DeviceContext, lines: &[(&str, String)], window: (f32, f32), picture_left: f32) -> Option<D2D_RECT_F> {
         let (s, margin, padding) = (self.scale, MARGIN * self.scale, PADDING * self.scale);
-        let max_width = (window.0 - 2.0 * (margin + padding)).min(1000.0 * s);
-        let (layout, width, height) = self.layout(&text, &self.info, max_width)?;
+        let border = picture_left - 2.0 * (margin + padding);
+        let max_width = if picture_left >= BORDER_MIN * s { border } else { (window.0 - 2.0 * (margin + padding)).min(PANEL_WIDTH * s) };
+        let labels: Vec<_> = lines.iter().map(|(label, _)| self.layout(&if label.is_empty() { String::new() } else { format!("{label}: ") }, &self.info, f32::MAX)).collect::<Option<_>>()?;
+        let label_width = labels.iter().map(|(_, w, _)| *w).fold(0.0, f32::max);
+        // An empty label is a gap between groups: one empty line.
+        let values: Vec<_> = lines.iter().map(|(label, value)| self.layout(if label.is_empty() { "" } else { value }, &self.info, (max_width - label_width).max(1.0))).collect::<Option<_>>()?;
+        let width = label_width + values.iter().map(|(_, w, _)| *w).fold(0.0, f32::max);
+        let height: f32 = values.iter().map(|(_, _, h)| *h).sum();
         let (left, top) = (margin, TOP * s);
         let panel = D2D_RECT_F { left, top, right: left + width + 2.0 * padding, bottom: top + height + 2.0 * padding };
         unsafe {
@@ -73,7 +92,12 @@ impl Osd {
                 return None;
             };
             context.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: panel, radiusX: 6.0 * s, radiusY: 6.0 * s }, &fill);
-            context.DrawTextLayout(Vector2 { X: left + padding, Y: top + padding }, &layout, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE);
+            let mut y = top + padding;
+            for ((label, _, _), (value, _, height)) in labels.iter().zip(&values) {
+                context.DrawTextLayout(Vector2 { X: left + padding, Y: y }, label, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE);
+                context.DrawTextLayout(Vector2 { X: left + padding + label_width, Y: y }, value, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE);
+                y += height;
+            }
         }
         Some(panel)
     }

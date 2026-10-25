@@ -697,8 +697,17 @@ only starred / not starred):
   toggles the mode's sizing and 100 %. Right-drag zooms by horizontal
   travel (right: in, left: out; 2× per 200 px) around where it started: the
   picture point pressed stays under the cursor (a picture smaller than the
-  window grows from there, not from the centre, until it meets an edge); a
-  right click without moving opens the menu. A picture left off-centre by
+  window grows from there, not from the centre, until it meets an edge).
+  During the drag nothing holds the picture's edges to the window's: the
+  zoom stays purely around the pressed point; on release the picture
+  glides (150 ms, eased) to where the edge rules put it. Held to them
+  during the drag, an edge that met the window's took over as the zoom's
+  centre, the picture slid the other way, then the zoom moved back once
+  the picture outgrew the window: a jiggle (2026-10-25, with a test; a
+  first fix that zoomed each step from the last clamped place still did
+  it). Right-drag holds at 100 % for 24 px of travel as it passes, and
+  Ctrl+wheel and `+`/`−` stop at 100 % on the way through. A right click
+  without moving opens the menu. A picture left off-centre by
   a zoom around a point stays there: panning moves it only on axes where
   it is larger than the window, and zooming or resizing only keeps it
   inside; the view modes (and Fit to Window below) centre it again.
@@ -725,7 +734,17 @@ only starred / not starred):
   subsampling and progressive scan, 16-bit, animation frames), file size
   and date, and EXIF camera, lens, exposure and date taken. Read through
   WIC's photo metadata names on a worker thread (`meta.rs`) the first time
-  the panel shows a picture.
+  the panel shows a picture. Text at 14 px (Honeyview's size; 17 px read
+  as too big; the notes match), 1.65× line spacing, on the dark box (an
+  outlined box-less version was tried and read badly). Where the picture
+  leaves a border on the left at least 240 px wide, the panel fits in it,
+  off the picture; else it wraps at 400 px. Labels make a column and long
+  values wrap within theirs (a hanging indent); a file name may break
+  after every `-` and `_` (Unicode keeps `-` with a following digit, which
+  left a short line before a date), and its `[i/n]` stays with the name's
+  end. Also shown, as Honeyview does: the colour profile on the Image line
+  ("sRGB", "Display P3"), Software, and the 35 mm equivalent focal length
+  where it differs.
 - **Rotate** (menu, `Alt+↑/→/↓/←` for 0/90° clockwise/180°/90°
   counter-clockwise, `Ctrl+R` the next of those in turn, `Alt+H`/`Alt+V`
   mirror, `Alt+F` cycles not mirrored → horizontally → vertically; both

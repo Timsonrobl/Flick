@@ -52,6 +52,9 @@ const REVEAL: Duration = Duration::from_secs(2);
 /// Left-drag zoom: this much horizontal travel (at 100 % scaling) doubles
 /// or halves the picture.
 const ZOOM_DRAG: f64 = 200.0;
+/// A right-drag zoom holds at 100 % for this much travel (px at 100 %
+/// scaling) as it passes it.
+const ZOOM_DETENT: f32 = 24.0;
 /// The preload ring: this many images ahead of and behind the current one
 /// (ahead in the direction of travel).
 pub const AHEAD: usize = 3;
@@ -152,6 +155,19 @@ pub enum Level {
     Tiles(tiles::Tiles, (u32, u32)),
 }
 
+/// A picture gliding into place (GLIDE): its view centre from, to, and as
+/// last drawn (moved since by hand: the glide stops).
+#[derive(Clone, Copy)]
+struct Glide {
+    at: Instant,
+    from: (f32, f32),
+    to: (f32, f32),
+    shown: (f32, f32),
+}
+
+/// After a drag zoom, the picture glides into place over this long.
+const GLIDE: Duration = Duration::from_millis(150);
+
 /// The picture on screen.
 struct Current {
     path: PathBuf,
@@ -164,6 +180,8 @@ struct Current {
     /// The detail level arrived while zoomed in: it fades in (FADE) over
     /// what was drawn before (the level it replaces, else the screen level).
     fade: Option<(Instant, Option<Detail>)>,
+    /// After a drag zoom, the picture gliding to where the edge rules put it.
+    glide: Option<Glide>,
     detail_note: String,
     view: View,
     /// An animated GIF's playback (its first frame is `screen`).
@@ -184,14 +202,14 @@ impl Current {
         // An animation's frames are already full size: nothing to decode for zooming.
         let (requested, note) = if screen.animated() { (Some(1), "animation frames are full size") } else { (None, "not needed yet") };
         let detail_note = note.to_string();
-        Current { path, screen, detail: None, requested, fade: None, detail_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
+        Current { path, screen, detail: None, requested, fade: None, glide: None, detail_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
     }
 
     /// The same picture, drawn as it is, while another tab's decodes.
     fn stand_in(&self) -> Current {
         let detail_note = "the previous tab's picture, until this one decodes".to_string();
         let (path, screen, view, orientation) = (self.path.clone(), self.screen.clone(), self.view, self.orientation);
-        Current { path, screen, detail: None, requested: Some(1), fade: None, detail_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
+        Current { path, screen, detail: None, requested: Some(1), fade: None, glide: None, detail_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
     }
 
     /// The detail level to decode, if it isn't asked for yet (`detail_level`).
@@ -582,6 +600,9 @@ fn park(mut tab: Tab) -> Tab {
         current.anim = None;
         current.detail = None;
         current.fade = None;
+        if let Some(glide) = current.glide.take() {
+            current.view.center = glide.to;
+        }
         current.requested = current.screen.animated().then_some(1);
     }
     tab
@@ -1631,7 +1652,8 @@ impl Viewer {
     /// on a worker thread the first time (`on_info`); until then, the file
     /// name and size only.
     fn info_lines(&mut self, shared: &Shared) -> Option<Vec<(&'static str, String)>> {
-        let position = self.tab.folder.as_ref().map(|f| format!("   [{}/{}]", f.index + 1, f.files.len())).unwrap_or_default();
+        // Kept on the line with the name's end (no-break spaces).
+        let position = self.tab.folder.as_ref().map(|f| format!("\u{a0}\u{a0}\u{a0}[{}/{}]", f.index + 1, f.files.len())).unwrap_or_default();
         let current = self.tab.current.as_mut()?;
         if !current.info_requested {
             current.info_requested = true;
@@ -1649,7 +1671,11 @@ impl Viewer {
         if current.screen.animated() {
             image += &format!(", {} frames", current.screen.frames);
         }
-        let mut lines = vec![("File", format!("{}{position}", file_name(&current.path))), ("Image", image)];
+        // A long name may break after every "-" and "_" (a zero-width space):
+        // Unicode's rules don't break "-" before a digit ("w-2025-02-16" held
+        // together, leaving a short line above it).
+        let name = file_name(&current.path).replace('-', "-\u{200b}").replace('_', "_\u{200b}");
+        let mut lines = vec![("File", format!("{name}{position}")), ("Image", image)];
         if let Some(info) = &current.info {
             if info.stars.count > 0 {
                 let since = (info.stars.since > 0)
@@ -2089,6 +2115,9 @@ impl Viewer {
         if self.tab.current.is_some() || self.tab.notice.is_some() {
             self.holdover = None;
         }
+        let mut gliding = false;
+        // The info panel fits in the border left of the picture if it is wide enough.
+        let picture_left = self.tab.current.as_ref().map_or(0.0, |c| c.view.picture_left());
         let picture = match self.tab.current.as_mut().or(self.holdover.as_mut()) {
             Some(current) => {
                 let magnified = current.screen.magnified(current.view.scale);
@@ -2101,6 +2130,22 @@ impl Viewer {
                 if current.fade.as_ref().is_some_and(|(at, _)| at.elapsed() >= FADE) {
                     current.fade = None; // the level it faded from goes
                 }
+                if let Some(glide) = current.glide.as_mut() {
+                    if current.view.center != glide.shown {
+                        current.glide = None; // moved by hand meanwhile: it stays there
+                    } else {
+                        let t = (glide.at.elapsed().as_secs_f32() / GLIDE.as_secs_f32()).min(1.0);
+                        let eased = 1.0 - (1.0 - t).powi(3);
+                        let along = |from: f32, to: f32| from + (to - from) * eased;
+                        current.view.center = (along(glide.from.0, glide.to.0), along(glide.from.1, glide.to.1));
+                        glide.shown = current.view.center;
+                        if t >= 1.0 {
+                            current.view.center = glide.to;
+                            current.glide = None;
+                        }
+                    }
+                }
+                gliding = current.glide.is_some();
                 let current = &*current;
                 let filter = self.prefs.filter;
                 let screen = || layer(current, vec![(current.screen.bitmap.clone(), (0, 0), None)], current.screen.size, window, filter);
@@ -2175,7 +2220,7 @@ impl Viewer {
                 debug.draw(context, text, 48.0 * scale);
             }
             if let (Some(osd), Some(lines)) = (osd, &info) {
-                info_rect = osd.draw_info(context, lines, window);
+                info_rect = osd.draw_info(context, lines, window, picture_left);
             }
             if let (Some(osd), Some(text)) = (osd, &note) {
                 osd.draw_note(context, text, window);
@@ -2187,7 +2232,7 @@ impl Viewer {
             surface.sharpen = sharpen;
         }
         // The bar fading, tabs gliding into place, or a sharper level fading in: one more frame.
-        if fading || self.chrome.moving() || picture_fading {
+        if fading || self.chrome.moving() || picture_fading || gliding {
             self.redraw();
         }
         Ok(())
@@ -2291,10 +2336,11 @@ impl Viewer {
         window.set_cursor(icon);
     }
 
+    /// Ctrl+wheel, +/−: stops at 100 % on the way through.
     fn zoom(&mut self, at: Option<(f32, f32)>, factor: f32) {
         if let Some(current) = &mut self.tab.current {
             let at = at.unwrap_or((current.view.window.0 / 2.0, current.view.window.1 / 2.0));
-            current.view.zoom_at(at, factor);
+            current.view.zoom_at(at, view::snap_step(current.view.scale, factor));
             self.show_zoom();
         }
     }
@@ -2376,7 +2422,25 @@ impl Viewer {
         // A release whose press Flick never saw (e.g. the click that closed
         // the menu) does nothing.
         let Some(press) = self.right_press.take() else { return Action::None };
-        if press.active { Action::None } else { Action::Menu }
+        if press.active {
+            self.end_drag_zoom();
+            Action::None
+        } else {
+            Action::Menu
+        }
+    }
+
+    /// A drag zoom ended: the picture glides to where the edge rules put it
+    /// (the drag kept none: `View::drag_zoom`).
+    fn end_drag_zoom(&mut self) {
+        let Some(current) = &mut self.tab.current else { return };
+        let from = current.view.settle();
+        let to = current.view.center;
+        if from != to {
+            current.view.center = from;
+            current.glide = Some(Glide { at: Instant::now(), from, to, shown: from });
+            self.redraw();
+        }
     }
 
     /// Not a click left over from closing the menu (queued during its modal
@@ -2400,8 +2464,8 @@ impl Viewer {
         let (physical_left, physical_right) = (held(VK_LBUTTON), held(VK_RBUTTON));
         let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
         let (left, right) = if swapped { (physical_right, physical_left) } else { (physical_left, physical_right) };
-        if !right {
-            self.right_press = None;
+        if !right && self.right_press.take().is_some_and(|press| press.active) {
+            self.end_drag_zoom();
         }
         let pressed_by_right = matches!(self.pressed, Some(Press::Reorder { right: true, .. }));
         if self.pressed.is_some() && !(if pressed_by_right { right } else { left }) {
@@ -2461,10 +2525,10 @@ impl Viewer {
             return;
         }
         self.right_press = Some(DragZoom { from, scale, anchor, active: true });
-        let per_doubling = ZOOM_DRAG * self.window.as_ref().map_or(1.0, |w| w.scale_factor());
-        let target = scale * 2f32.powf(((self.cursor.0 - from.0) / per_doubling) as f32);
+        let dpi = self.window.as_ref().map_or(1.0, |w| w.scale_factor()) as f32;
+        let target = view::drag_scale(scale, (self.cursor.0 - from.0) as f32, ZOOM_DRAG as f32 * dpi, ZOOM_DETENT * dpi);
         if let Some(current) = &mut self.tab.current {
-            current.view.zoom_anchored(anchor, (from.0 as f32, from.1 as f32), target);
+            current.view.drag_zoom(anchor, (from.0 as f32, from.1 as f32), target);
             self.show_zoom();
         }
     }

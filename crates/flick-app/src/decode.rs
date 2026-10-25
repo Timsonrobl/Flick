@@ -119,12 +119,7 @@ fn profile(factory: &IWICImagingFactory, frame: &IWICBitmapFrameDecode) -> Optio
         let contexts: Vec<IWICColorContext> = contexts.into_iter().flatten().collect();
         for context in &contexts {
             if context.GetType().ok()? == WICColorContextProfile {
-                // Asked with no buffer, it gives the size (and a "too small" error).
-                let mut size = 0;
-                let _ = context.GetProfileBytes(&mut [], &mut size);
-                let mut bytes = vec![0u8; size as usize];
-                context.GetProfileBytes(&mut bytes, &mut size).ok()?;
-                return (!needs_no_conversion(&bytes)).then(|| context.clone());
+                return (!needs_no_conversion(&profile_bytes(context)?)).then(|| context.clone());
             }
         }
         // No profile: EXIF's colour space (2: Adobe RGB, by the DCF rule).
@@ -132,29 +127,62 @@ fn profile(factory: &IWICImagingFactory, frame: &IWICBitmapFrameDecode) -> Optio
     }
 }
 
-/// An ICC profile that is sRGB (by its description: "sRGB IEC61966-2.1"
-/// and kin, and Facebook's small "c2"), or gray: converting it would
-/// change nothing worth the time.
-fn needs_no_conversion(icc: &[u8]) -> bool {
-    let be32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]) as usize);
-    if icc.get(16..20) == Some(b"GRAY") {
-        return true;
+/// The frame's colour profile by name, for the info panel: an embedded ICC
+/// profile's description ("sRGB IEC61966-2.1", "Display P3"), or Adobe RGB
+/// by EXIF; None without either.
+pub fn profile_name(factory: &IWICImagingFactory, frame: &IWICBitmapFrameDecode) -> Option<String> {
+    unsafe {
+        let mut count = 0;
+        frame.GetColorContexts(&mut [], &mut count).ok()?;
+        let mut contexts: Vec<Option<IWICColorContext>> = (0..count).map(|_| factory.CreateColorContext().ok()).collect();
+        frame.GetColorContexts(&mut contexts, &mut count).ok()?;
+        let contexts: Vec<IWICColorContext> = contexts.into_iter().flatten().collect();
+        if let Some(icc) = contexts.iter().find(|c| c.GetType().ok() == Some(WICColorContextProfile)) {
+            return Some(icc_description(&profile_bytes(icc)?).unwrap_or_else(|| "ICC profile".into()));
+        }
+        contexts.iter().any(|c| c.GetType().ok() == Some(WICColorContextExifColorSpace) && c.GetExifColorSpace().ok() == Some(2)).then(|| "Adobe RGB (EXIF)".into())
     }
-    // The tag table's 'desc' tag: v2 ('desc', ASCII) or v4 ('mluc', UTF-16).
+}
+
+fn profile_bytes(context: &IWICColorContext) -> Option<Vec<u8>> {
+    unsafe {
+        // Asked with no buffer, it gives the size (and a "too small" error).
+        let mut size = 0;
+        let _ = context.GetProfileBytes(&mut [], &mut size);
+        let mut bytes = vec![0u8; size as usize];
+        context.GetProfileBytes(&mut bytes, &mut size).ok()?;
+        Some(bytes)
+    }
+}
+
+/// An ICC profile's description: its 'desc' tag, v2 ('desc', ASCII) or v4
+/// ('mluc', UTF-16).
+fn icc_description(icc: &[u8]) -> Option<String> {
+    let be32 = |b: &[u8], o: usize| b.get(o..o + 4).map_or(0, |s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]) as usize);
     let count = be32(icc, 128).min(100);
-    let Some(entry) = (0..count).map(|i| 132 + i * 12).find(|&e| icc.get(e..e + 4) == Some(b"desc")) else { return false };
+    let entry = (0..count).map(|i| 132 + i * 12).find(|&e| icc.get(e..e + 4) == Some(b"desc"))?;
     let at = be32(icc, entry + 4);
-    let Some(tag) = icc.get(at..at.saturating_add(be32(icc, entry + 8)).min(icc.len())) else { return false };
-    let text = match tag.get(0..4) {
-        Some(b"desc") => String::from_utf8_lossy(tag.get(12..12 + be32(tag, 8)).unwrap_or(&[])).into_owned(),
-        Some(b"mluc") => {
+    let tag = icc.get(at..at.saturating_add(be32(icc, entry + 8)).min(icc.len()))?;
+    let text = match tag.get(0..4)? {
+        b"desc" => String::from_utf8_lossy(tag.get(12..12 + be32(tag, 8)).unwrap_or(&[])).into_owned(),
+        b"mluc" => {
             let (n, at) = (be32(tag, 20), be32(tag, 24));
             let wide: Vec<u16> = tag.get(at..at + n).unwrap_or(&[]).chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
             String::from_utf16_lossy(&wide)
         }
-        _ => return false,
+        _ => return None,
     };
-    let text = text.trim_end_matches('\0').trim().to_lowercase();
+    Some(text.trim_end_matches('\0').trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// An ICC profile that is sRGB (by its description: "sRGB IEC61966-2.1"
+/// and kin, and Facebook's small "c2"), or gray: converting it would
+/// change nothing worth the time.
+fn needs_no_conversion(icc: &[u8]) -> bool {
+    if icc.get(16..20) == Some(b"GRAY") {
+        return true;
+    }
+    let Some(text) = icc_description(icc).map(|t| t.to_lowercase()) else { return false };
     text.contains("srgb") || text.contains("61966") || text == "c2" || text == "c2ci"
 }
 

@@ -50,6 +50,30 @@ impl Affine {
     }
 }
 
+/// A zoom step (Ctrl+wheel, +/−) from `scale` by `factor`, stopping at
+/// 100 % when it would cross it: the next step goes on past.
+pub fn snap_step(scale: f32, factor: f32) -> f32 {
+    let (from, to) = (scale - 1.0, scale * factor - 1.0);
+    if from.abs() > 1e-4 && from.signum() != to.signum() { 1.0 / scale } else { factor }
+}
+
+/// A right drag's zoom: `start` doubled per `per_doubling` px of `travel`
+/// (negative: halved), holding at 100 % for `detent` px of travel where it
+/// passes it (a drag starting at 100 % holds for `detent` either way).
+pub fn drag_scale(start: f32, travel: f32, per_doubling: f32, detent: f32) -> f32 {
+    // The travel at which 100 % is reached, and which way that lies.
+    let to_one = -per_doubling * start.log2();
+    let side = if to_one.abs() < 1e-3 { travel.signum() } else { to_one.signum() };
+    let beyond = (travel - to_one) * side; // past 100 %, in its direction
+    if beyond <= 0.0 && to_one.abs() >= 1e-3 {
+        start * 2f32.powf(travel / per_doubling)
+    } else if beyond <= detent {
+        1.0
+    } else {
+        2f32.powf((travel - to_one - side * detent) / per_doubling)
+    }
+}
+
 /// Maps stored pixels (w × h) to displayed pixels for EXIF orientation 1–8.
 pub fn orientation(o: u16, w: f32, h: f32) -> Affine {
     match o {
@@ -322,16 +346,26 @@ impl View {
         self.clamp();
     }
 
-    /// A right-drag zoom: `scale`, with the image point `anchor` (taken where
-    /// the drag started) at `cursor`. A picture smaller than the window on an
-    /// axis is not centred there, only kept inside it, so it grows from the
-    /// pressed point rather than from the window's centre.
-    pub fn zoom_anchored(&mut self, anchor: (f32, f32), cursor: (f32, f32), scale: f32) {
+    /// A right-drag zoom to `scale`, purely around the image point `anchor`
+    /// held at `pressed` (window pixels): nothing keeps the picture's edges
+    /// to the window's meanwhile, so the zoom never changes direction. (Kept
+    /// to them, an edge that met the window's held the zoom there, the
+    /// picture slid the other way, then the zoom moved back to the pressed
+    /// point once the picture outgrew the window: it jiggled.) `settle` puts
+    /// the edges right when the drag ends.
+    pub fn drag_zoom(&mut self, anchor: (f32, f32), pressed: (f32, f32), scale: f32) {
         self.scale = scale.clamp(MIN_SCALE.min(self.fit_scale()), MAX_SCALE);
-        let center = |anchor: f32, cursor: f32, window: f32| anchor - (cursor - window / 2.0) / self.scale;
-        self.center = (center(anchor.0, cursor.0, self.window.0), center(anchor.1, cursor.1, self.window.1));
+        let center = |anchor: f32, pressed: f32, window: f32| anchor - (pressed - window / 2.0) / self.scale;
+        self.center = (center(anchor.0, pressed.0, self.window.0), center(anchor.1, pressed.1, self.window.1));
         self.follows_mode = false;
+    }
+
+    /// After a drag zoom: the edge rules (`clamp`) applied. Returns where the
+    /// centre was, for gliding from there.
+    pub fn settle(&mut self) -> (f32, f32) {
+        let before = self.center;
         self.clamp();
+        before
     }
 
     /// Moves the picture by `delta` window pixels, on the axes where it is
@@ -348,9 +382,20 @@ impl View {
         self.clamp();
     }
 
+    /// Where the picture's left edge is in the window (negative: past it).
+    pub fn picture_left(&self) -> f32 {
+        self.window.0 / 2.0 - self.center.0 * self.scale
+    }
+
     /// Window pixels → image space.
     pub fn to_image(&self, p: (f32, f32)) -> (f32, f32) {
         (self.center.0 + (p.0 - self.window.0 / 2.0) / self.scale, self.center.1 + (p.1 - self.window.1 / 2.0) / self.scale)
+    }
+
+    /// Image space → window pixels.
+    #[cfg(test)]
+    fn to_window(&self, p: (f32, f32)) -> (f32, f32) {
+        ((p.0 - self.center.0) * self.scale + self.window.0 / 2.0, (p.1 - self.center.1) * self.scale + self.window.1 / 2.0)
     }
 
     /// Where the picture is larger than the window, no border shows; where it
@@ -533,14 +578,63 @@ mod tests {
         let pressed = (700.0, 300.0);
         let anchor = view.to_image(pressed);
         for scale in [1.1, 1.2, 1.4] {
-            view.zoom_anchored(anchor, pressed, scale);
+            view.drag_zoom(anchor, pressed, scale);
             let at = view.to_image(pressed);
             assert!((at.0 - anchor.0).abs() < 0.01 && (at.1 - anchor.1).abs() < 0.01, "scale {scale}: {at:?} vs {anchor:?}");
         }
-        // Grown to an edge, it stays inside the window rather than follow.
-        view.zoom_anchored(anchor, pressed, 1.8);
+        // Grown past an edge, it goes on around the pressed point; let go, it settles inside the window.
+        view.drag_zoom(anchor, pressed, 1.8);
+        view.settle();
         let left = view.window.0 / 2.0 - view.center.0 * view.scale;
         assert!(left >= 0.0 && left + 500.0 * 1.8 <= view.window.0 + 0.01, "left {left}");
+    }
+
+    #[test]
+    fn drag_zoom_never_turns_back() {
+        // The jiggle: a 750 × 500 picture fit in 1000 × 500 (borders left and
+        // right), drag-zoomed to 8× around a point on its left. Held to the
+        // window's edges, the right edge met the window's first and the
+        // picture slid left, then the zoom moved back once both sides were
+        // out. Now every point moves steadily away from the pressed one.
+        let mut view = View::new((1500, 1000), WINDOW, mode(Fit::Window, false));
+        let pressed = (300.0, 250.0);
+        let anchor = view.to_image(pressed);
+        let points = [(0.0, 0.0), (375.0, 250.0), (750.0, 500.0), (1125.0, 750.0), (1500.0, 1000.0)];
+        let mut last = points.map(|p| view.to_window(p));
+        let mut scale = view.scale;
+        while scale < 8.0 {
+            scale *= 1.02;
+            view.drag_zoom(anchor, pressed, scale);
+            let now = points.map(|p| view.to_window(p));
+            for (before, after) in last.iter().zip(&now) {
+                // Away from the pressed point (or staying), on both axes.
+                let away = |b: f32, a: f32, p: f32| (a - p).abs() >= (b - p).abs() - 0.01;
+                assert!(away(before.0, after.0, pressed.0) && away(before.1, after.1, pressed.1), "turned back at {scale:.2}: {before:?} → {after:?}");
+            }
+            last = now;
+        }
+        // Let go: the edge rules apply (no border where the picture overflows).
+        view.settle();
+        assert!(view.to_window((0.0, 0.0)).0 <= 0.01 && view.to_window((1500.0, 0.0)).0 >= 999.99);
+    }
+
+    #[test]
+    fn zoom_stops_at_100_percent_on_the_way() {
+        assert_eq!(snap_step(0.9, 1.25) * 0.9, 1.0, "Ctrl+wheel from 90 % lands on 100 %");
+        assert_eq!(snap_step(1.0, 1.25), 1.25, "and goes on from there");
+        assert!((snap_step(1.2, 0.8) * 1.2 - 1.0).abs() < 1e-6, "zooming out too");
+        assert_eq!(snap_step(0.5, 1.25), 1.25, "far from it, a plain step");
+        // Right drag, 200 px per doubling, held at 100 % for 24 px.
+        let drag = |start, travel| drag_scale(start, travel, 200.0, 24.0);
+        assert_eq!(drag(0.25, 0.0), 0.25);
+        assert_eq!(drag(0.25, 400.0), 1.0);
+        assert_eq!(drag(0.25, 420.0), 1.0, "held");
+        assert_eq!(drag(0.25, 624.0), 2.0, "then on, with no jump");
+        assert_eq!(drag(0.25, -200.0), 0.125, "away from 100 %: plain");
+        assert_eq!(drag(2.0, -224.0), 1.0);
+        assert_eq!(drag(2.0, -424.0), 0.5);
+        assert_eq!(drag(1.0, 20.0), 1.0, "starting at 100 %: held either way");
+        assert_eq!(drag(1.0, -224.0), 0.5);
     }
 
     #[test]
@@ -548,7 +642,8 @@ mod tests {
         // 500 × 250 in 1000 × 500, drag-zoomed to 1.2 around a point off the centre.
         let mut view = View::new((500, 250), WINDOW, mode(Fit::Window, false));
         let pressed = (700.0, 300.0);
-        view.zoom_anchored(view.to_image(pressed), pressed, 1.2);
+        view.drag_zoom(view.to_image(pressed), pressed, 1.2);
+        view.settle();
         let placed = view.center;
         assert!((placed.0 - 250.0).abs() > 1.0, "off-centre: {placed:?}");
         view.pan((40.0, -30.0));

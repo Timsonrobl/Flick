@@ -177,6 +177,11 @@ fn wic(path: &Path, lines: &mut Vec<(&'static str, String)>) -> Option<String> {
                 format += ", 16-bit";
             }
         }
+        // The colour profile, as Honeyview shows it ("ICC profile (sRGB)").
+        if let Some(profile) = decode::profile_name(&factory, &frame) {
+            let short = if profile.to_lowercase().contains("srgb") { "sRGB" } else { &profile };
+            format += &format!(", {short}");
+        }
 
         if let Ok(reader) = frame.GetMetadataQueryReader() {
             exif(&reader, lines);
@@ -326,6 +331,9 @@ fn exif(reader: &IWICMetadataQueryReader, lines: &mut Vec<(&'static str, String)
     if let Some(artist) = text(reader, &["/app1/ifd/{ushort=315}", "/ifd/{ushort=315}"]) {
         lines.push(("Artist", artist));
     }
+    if let Some(software) = text(reader, &["/app1/ifd/{ushort=305}", "/ifd/{ushort=305}"]) {
+        lines.push(("Software", software));
+    }
     // The camera's own "2026:10:22 17:20:57", as written, with its time zone if recorded.
     let taken = text(reader, &["/app1/ifd/exif/{ushort=36867}", "/ifd/exif/{ushort=36867}"]);
     if let Some(taken) = taken.filter(|t| t.len() >= 19) {
@@ -344,7 +352,12 @@ fn exif(reader: &IWICMetadataQueryReader, lines: &mut Vec<(&'static str, String)
         exposure.push(format!("ISO {iso:.0}"));
     }
     if let Some(focal) = number(reader, "System.Photo.FocalLength") {
-        exposure.push(format!("{focal:.0} mm"));
+        // With the 35 mm equivalent where the crop makes it differ.
+        let film = number(reader, "System.Photo.FocalLengthInFilm").filter(|f| (f - focal).abs() >= 1.0);
+        exposure.push(match film {
+            Some(film) => format!("{focal:.0} mm ({film:.0} mm in 35 mm)"),
+            None => format!("{focal:.0} mm"),
+        });
     }
     if !exposure.is_empty() {
         lines.push(("Exposure", exposure.join("  ")));
