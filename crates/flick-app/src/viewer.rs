@@ -37,7 +37,7 @@ use crate::menu;
 use crate::meta;
 use crate::osd::Osd;
 use crate::settings::{Global, Prefs};
-use crate::view::{self, Affine, Filter, Fit, Mode, View};
+use crate::view::{self, Affine, Filter, Fit, Mode, Stop, Turn, View};
 
 pub type ViewerId = u64;
 
@@ -149,21 +149,31 @@ struct Current {
     info_requested: bool,
     /// Its file was rewritten: shown until the new version is decoded.
     stale: bool,
+    /// How it's drawn: its EXIF orientation with the tab's turn on top.
+    orientation: u16,
 }
 
 impl Current {
-    fn new(path: PathBuf, screen: Screen, window: (u32, u32), mode: Mode) -> Current {
-        let view = View::new(view::oriented_size(screen.orientation, screen.full_size), window, mode);
+    fn new(path: PathBuf, screen: Screen, window: (u32, u32), mode: Mode, turn: Turn) -> Current {
+        let orientation = turn.after(screen.orientation);
+        let view = View::new(view::oriented_size(orientation, screen.full_size), window, mode);
         // An animation's frames are already full size: nothing to decode for zooming.
         let (full_requested, full_note) = if screen.animated() { (true, "animation frames are full size") } else { (false, "not needed yet") };
-        Current { path, screen, full: None, full_requested, full_note, view, anim: None, info: None, info_requested: false, stale: false }
+        Current { path, screen, full: None, full_requested, full_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
     }
 
     /// The same picture, drawn as it is, while another tab's decodes.
     fn stand_in(&self) -> Current {
         let full_note = "the previous tab's picture, until this one decodes";
-        let (path, screen, view) = (self.path.clone(), self.screen.clone(), self.view);
-        Current { path, screen, full: None, full_requested: true, full_note, view, anim: None, info: None, info_requested: true, stale: false }
+        let (path, screen, view, orientation) = (self.path.clone(), self.screen.clone(), self.view, self.orientation);
+        Current { path, screen, full: None, full_requested: true, full_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
+    }
+
+    /// Turned another way: the view starts again in `mode`.
+    fn set_turn(&mut self, turn: Turn, mode: Mode) {
+        self.orientation = turn.after(self.screen.orientation);
+        let window = (self.view.window.0 as u32, self.view.window.1 as u32);
+        self.view = View::new(view::oriented_size(self.orientation, self.screen.full_size), window, mode);
     }
 }
 
@@ -249,7 +259,7 @@ impl Ring {
 
 /// One page turn: how it was served and when (wall-clock ms, comparable with
 /// `flick-bench ext-viewer`'s key-press times).
-struct Turn {
+struct PageTurn {
     index: usize,
     how: &'static str,
     handled_wall: f64,
@@ -276,6 +286,63 @@ fn is_double_click(after: Duration, from: (f64, f64), to: (f64, f64)) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK};
     let (time, w, h) = unsafe { (GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)) };
     after.as_millis() <= u128::from(time) && (to.0 - from.0).abs() <= f64::from(w) / 2.0 && (to.1 - from.1).abs() <= f64::from(h) / 2.0
+}
+
+/// Whether a key moves by hand through pictures or tabs (which stops a
+/// slideshow): the paging keys, Home/End, Ctrl+Tab and Ctrl+1–9.
+fn is_navigation(event: &KeyEvent, modifiers: ModifiersState) -> bool {
+    if modifiers.alt_key() || (modifiers.shift_key() && !modifiers.control_key()) {
+        return false; // Alt+arrows turn the picture; Shift+paging keys do nothing
+    }
+    if modifiers.control_key() {
+        let digit = matches!(
+            event.physical_key,
+            PhysicalKey::Code(
+                KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 | KeyCode::Digit4 | KeyCode::Digit5 | KeyCode::Digit6 | KeyCode::Digit7 | KeyCode::Digit8 | KeyCode::Digit9
+            )
+        );
+        return digit || matches!(event.logical_key.as_ref(), Key::Named(NamedKey::Tab));
+    }
+    let letter = matches!(
+        event.physical_key,
+        PhysicalKey::Code(KeyCode::KeyA | KeyCode::KeyD | KeyCode::KeyW | KeyCode::KeyS | KeyCode::BracketLeft | KeyCode::BracketRight)
+    );
+    letter
+        || matches!(
+            event.logical_key.as_ref(),
+            Key::Named(
+                NamedKey::ArrowLeft
+                    | NamedKey::ArrowRight
+                    | NamedKey::ArrowUp
+                    | NamedKey::ArrowDown
+                    | NamedKey::PageUp
+                    | NamedKey::PageDown
+                    | NamedKey::Space
+                    | NamedKey::Backspace
+                    | NamedKey::Home
+                    | NamedKey::End
+            )
+        )
+}
+
+/// Moves a file to the Recycle Bin (silently: the caller asked already).
+fn recycle(hwnd: HWND, path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::UI::Shell::{FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, SHFILEOPSTRUCTW, SHFileOperationW};
+    // A list of paths, each NUL-ended, the list ended by another NUL.
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain([0, 0]).collect();
+    let mut operation = SHFILEOPSTRUCTW {
+        hwnd,
+        wFunc: FO_DELETE,
+        pFrom: windows::core::PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI).0 as u16,
+        ..Default::default()
+    };
+    let result = unsafe { SHFileOperationW(&mut operation) };
+    if result != 0 || operation.fAnyOperationsAborted.as_bool() {
+        return Err(format!("error {result:#x}"));
+    }
+    Ok(())
 }
 
 /// "★★★", or "★ 14" past ten.
@@ -316,7 +383,7 @@ pub struct Tab {
     turn_started: Option<Instant>,
     turn_started_wall: f64,
     last_turn: Option<(f64, &'static str)>,
-    turns: Vec<Turn>,
+    turns: Vec<PageTurn>,
     pub last_decode_ms: Option<f64>,
     /// This tab's shuffle (random paging); a new tab, a new order.
     seed: u64,
@@ -327,6 +394,8 @@ pub struct Tab {
     /// The last zoom set by hand (scale, centre as a fraction of the
     /// picture), for the middle-click cycle.
     custom_zoom: Option<(f32, (f32, f32))>,
+    /// Rotate ▸ chosen in this tab (else the window's persisted turn, if any).
+    turn: Option<Turn>,
 }
 
 impl Tab {
@@ -423,6 +492,23 @@ pub struct Viewer {
     note: Option<(String, Instant)>,
     /// Where the info panel was last drawn: a click there closes it.
     info_rect: Option<D2D_RECT_F>,
+    /// Ctrl+G: pages (or tabs) turn by themselves.
+    slideshow: Option<Slideshow>,
+    /// Tab Lock's last step was random (a slideshow through tabs follows it).
+    tab_random: bool,
+}
+
+/// A running slideshow. Each picture stays `Prefs::slide_ms` from when it
+/// is on screen, so a slow decode delays the next step instead of cutting
+/// it short or letting steps pile up.
+#[derive(Clone, Copy)]
+struct Slideshow {
+    /// In the window's random order (the last move was random).
+    random: bool,
+    /// Through the tabs (Tab Lock was on).
+    tabs: bool,
+    /// When it last moved on.
+    stepped: Instant,
 }
 
 /// How long a note stays.
@@ -492,6 +578,8 @@ impl Viewer {
             osd: None,
             note: None,
             info_rect: None,
+            slideshow: None,
+            tab_random: false,
         }
     }
 
@@ -599,12 +687,13 @@ impl Viewer {
     fn wake(&mut self, shared: &Shared) {
         self.tab.parked = None;
         let size = self.surface.as_ref().map_or((1, 1), |s| s.size);
+        let turn = self.turn_of(&self.tab);
         match &mut self.tab.current {
             Some(current) => current.view.resize(size),
             None => {
                 if let Some(screen) = self.tab.wanted.as_ref().and_then(|p| shared.cache.get(p)) {
                     let path = self.tab.wanted.clone().unwrap_or_default();
-                    self.tab.current = Some(Current::new(path, screen.clone(), size, self.prefs.mode));
+                    self.tab.current = Some(Current::new(path, screen.clone(), size, self.prefs.mode, turn));
                     self.tab.shown_at = Some(Instant::now());
                 }
             }
@@ -728,12 +817,13 @@ impl Viewer {
         let screen = Screen::upload(gpu, &picture)?;
         drop(picture);
         let (size, mode, active) = (self.surface.as_ref().map_or((1, 1), |s| s.size), self.prefs.mode, self.tab.id == tab);
+        let default_turn = self.default_turn();
         let Some(target) = self.tab_mut(tab) else { return Ok(false) };
         target.timeline.mark("uploaded");
         let path = target.request.file.clone();
         shared.cache.insert(path.clone(), screen.clone());
         target.wanted = Some(path.clone());
-        target.current = Some(Current::new(path, screen, size, mode));
+        target.current = Some(Current::new(path, screen, size, mode, target.turn.unwrap_or(default_turn)));
         target.shown_at = Some(Instant::now());
         if active {
             self.render(shared)?;
@@ -800,9 +890,10 @@ impl Viewer {
         let (Some(gpu), Some(window), Some(hwnd)) = (shared.gpu.as_ref(), self.window.clone(), self.hwnd) else {
             return Ok(false);
         };
+        let turn = self.turn_of(&self.tab);
         let display = match (&self.tab.picture, &self.tab.current) {
-            (Some(picture), _) => view::oriented_size(picture.orientation, picture.full_size),
-            (None, Some(current)) => view::oriented_size(current.screen.orientation, current.screen.full_size),
+            (Some(picture), _) => view::oriented_size(turn.after(picture.orientation), picture.full_size),
+            (None, Some(current)) => view::oriented_size(current.orientation, current.screen.full_size),
             (None, None) => return Ok(false),
         };
         // The remembered placement (also maximized), else sized to the picture.
@@ -818,7 +909,7 @@ impl Viewer {
             let path = self.tab.request.file.clone();
             shared.cache.insert(path.clone(), screen.clone());
             self.tab.wanted = Some(path.clone());
-            self.tab.current = Some(Current::new(path, screen, size, self.prefs.mode));
+            self.tab.current = Some(Current::new(path, screen, size, self.prefs.mode, turn));
         } else if let Some(current) = &mut self.tab.current {
             current.view.resize(size);
         }
@@ -942,6 +1033,8 @@ impl Viewer {
         let (index, last) = (folder.index as i64, folder.files.len() as i64 - 1);
         let target = (self.tab.target as i64 + delta).clamp(0, last);
         if target == self.tab.target as i64 {
+            // Nowhere further that way: say so (the folders go on with [ ]).
+            self.show_note(if delta > 0 { "Last picture" } else { "First picture" }.into());
             return Action::None;
         }
         self.tab.target = target as usize;
@@ -975,9 +1068,10 @@ impl Viewer {
             self.note = None;
             self.redraw();
         }
+        let slid = self.slide_due().is_some_and(|due| due <= Instant::now()) && self.slide(shared);
         self.cool_tabs(shared);
         self.next_frame(shared);
-        self.advance(shared)
+        self.advance(shared) || slid
     }
 
     /// One image toward the target, once the current one has been on screen
@@ -1001,7 +1095,7 @@ impl Viewer {
         let step = self.tab.folder.as_ref().filter(|f| f.index != self.tab.target).and_then(|_| self.tab.shown_at).map(|t| t + DWELL);
         let cool = self.others.iter().filter_map(|t| t.parked).min().map(|t| t + cool_after());
         let note = self.note.as_ref().map(|(_, until)| *until);
-        [frame, step, cool, self.chrome.reveal_deadline(), note].into_iter().flatten().min()
+        [frame, step, cool, self.chrome.reveal_deadline(), note, self.slide_due()].into_iter().flatten().min()
     }
 
     /// If the current picture is animated, schedules its playback: frames
@@ -1131,10 +1225,17 @@ impl Viewer {
     }
 
     fn go(&mut self, index: usize, shared: &Shared) -> Action {
-        let Some(folder) = &mut self.tab.folder else { return Action::None };
+        let Some(folder) = &self.tab.folder else { return Action::None };
         if index == folder.index || index >= folder.files.len() {
             return Action::None;
         }
+        self.show_index(index, shared)
+    }
+
+    /// Shows the folder's file at `index` (decoded, or once it is), even
+    /// if the position didn't change (the file there did: a deletion).
+    fn show_index(&mut self, index: usize, shared: &Shared) -> Action {
+        let Some(folder) = &mut self.tab.folder else { return Action::None };
         folder.index = index;
         let path = folder.files[index].clone();
         self.tab.turn_started = Some(Instant::now());
@@ -1158,7 +1259,8 @@ impl Viewer {
 
     fn display(&mut self, path: PathBuf, screen: Screen, how: &'static str, shared: &Shared) {
         let window = self.surface.as_ref().map_or((1, 1), |s| s.size);
-        self.tab.current = Some(Current::new(path, screen, window, self.prefs.mode));
+        let turn = self.turn_of(&self.tab);
+        self.tab.current = Some(Current::new(path, screen, window, self.prefs.mode, turn));
         self.tab.notice = None;
         self.tab.shown_at = Some(Instant::now());
         if self.render(shared).is_err() {
@@ -1170,7 +1272,7 @@ impl Viewer {
             self.tab.last_turn = Some((started.elapsed().as_secs_f64() * 1000.0, how));
             let composition_hz = self.surface.as_ref().and_then(|s| s.composition_hz());
             let gpu_done_wall = self.surface.as_ref().and_then(|s| s.wait_for_gpu()).map(|_| clock::wall_ms());
-            self.tab.turns.push(Turn {
+            self.tab.turns.push(PageTurn {
                 index: self.tab.folder.as_ref().map_or(0, |f| f.index),
                 how,
                 handled_wall: self.tab.turn_started_wall,
@@ -1315,7 +1417,7 @@ impl Viewer {
                 let _ = proxy.send_event(Event::Info { viewer, path, info });
             });
         }
-        let (w, h) = view::oriented_size(current.screen.orientation, current.screen.full_size);
+        let (w, h) = view::oriented_size(current.orientation, current.screen.full_size);
         let mut image = format!("{w} × {h}");
         if let Some(info) = &current.info {
             image += &format!(", {}", info.format);
@@ -1334,6 +1436,10 @@ impl Viewer {
                 lines.push(("Stars", format!("{}{since}", star_text(info.stars.count))));
             }
             lines.extend(info.lines.iter().cloned());
+            if !info.exif.is_empty() {
+                lines.push(("", String::new())); // a gap before the shot's details
+                lines.extend(info.exif.iter().cloned());
+            }
         }
         Some(lines)
     }
@@ -1346,6 +1452,48 @@ impl Viewer {
         }
     }
 
+    /// The turn a tab starts with: the persisted one, else none.
+    fn default_turn(&self) -> Turn {
+        if self.prefs.persist_turn { self.prefs.turn } else { Turn::default() }
+    }
+
+    fn turn_of(&self, tab: &Tab) -> Turn {
+        tab.turn.unwrap_or_else(|| self.default_turn())
+    }
+
+    /// Rotate ▸ (Alt+arrows, Alt+H, Alt+V): this tab's pictures turned,
+    /// the one on screen at once. Persisted, it's saved for new tabs too.
+    fn set_turn(&mut self, turn: Turn) -> Action {
+        self.tab.turn = Some(turn);
+        let mode = self.prefs.mode;
+        if let Some(current) = &mut self.tab.current {
+            current.set_turn(turn, mode);
+        }
+        let angle = match turn.quarter {
+            0 => "Not rotated",
+            1 => "Rotated 90° clockwise",
+            2 => "Rotated 180°",
+            _ => "Rotated 90° counter-clockwise",
+        };
+        let flips = match (turn.flip_h, turn.flip_v) {
+            (true, true) => ", flipped both ways",
+            (true, false) => ", flipped horizontally",
+            (false, true) => ", flipped vertically",
+            _ => "",
+        };
+        self.show_note(format!("{angle}{flips}"));
+        if self.prefs.persist_turn { self.set_prefs(Prefs { turn, ..self.prefs }) } else { Action::None }
+    }
+
+    /// Rotate ▸ Persist: on, this tab's turn becomes the window's (saved,
+    /// for new tabs); off, nothing is kept.
+    fn toggle_persist_turn(&mut self) -> Action {
+        let persist = !self.prefs.persist_turn;
+        let turn = if persist { self.turn_of(&self.tab) } else { Turn::default() };
+        self.tab.turn = Some(self.turn_of(&self.tab)); // this tab keeps what it shows
+        self.set_prefs(Prefs { persist_turn: persist, turn, ..self.prefs })
+    }
+
     /// The file on screen (not one still decoding after a page turn).
     fn shown_file(&self) -> Option<PathBuf> {
         self.tab.current.as_ref().map(|c| c.path.clone())
@@ -1355,7 +1503,7 @@ impl Viewer {
     /// worker thread, then put on the clipboard (`on_copy`).
     fn copy(&mut self, shared: &Shared) -> Action {
         let Some(current) = &self.tab.current else { return Action::None };
-        let (viewer, path, orientation, proxy) = (self.id, current.path.clone(), current.screen.orientation, shared.proxy.clone());
+        let (viewer, path, orientation, proxy) = (self.id, current.path.clone(), current.orientation, shared.proxy.clone());
         std::thread::spawn(move || {
             let image = decode::decode_full(&path).map(|image| decode::oriented(image, orientation));
             let _ = proxy.send_event(Event::Copy { viewer, image });
@@ -1446,25 +1594,206 @@ impl Viewer {
         }
     }
 
+    /// When the slideshow moves on: `slide_ms` after the picture is on
+    /// screen (and not before the last step). None while it still decodes.
+    fn slide_due(&self) -> Option<Instant> {
+        let show = self.slideshow?;
+        let shown = self.tab.shown_at?.max(show.stepped);
+        Some(shown + Duration::from_millis(u64::from(self.prefs.slide_ms)))
+    }
+
+    /// The slideshow's next step: the next picture (wrapping to the first
+    /// at the end), the next random one, or the next tab. Returns whether
+    /// the folder position moved.
+    fn slide(&mut self, shared: &Shared) -> bool {
+        let Some(show) = self.slideshow.as_mut() else { return false };
+        show.stepped = Instant::now();
+        let show = *show;
+        let count = self.tab_count();
+        if show.tabs && count > 1 {
+            // Quietly: no bar reveal per step, as switch_tab does for keys.
+            let at = if show.random { self.next_random_tab(true) } else { Some((self.active_at + 1) % count) };
+            if let Some(at) = at {
+                self.activate(at, shared);
+            }
+            return true;
+        }
+        if show.random {
+            return matches!(self.random(true, shared), Action::Navigated);
+        }
+        let Some(folder) = &self.tab.folder else { return false };
+        let action = if folder.index + 1 >= folder.files.len() { self.jump(0, shared) } else { self.step(1, shared) };
+        matches!(action, Action::Navigated)
+    }
+
+    /// Ctrl+G: starts (the way the last move went: random or in order;
+    /// through tabs under Tab Lock) or stops.
+    fn toggle_slideshow(&mut self) -> Action {
+        if self.slideshow.take().is_some() {
+            self.show_note("Slideshow stopped".into());
+            return Action::None;
+        }
+        self.start_slideshow();
+        Action::None
+    }
+
+    fn start_slideshow(&mut self) {
+        let tabs = self.locked && self.tab_count() > 1;
+        let random = if tabs { self.tab_random } else { self.tab.random_heading != 0 };
+        self.slideshow = Some(Slideshow { random, tabs, stepped: Instant::now() });
+        let how = match (tabs, random) {
+            (true, true) => " · tabs, random",
+            (true, false) => " · tabs",
+            (false, true) => " · random",
+            (false, false) => "",
+        };
+        self.show_note(format!("Slideshow · {} ms{how}", self.prefs.slide_ms));
+    }
+
+    /// `[` / `]`: the folder before or after this one among its siblings
+    /// (ordered as the pictures are), listed on a worker thread
+    /// (`on_entered`), at its first picture.
+    fn sibling(&mut self, forward: bool, shared: &Shared) -> Action {
+        let dir = match &self.tab.folder {
+            Some(folder) => folder.dir.clone(),
+            None => match self.shown_file().and_then(|f| f.parent().map(Path::to_path_buf)) {
+                Some(dir) => dir,
+                None => return Action::None,
+            },
+        };
+        let (viewer, tab, sort, proxy) = (self.id, self.tab.id, self.prefs.sort, shared.proxy.clone());
+        std::thread::spawn(move || {
+            let result = folder::sibling(&dir, sort, forward);
+            let _ = proxy.send_event(Event::Entered { viewer, tab, result });
+        });
+        Action::None
+    }
+
+    /// A sibling folder, listed: the tab pages through it from its first
+    /// picture (if the tab is still the one shown), or says why not.
+    pub fn on_entered(&mut self, tab: TabId, result: Result<Folder, String>, shared: &Shared) -> Action {
+        if self.tab.id != tab {
+            return Action::None;
+        }
+        let mut folder = match result {
+            Ok(folder) => folder,
+            Err(e) => {
+                self.show_note(e);
+                return Action::None;
+            }
+        };
+        if folder.sort != self.prefs.sort {
+            folder.sort(self.prefs.sort);
+        }
+        folder.index = 0;
+        let name = folder.dir.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let count = folder.files.len();
+        self.tab.folder = Some(folder);
+        self.tab.target = 0;
+        self.tab.random_heading = 0;
+        self.tab.listing = true;
+        self.show_note(format!("{name}  ({count})"));
+        self.show_index(0, shared)
+    }
+
+    /// Ctrl+[ / Ctrl+]: the slideshow interval shorter or longer, in steps of
+    /// about a tenth (10 ms at the least), 50 ms to 60 s.
+    fn adjust_slide(&mut self, longer: bool) -> Action {
+        let ms = self.prefs.slide_ms;
+        let step = ((ms / 10).max(10) / 10) * 10;
+        let ms = if longer { ms + step } else { ms.saturating_sub(step) }.clamp(50, 60_000);
+        let action = self.set_prefs(Prefs { slide_ms: ms, ..self.prefs });
+        self.show_note(format!("Slideshow · {ms} ms{}", if self.slideshow.is_some() { "" } else { " (Ctrl+G starts)" }));
+        action
+    }
+
+    /// Slideshow ▸ an interval: set, and the slideshow runs.
+    fn set_slide_interval(&mut self, ms: u32) -> Action {
+        let action = self.set_prefs(Prefs { slide_ms: ms, ..self.prefs });
+        self.start_slideshow();
+        action
+    }
+
+    /// A key or the wheel moved by hand: the slideshow stops.
+    fn stop_slideshow_by_hand(&mut self) {
+        if self.slideshow.take().is_some() {
+            self.show_note("Slideshow stopped".into());
+        }
+    }
+
+    /// Del (to the Recycle Bin) or Shift+Del (for good), always asking
+    /// first, in Windows' own message box. Then the next picture shows (the
+    /// folder's watcher would get there too, a moment later); the folder's
+    /// only picture closes its tab.
+    fn delete(&mut self, permanently: bool, shared: &Shared) -> Action {
+        use windows::Win32::UI::WindowsAndMessaging::{IDYES, MB_DEFBUTTON2, MB_ICONQUESTION, MB_ICONWARNING, MB_YESNO, MessageBoxW};
+        let (Some(path), Some(hwnd)) = (self.shown_file(), self.hwnd) else { return Action::None };
+        let name = file_name(&path);
+        let (text, style) = if permanently {
+            (format!("Permanently delete \"{name}\"?\n\nIt won't go to the Recycle Bin, and this can't be undone."), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
+        } else {
+            (format!("Move \"{name}\" to the Recycle Bin?"), MB_YESNO | MB_ICONQUESTION)
+        };
+        let answer = unsafe { MessageBoxW(Some(hwnd), &windows::core::HSTRING::from(text), windows::core::w!("Delete"), style) };
+        if answer != IDYES {
+            return Action::None;
+        }
+        let deleted = if permanently { std::fs::remove_file(&path).map_err(|e| e.to_string()) } else { recycle(hwnd, &path) };
+        if let Err(e) = deleted {
+            self.show_note(format!("Couldn't delete: {e}"));
+            return Action::None;
+        }
+        let Some(folder) = self.tab.folder.as_mut() else { return self.close_tab(self.active_at, shared) };
+        if folder.files.len() <= 1 {
+            return self.close_tab(self.active_at, shared);
+        }
+        let target = folder.files.get(self.tab.target).cloned();
+        folder.apply(&[folder::Change::Removed(path)]);
+        let index = folder.index;
+        self.tab.target = target.and_then(|t| folder.position(&t)).unwrap_or(index);
+        self.show_index(index, shared)
+    }
+
     /// Ctrl+D (a background tab) or Ctrl+N (a new window) with this file.
     fn duplicate(&mut self, new_window: bool) -> Action {
         self.shown_file().map_or(Action::None, |file| Action::Duplicate { file, new_window })
     }
 
-    /// Middle click on the picture cycles its zoom: a zoom set by hand →
-    /// Fit to Window → 100 % (around the click) → that zoom again (if there
-    /// is one, else Fit to Window) → …
-    fn cycle_zoom(&mut self, at: (f32, f32)) {
-        let Some(current) = &mut self.tab.current else { return };
-        if current.view.cycle_zoom(at, &mut self.tab.custom_zoom) {
-            self.show_zoom();
+    /// Middle click on the picture steps through the view modes in the
+    /// menu's order, each set as the menu sets it (around the click), then
+    /// the last zoom set by hand, for this picture only; stops that look
+    /// the same here are skipped.
+    fn cycle_zoom(&mut self, at: (f32, f32)) -> Action {
+        let Some(current) = &mut self.tab.current else { return Action::None };
+        let view = &mut current.view;
+        let from = if view.hand_zoomed() {
+            self.tab.custom_zoom = Some(view.custom_zoom()); // leaving it
+            Stop::Hand
+        } else {
+            Stop::Mode(self.prefs.mode.fit)
+        };
+        match view.next_stop(from, self.tab.custom_zoom.map(|(scale, _)| scale)) {
+            Some(Stop::Mode(fit)) => {
+                let action = self.set_prefs(Prefs { mode: Mode { fit, ..self.prefs.mode }, ..self.prefs });
+                if let Some(current) = &mut self.tab.current {
+                    current.view.apply_mode_at(at);
+                }
+                self.show_zoom();
+                action
+            }
+            Some(Stop::Hand) => {
+                view.set_custom_zoom(self.tab.custom_zoom.unwrap_or_else(|| view.custom_zoom()));
+                self.show_zoom();
+                Action::None
+            }
+            None => Action::None,
         }
     }
 
     fn on_middle_press(&mut self) -> Action {
         // On the bar, middle click closes a tab (on release); elsewhere it zooms.
         if self.chrome.hit(self.cursor_f32(), self.width()).is_none() {
-            self.cycle_zoom(self.cursor_f32());
+            return self.cycle_zoom(self.cursor_f32());
         }
         Action::None
     }
@@ -1475,10 +1804,13 @@ impl Viewer {
         self.redraw();
     }
 
-    /// The zoom level, as a brief note: after any zoom by hand.
+    /// The zoom level, as a brief note after any zoom, named by the mode
+    /// when it is the mode's: "Fill window · 47 %", "Zoom · 150 %".
     fn show_zoom(&mut self) {
-        let Some(scale) = self.tab.current.as_ref().map(|c| c.view.scale * 100.0) else { return };
-        self.show_note(if scale >= 10.0 { format!("{scale:.0} %") } else { format!("{scale:.1} %") });
+        let Some(view) = self.tab.current.as_ref().map(|c| &c.view) else { return };
+        let name = if view.hand_zoomed() { "Zoom" } else { self.prefs.mode.fit.name() };
+        let scale = view.scale * 100.0;
+        self.show_note(if scale >= 10.0 { format!("{name} · {scale:.0} %") } else { format!("{name} · {scale:.1} %") });
     }
 
     pub fn render(&mut self, shared: &Shared) -> Result<(), String> {
@@ -1529,7 +1861,7 @@ impl Viewer {
                 };
                 let (fw, fh) = (current.screen.full_size.0 as f32, current.screen.full_size.1 as f32);
                 let to_window = Affine::scale(fw / size.0 as f32, fh / size.1 as f32)
-                    .then(view::orientation(current.screen.orientation, fw, fh))
+                    .then(view::orientation(current.orientation, fw, fh))
                     .then(current.view.transform());
                 let shrinking = current.view.scale * fw / (size.0 as f32) < 1.0;
                 let interpolation = match self.prefs.filter {
@@ -1919,7 +2251,7 @@ impl Viewer {
 
     /// The right-click menu; `others` are the other windows (id, colour,
     /// the file each shows) for Move to Window.
-    pub fn show_menu(&mut self, others: &[(ViewerId, usize, String)], global: Global) -> Action {
+    pub fn show_menu(&mut self, others: &[(ViewerId, usize, String)], global: Global, shared: &Shared) -> Action {
         let Some(hwnd) = self.hwnd else { return Action::None };
         let targets: Vec<menu::Target> = others.iter().map(|(_, color, label)| menu::Target { color: *color, label: label.clone() }).collect();
         // A tab can leave for a new window if it isn't the only one, and tabs are on.
@@ -1927,7 +2259,8 @@ impl Viewer {
         // Tab Lock only means something with tabs.
         let lock = (self.tab_count() > 1).then_some(self.locked);
         let favorites = library::favorites();
-        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, favorites.as_deref());
+        let turn = self.turn_of(&self.tab);
+        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, favorites.as_deref(), turn, self.slideshow.is_some());
         // Whatever the clicks that closed the menu left half-done (a press
         // without its release) is dropped, and presses queued while it was
         // open are ignored when they arrive just after (`fresh_press`).
@@ -1948,6 +2281,11 @@ impl Viewer {
                 self.choose_favorites();
                 Action::None
             }
+            Some(menu::Choice::Turn(turn)) => self.set_turn(turn),
+            Some(menu::Choice::PersistTurn) => self.toggle_persist_turn(),
+            Some(menu::Choice::Slideshow) => self.toggle_slideshow(),
+            Some(menu::Choice::SlideInterval(ms)) => self.set_slide_interval(ms),
+            Some(menu::Choice::Delete) => self.delete(false, shared),
             None => Action::None,
         }
     }
@@ -1969,6 +2307,7 @@ impl Viewer {
 
     /// Tab Lock's paging: `delta` tabs along the strip, wrapping around.
     fn step_tab(&mut self, delta: i64, shared: &Shared) -> Action {
+        self.tab_random = false;
         let count = self.tab_count() as i64;
         self.switch_tab((self.active_at as i64 + delta).rem_euclid(count) as usize, shared)
     }
@@ -1977,6 +2316,15 @@ impl Viewer {
     /// shuffled order, so back retraces forward and a round visits each tab
     /// once, as random paging does with pictures.
     fn random_tab(&mut self, forward: bool, shared: &Shared) -> Action {
+        self.tab_random = true;
+        match self.next_random_tab(forward) {
+            Some(at) => self.switch_tab(at, shared),
+            None => Action::None,
+        }
+    }
+
+    /// The strip position of the next (or previous) tab in the random order.
+    fn next_random_tab(&mut self, forward: bool) -> Option<usize> {
         let count = self.tab_count();
         let ids: Vec<TabId> = (0..count).filter_map(|at| self.tab_id_at(at)).collect();
         if self.tab_shuffle.len() != count || !ids.iter().all(|id| self.tab_shuffle.contains(id)) {
@@ -1985,12 +2333,9 @@ impl Viewer {
             let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64) ^ self.id;
             self.tab_shuffle = folder::shuffled(count, seed).into_iter().map(|i| sorted[i as usize]).collect();
         }
-        let Some(here) = self.tab_shuffle.iter().position(|&id| id == self.tab.id) else { return Action::None };
+        let here = self.tab_shuffle.iter().position(|&id| id == self.tab.id)?;
         let next = self.tab_shuffle[if forward { (here + 1) % count } else { (here + count - 1) % count }];
-        match ids.iter().position(|&id| id == next) {
-            Some(at) => self.switch_tab(at, shared),
-            None => Action::None,
-        }
+        ids.iter().position(|&id| id == next)
     }
 
     /// A tab switch from the keys or the wheel: the strip shows for a
@@ -2032,6 +2377,11 @@ impl Viewer {
             return Action::None;
         }
         self.wheel -= whole;
+        // Pages on its own only (Ctrl zooms, above; Shift or Alt: nothing).
+        if self.modifiers.shift_key() || self.modifiers.alt_key() {
+            return Action::None;
+        }
+        self.stop_slideshow_by_hand();
         if self.locked {
             return self.step_tab(-whole as i64, shared);
         }
@@ -2050,6 +2400,34 @@ impl Viewer {
         // so nothing piles up and paging stops when the key is released.
         // (Separate presses always count; the wheel walks through everything.)
         let page = !(event.repeat && self.busy());
+        // Moving by hand stops a slideshow (other keys, zoom say, don't).
+        if self.slideshow.is_some() && is_navigation(event, self.modifiers) {
+            self.stop_slideshow_by_hand();
+        }
+        // Rotate ▸ Alt+arrows (this tab's turn), Alt+H / Alt+V (mirrors).
+        if self.modifiers.alt_key() && !event.repeat {
+            let turn = self.turn_of(&self.tab);
+            let quarter = |quarter| Some(Turn { quarter, ..turn });
+            let chosen = match (event.physical_key, event.logical_key.as_ref()) {
+                (_, Key::Named(NamedKey::ArrowUp)) => quarter(0),
+                (_, Key::Named(NamedKey::ArrowRight)) => quarter(1),
+                (_, Key::Named(NamedKey::ArrowDown)) => quarter(2),
+                (_, Key::Named(NamedKey::ArrowLeft)) => quarter(3),
+                (PhysicalKey::Code(KeyCode::KeyH), _) => Some(Turn { flip_h: !turn.flip_h, ..turn }),
+                (PhysicalKey::Code(KeyCode::KeyV), _) => Some(Turn { flip_v: !turn.flip_v, ..turn }),
+                // Alt+F: not flipped → horizontally → vertically → not flipped.
+                // (Both ways is a 180° turn, which Ctrl+R reaches.)
+                (PhysicalKey::Code(KeyCode::KeyF), _) => Some(match (turn.flip_h, turn.flip_v) {
+                    (false, false) => Turn { flip_h: true, flip_v: false, ..turn },
+                    (true, false) => Turn { flip_h: false, flip_v: true, ..turn },
+                    _ => Turn { flip_h: false, flip_v: false, ..turn },
+                }),
+                _ => None,
+            };
+            if let Some(turn) = chosen {
+                return self.set_turn(turn);
+            }
+        }
         // Tabs: Ctrl+Tab / Ctrl+Shift+Tab cycle, Ctrl+1..9 jump, Ctrl+W closes.
         if self.modifiers.control_key() {
             let count = self.others.len() + 1;
@@ -2060,8 +2438,22 @@ impl Viewer {
                 }
                 (PhysicalKey::Code(KeyCode::KeyW), _) => Some(self.close_tab(self.active_at, shared)),
                 // Once per press, not per key repeat.
-                (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyN), _) | (_, Key::Named(NamedKey::Enter)) if event.repeat => Some(Action::None),
+                (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyD | KeyCode::KeyN | KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyR), _) | (_, Key::Named(NamedKey::Enter))
+                    if event.repeat =>
+                {
+                    Some(Action::None)
+                }
+                // The slideshow's interval: finer steps than the menu's.
+                (PhysicalKey::Code(KeyCode::BracketLeft), _) => Some(self.adjust_slide(false)),
+                (PhysicalKey::Code(KeyCode::BracketRight), _) => Some(self.adjust_slide(true)),
+                // Ctrl+R: the next quarter turn clockwise (four make normal again).
+                (PhysicalKey::Code(KeyCode::KeyR), _) => {
+                    let turn = self.turn_of(&self.tab);
+                    Some(self.set_turn(Turn { quarter: (turn.quarter + 1) % 4, ..turn }))
+                }
                 (PhysicalKey::Code(KeyCode::KeyC), _) => Some(self.copy(shared)),
+                (PhysicalKey::Code(KeyCode::KeyF), _) => Some(self.star(1, shared)),
+                (PhysicalKey::Code(KeyCode::KeyG), _) => Some(self.toggle_slideshow()),
                 (PhysicalKey::Code(KeyCode::KeyD), _) => Some(self.duplicate(false)),
                 (PhysicalKey::Code(KeyCode::KeyN), _) => Some(self.duplicate(true)),
                 (_, Key::Named(NamedKey::Enter)) => Some(self.show_in_explorer()),
@@ -2075,6 +2467,25 @@ impl Viewer {
                 return action;
             }
         }
+        // A plain hotkey works on its own only: with Ctrl or Alt, a key not
+        // bound above does nothing; with Shift, only the Shift bindings here
+        // do (and "+", which takes Shift on most layouts).
+        if self.modifiers.control_key() || self.modifiers.alt_key() {
+            return Action::None;
+        }
+        if self.modifiers.shift_key() {
+            return match (event.physical_key, event.logical_key.as_ref()) {
+                // Stars: Ctrl+F adds one (above), Shift+F takes one away.
+                (PhysicalKey::Code(KeyCode::KeyF), _) if !event.repeat => self.star(-1, shared),
+                // Delete for good (always asks first).
+                (_, Key::Named(NamedKey::Delete)) if !event.repeat => self.delete(true, shared),
+                (_, Key::Character("+")) => {
+                    self.zoom(None, ZOOM_STEP);
+                    Action::None
+                }
+                _ => Action::None,
+            };
+        }
         // Letters and digits by position, so they work in any keyboard
         // layout (as Honeyview's do): Z is Z on a Russian keyboard too.
         if let PhysicalKey::Code(code) = event.physical_key {
@@ -2085,9 +2496,11 @@ impl Viewer {
                 KeyCode::KeyA if self.locked => Some(self.step_tab(-1, shared)),
                 KeyCode::KeyS if self.locked => Some(self.random_tab(true, shared)),
                 KeyCode::KeyW if self.locked => Some(self.random_tab(false, shared)),
-                // Stars: F adds one, Shift+F takes one away (once per press).
-                KeyCode::KeyF if event.repeat => Some(Action::None),
-                KeyCode::KeyF => Some(self.star(if self.modifiers.shift_key() { -1 } else { 1 }, shared)),
+                KeyCode::KeyF => Some(Action::None), // stars take Ctrl or Shift
+                // The folder before or after this one.
+                KeyCode::BracketLeft | KeyCode::BracketRight if event.repeat => Some(Action::None),
+                KeyCode::BracketLeft => Some(self.sibling(false, shared)),
+                KeyCode::BracketRight => Some(self.sibling(true, shared)),
                 KeyCode::KeyL => {
                     // The bar shows for a moment, padlock and all, so it is
                     // clear whether L locked or unlocked.
@@ -2107,6 +2520,8 @@ impl Viewer {
                 KeyCode::Digit0 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Original, ..prefs.mode }, ..prefs })),
                 KeyCode::Digit9 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Window, ..prefs.mode }, ..prefs })),
                 KeyCode::Digit8 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Width, ..prefs.mode }, ..prefs })),
+                KeyCode::Digit7 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Height, ..prefs.mode }, ..prefs })),
+                KeyCode::Digit6 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Fill, ..prefs.mode }, ..prefs })),
                 KeyCode::KeyZ => Some(self.set_prefs(Prefs { mode: Mode { stretch_small: !prefs.mode.stretch_small, ..prefs.mode }, ..prefs })),
                 KeyCode::KeyU => Some(self.set_prefs(Prefs { filter: Filter::Nearest, ..prefs })),
                 KeyCode::KeyI => Some(self.set_prefs(Prefs { filter: Filter::Soften, ..prefs })),
@@ -2117,8 +2532,8 @@ impl Viewer {
             }
         }
         match event.logical_key.as_ref() {
-            // Closes the tab; the window's last one closes the window.
-            Key::Named(NamedKey::Escape) => self.close_tab(self.active_at, shared),
+            // To the Recycle Bin (Shift+Del, above: for good). Always asks first.
+            Key::Named(NamedKey::Delete) if !event.repeat => self.delete(false, shared),
             // The info panel, on or off (a setting: saved, new windows follow).
             Key::Named(NamedKey::Tab) if event.repeat => Action::None,
             Key::Named(NamedKey::Tab) => self.set_prefs(Prefs { info: !self.prefs.info, ..self.prefs }),

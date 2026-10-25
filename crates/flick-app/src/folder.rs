@@ -123,17 +123,27 @@ fn name(path: &Path) -> std::borrow::Cow<'_, str> {
 pub fn list(file: &Path, sort: Sort) -> Result<Folder, String> {
     let file = std::path::absolute(file).map_err(|e| e.to_string())?;
     let dir = file.parent().ok_or("file has no folder")?;
+    let mut folder = scan(dir, sort, Some(&file))?;
+    let lower = name(&file).to_lowercase();
+    folder.index = folder.files.iter().position(|p| name(p).to_lowercase() == lower).unwrap_or(0);
+    Ok(folder)
+}
+
+/// The images in `dir`, in `sort` order (`also`: a file to keep in the list
+/// even if the filter doesn't know it, the one opened).
+fn scan(dir: &Path, sort: Sort, also: Option<&Path>) -> Result<Folder, String> {
     let (mut files, mut meta): (Vec<PathBuf>, Vec<Meta>) = std::fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()) && is_image(&entry.path()))
         .map(|entry| (entry.path(), entry.metadata().map_or_else(|_| Meta::default(), |m| meta_of(&m))))
         .unzip();
-    let lower = name(&file).to_lowercase();
-    if !files.iter().any(|p| name(p).to_lowercase() == lower) {
-        // Opened a file the filter doesn't know: keep it.
-        files.push(file.clone());
-        meta.push(Meta::default());
+    if let Some(file) = also {
+        let lower = name(file).to_lowercase();
+        if !files.iter().any(|p| name(p).to_lowercase() == lower) {
+            files.push(file.to_path_buf());
+            meta.push(Meta::default());
+        }
     }
     // Stars, by name (one query; no library yet: none).
     let stars = crate::library::stars_in(dir);
@@ -144,8 +154,44 @@ pub fn list(file: &Path, sort: Sort) -> Result<Folder, String> {
     }
     let mut folder = Folder { dir: dir.to_path_buf(), files, meta, index: 0, sort, shuffle: None };
     folder.sort(sort);
-    folder.index = folder.files.iter().position(|p| name(p).to_lowercase() == lower).unwrap_or(0);
     Ok(folder)
+}
+
+/// `[` / `]`: the folder before or after `dir` among its siblings, ordered
+/// as `sort` orders pictures (by name, or date modified; by name for the
+/// keys folders don't have), skipping hidden folders and ones without
+/// pictures; listed, at its first picture. Err with what to tell the user.
+pub fn sibling(dir: &Path, sort: Sort, forward: bool) -> Result<Folder, String> {
+    use std::os::windows::fs::MetadataExt;
+    const HIDDEN_OR_SYSTEM: u32 = 0x2 | 0x4;
+    let parent = dir.parent().ok_or("no folders beside this one")?;
+    let mut folders: Vec<(String, Meta, PathBuf)> = std::fs::read_dir(parent)
+        .map_err(|e| format!("{}: {e}", parent.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let meta = entry.metadata().ok()?;
+            let visible = meta.is_dir() && meta.file_attributes() & HIDDEN_OR_SYSTEM == 0;
+            visible.then(|| (name(&entry.path()).to_lowercase(), meta_of(&meta), entry.path()))
+        })
+        .collect();
+    let by = match sort.key {
+        SortKey::Modified => Sort { key: SortKey::Modified, ..sort },
+        _ => Sort { key: SortKey::Name, ..sort },
+    };
+    folders.sort_by(|a, b| compare(by, (&a.0, a.1), (&b.0, b.1)));
+    let here = name(dir).to_lowercase();
+    let at = folders.iter().position(|(n, _, _)| *n == here).ok_or("this folder isn't among its siblings")?;
+    let next: Vec<&PathBuf> = if forward { folders[at + 1..].iter().map(|f| &f.2).collect() } else { folders[..at].iter().rev().map(|f| &f.2).collect() };
+    for candidate in next {
+        let has_pictures = std::fs::read_dir(candidate).is_ok_and(|mut d| d.any(|e| e.is_ok_and(|e| e.file_type().is_ok_and(|t| t.is_file()) && is_image(&e.path()))));
+        if has_pictures {
+            let folder = scan(candidate, sort, None)?;
+            if !folder.files.is_empty() {
+                return Ok(folder);
+            }
+        }
+    }
+    Err(if forward { "No next folder with pictures" } else { "No previous folder with pictures" }.into())
 }
 
 impl Folder {
@@ -414,6 +460,28 @@ mod tests {
         f.sort(Sort { key: SortKey::Stars, descending: false });
         f.set_stars(Path::new("c.jpg"), Stars::default());
         assert_eq!(names(&f), ["a.jpg", "b.jpg", "c.jpg"]);
+    }
+
+    #[test]
+    fn steps_to_sibling_folders_with_pictures() {
+        let root = std::env::temp_dir().join(format!("flick-siblings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (dir, files) in [("a 2", &["x.jpg"][..]), ("a 10", &["y.png", "b.jpg"]), ("a 3", &["notes.txt"]), ("a 1", &["z.jpg"])] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+            for f in files {
+                std::fs::write(root.join(dir).join(f), b"x").unwrap();
+            }
+        }
+        let name_sort = Sort::default();
+        let next = sibling(&root.join("a 2"), name_sort, true).unwrap();
+        assert_eq!(next.dir, root.join("a 10"), "natural order, and a folder without pictures skipped");
+        assert_eq!(names(&next), ["b.jpg", "y.png"]);
+        assert_eq!(next.index, 0, "at its first picture");
+        assert_eq!(sibling(&root.join("a 2"), name_sort, false).unwrap().dir, root.join("a 1"));
+        assert!(sibling(&root.join("a 10"), name_sort, true).is_err(), "the last one");
+        let descending = Sort { descending: true, ..name_sort };
+        assert_eq!(sibling(&root.join("a 2"), descending, true).unwrap().dir, root.join("a 1"), "the image order's direction");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

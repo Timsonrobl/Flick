@@ -1,28 +1,48 @@
 //! The right-click menu's choices (view mode, render filter, sort order,
-//! and the Tab info panel),
-//! last chosen in any window, kept in `%LOCALAPPDATA%\Flick\settings` so new
+//! the Tab info panel, a persisted turn, the slideshow interval), last
+//! chosen in any window, kept in `%LOCALAPPDATA%\Flick\settings` so new
 //! windows and the next run start with them. Each open window keeps its own
 //! (viewer.rs): the rule for every setting unless one says otherwise.
 
 use std::path::PathBuf;
 
 use crate::folder::{Sort, SortKey};
-use crate::view::{Filter, Fit, Mode};
+use crate::view::{Filter, Fit, Mode, Turn};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Prefs {
     pub mode: Mode,
     pub filter: Filter,
     pub sort: Sort,
     /// The info panel (Tab): file details and EXIF.
     pub info: bool,
+    /// Rotate ▸ Persist: new tabs start with `turn`, and it's saved (else
+    /// every tab starts unturned and nothing is kept).
+    pub persist_turn: bool,
+    pub turn: Turn,
+    /// How long a slideshow shows each picture, in milliseconds.
+    pub slide_ms: u32,
+}
+
+impl Default for Prefs {
+    fn default() -> Prefs {
+        Prefs {
+            mode: Mode::default(),
+            filter: Filter::default(),
+            sort: Sort::default(),
+            info: false,
+            persist_turn: false,
+            turn: Turn::default(),
+            slide_ms: 3000,
+        }
+    }
 }
 
 fn path() -> Option<PathBuf> {
     std::env::var_os("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("Flick").join("settings"))
 }
 
-const FITS: [(Fit, &str); 3] = [(Fit::Window, "window"), (Fit::Width, "width"), (Fit::Original, "original")];
+const FITS: [(Fit, &str); 5] = [(Fit::Window, "window"), (Fit::Fill, "fill"), (Fit::Width, "width"), (Fit::Height, "height"), (Fit::Original, "original")];
 const FILTERS: [(Filter, &str); 3] = [(Filter::Nearest, "none"), (Filter::Soften, "soften"), (Filter::Sharpen, "soften+sharpen")];
 const SORTS: [(SortKey, &str); 6] = [
     (SortKey::Name, "name"),
@@ -68,6 +88,14 @@ pub fn load() -> (Prefs, Global) {
             "sort" => prefs.sort.key = find(&SORTS, value).unwrap_or(prefs.sort.key),
             "descending" => prefs.sort.descending = value == "1",
             "info" => prefs.info = value == "1",
+            "persist_turn" => prefs.persist_turn = value == "1",
+            "slideshow_ms" => prefs.slide_ms = value.parse().unwrap_or(prefs.slide_ms),
+            "turn" => {
+                let parts: Vec<&str> = value.split(',').collect();
+                if let [quarter, flip_h, flip_v] = parts[..] {
+                    prefs.turn = Turn { quarter: quarter.parse().unwrap_or(0) % 4, flip_h: flip_h == "1", flip_v: flip_v == "1" };
+                }
+            }
             "tabs" => global.tabs = value != "0",
             "multirow" => global.multirow = value != "0",
             _ => {}
@@ -82,13 +110,19 @@ pub fn save(prefs: Prefs, global: Global) {
         let _ = std::fs::create_dir_all(dir);
     }
     let text = format!(
-        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\ntabs={}\nmultirow={}\n",
+        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\npersist_turn={}\nturn={},{},{}\nslideshow_ms={}\ntabs={}\nmultirow={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
         name(&FILTERS, prefs.filter),
         name(&SORTS, prefs.sort.key),
         u8::from(prefs.sort.descending),
         u8::from(prefs.info),
+        u8::from(prefs.persist_turn),
+        // Kept only while persisted.
+        if prefs.persist_turn { prefs.turn.quarter } else { 0 },
+        u8::from(prefs.persist_turn && prefs.turn.flip_h),
+        u8::from(prefs.persist_turn && prefs.turn.flip_v),
+        prefs.slide_ms,
         u8::from(global.tabs),
         u8::from(global.multirow),
     );

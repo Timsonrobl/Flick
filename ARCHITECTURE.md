@@ -456,15 +456,19 @@ decides whether tabs stay, so these are the goal, not all built in 3b):**
 - Opening a file puts it in the **first tab of the last active window**;
   that window's other tabs shift right.
 - A window with a single picture shows **no tab strip** at all.
-- Each window has its own **pastel colour** on its hover bar, so windows
-  are easy to tell apart. The right-click menu gains **Move to Window ▸**,
+- Each window has its own **colour** on its hover bar, so windows
+  are easy to tell apart (since 2026-10-25 the "Jewel" palette: eight deep
+  tones with light text, chosen over pastels, earth, Nord, stripe and vivid
+  sets; the active tab is the tone brightened by a fifth, inactive tab text
+  the ink part-way into the tone, tab fills rounded 4 px, the window
+  square). The right-click menu gains **Move to Window ▸**,
   listing the other windows by colour plus one entry that makes a new
   window.
 - Dragging the tab strip **moves the window**, like the title; **Ctrl-drag**
   reorders tabs.
 - Built in 3b: the first two, tab switching and closing, per-tab memory
   tiers; measured against the 3b exit criterion (§15). Tabs stayed (user,
-  2026-10-24), and the rest is built: eight pastels (`chrome::PALETTE`),
+  2026-10-24), and the rest is built: eight colours (`chrome::PALETTE`),
   each new window taking the first one no open window uses; Move to Window
   lists the other windows with a colour swatch and the file each shows,
   then New Window (absent for a window's only tab). Up to three
@@ -498,7 +502,7 @@ decides whether tabs stay, so these are the goal, not all built in 3b):**
   Tab Lock toggled with `L` (to see the padlock come or go), show the bar
   for 2 s (`Chrome::reveal`, on the viewer's deadline timer).
 - Each window's background behind the picture is a slightly different dark
-  grey (`chrome::BACKGROUNDS`, 0.055-0.135, paired with its pastel), so
+  grey (`chrome::BACKGROUNDS`, 0.055-0.135, paired with its colour), so
   overlapping windows are told apart.
 - **Multi-row strip:** tabs are 220 px wide at most and wrap onto another
   row once they would be narrower than 150 px (`TAB_MIN`); every row is a
@@ -591,7 +595,7 @@ change, debounced, so a crash or "stay resident" restart restores them as
 Replaces Honeyview's "Save to photo folder" (a copy per favourite, and
 only starred / not starred):
 
-- `F` adds a star to the picture on screen, `Shift+F` takes one away; any
+- `Ctrl+F` adds a star to the picture on screen, `Shift+F` takes one away; any
   number of stars. A brief "★★★" note confirms; the info panel shows them
   and since when; Sort by ▸ Stars (most first) orders a folder by them,
   Sort by ▸ Date starred by when each got its first star (oldest first,
@@ -662,8 +666,14 @@ only starred / not starred):
   sensible so muscle memory carries over.
 - **Right-click menu (built).** A native popup menu (no code runs until it
   opens; also the Menu key) with Honeyview's View items minus the
-  double-page modes: Stretch Small Images (`Z`), Original Size (`0`), Fit
-  in Window (`9`), Fit to Width (`8`, from the picture's top); its render
+  double-page modes: Stretch Small Images (`Z`), and the view modes in
+  middle click's order: Fit in Window (`9`), Fill Window (`6`: whichever of
+  Fit to Width and Fit to Height fills the window, so the picture overflows
+  one way; added 2026-10-25), Fit to Width (`8`), Fit to Height (`7`;
+  added 2026-10-25), Original Size (`0`); every mode centres the picture,
+  on the axis it overflows and pans too (Fit to Width started at the top
+  and Fit to Height at the left until 2026-10-25: paging then jumped
+  between edge and centre); its render
   filters: No Filter (`U`, nearest neighbour), Soften (`I`, high-quality
   cubic shrinking, linear enlarging), Soften+Sharpen (no key: `S` is random
   paging here; high-quality cubic both ways, then Direct2D's Sharpen effect
@@ -687,13 +697,21 @@ only starred / not starred):
   it is larger than the window, and zooming or resizing only keeps it
   inside; the view modes (and Fit to Window below) centre it again.
   Middle click on the picture
-  cycles a zoom set by hand → Fit to Window → 100 % (around the click) →
-  that zoom again (if none, Fit to Window); the hand-set zoom is
-  remembered per tab, as scale and centre relative to the picture. Middle
-  click on a tab closes it.
+  steps through the view modes in the menu's order, each set exactly as the
+  menu sets it (the window's mode, so new windows take it and it is saved),
+  around the click where the picture overflows; then, as one more stop
+  after Original Size, the last zoom set by hand, which applies only to the
+  picture shown and leaves the mode alone (remembered per tab, as scale and
+  centre relative to the picture, when middle click leaves it; panning in a
+  mode isn't a zoom by hand). Stops that look the same here as the picture
+  now or as an earlier stop are skipped (Fit to Width where it is Fit in
+  Window, say). Double-click stays a quick look and never changes the mode
+  (2026-10-25: middle click and the menu used to disagree, the cycle being
+  temporary). Middle click on a tab closes it.
 - **On-screen text** (`osd.rs`), just below the hover bar's first row (the
-  bar draws over it): the zoom level shows for 1.2 s, small and faint, at
-  the top right after any zoom by hand, as do "Copying…"/"Copied to
+  bar draws over it): the zoom level shows for 1.2 s, in the info panel's lettering (Segoe UI 17 px, near-white) on a faint pill, at
+  the top right after any zoom, named by the mode when it is the mode's
+  ("Fill window · 47 %", else "Zoom · 150 %"), as do "Copying…"/"Copied to
   clipboard". `Tab` toggles the info
   panel at the top left, and a click on it closes it (a setting like the View menu's: per window,
   latest wins, saved; also in the menu as File Info): file name and
@@ -702,6 +720,36 @@ only starred / not starred):
   and date, and EXIF camera, lens, exposure and date taken. Read through
   WIC's photo metadata names on a worker thread (`meta.rs`) the first time
   the panel shows a picture.
+- **Rotate** (menu, `Alt+↑/→/↓/←` for 0/90° clockwise/180°/90°
+  counter-clockwise, `Ctrl+R` the next of those in turn, `Alt+H`/`Alt+V`
+  mirror, `Alt+F` cycles not mirrored → horizontally → vertically; both
+  ways is a 180° turn, which `Ctrl+R` reaches): per tab, for every picture
+  paged to in it, on top of EXIF orientation (`view::Turn::after` composes
+  the two into one of the eight orientations, so drawing, sizing and copying
+  need nothing new). Not kept by default; Rotate ▸ Persist makes it a
+  window setting like the others (new tabs and windows start with it,
+  saved).
+- **Delete** (`Del`, menu: to the Recycle Bin; `Shift+Del`: for good)
+  always asks first in Windows' own message box (no UI of Flick's), then
+  shows the next picture; a folder's only picture closes its tab.
+- **Slideshow** (`Ctrl+G` starts and stops; Slideshow ▸ in the menu with
+  250 ms–30 s presets; `Ctrl+[` `Ctrl+]` adjust the interval by about a tenth, 10 ms
+  steps at the least, 50 ms–60 s; saved like a setting): moves the way the
+  last move went (in order, wrapping at the end, or random; through the
+  tabs under Tab Lock, quietly, without revealing the bar). Each picture
+  stays the interval from when it is on screen (`slide_due`), so a slow
+  decode delays the next step instead of shortening it or letting steps
+  pile up; preloading already runs ahead in the slideshow's direction.
+  Only moving by hand (the paging keys, Home/End, the wheel, Ctrl+Tab,
+  Ctrl+1–9, `[` `]`) or `Ctrl+G` stops it. (Its interval keys are
+  `Ctrl+[` `Ctrl+]`.)
+- **Folders:** `[` and `]` go to the folder before or after this one among
+  its siblings, ordered as the pictures are (by name, natural order, or
+  date modified; by name for keys folders don't have; Descending too),
+  skipping hidden folders and ones without pictures; listed on a worker
+  thread, at its first picture, with a note naming it. Paging past the
+  first or last picture says so in a note ("First picture" / "Last
+  picture").
 - **Ctrl+C** copies the picture at full resolution, upright (EXIF
   orientation applied), as a 32-bit DIBv5 with straight alpha; decoded on
   a worker thread. **Ctrl+Enter** opens the folder in Explorer with the file
@@ -723,7 +771,12 @@ only starred / not starred):
   along the shuffled order instead (with only the next random picture
   preloaded, a held random key waited on a fresh decode at every step and
   stuttered).
-  Home/End, Esc, F12 (debug), +/- zoom.
+  Home/End, Ctrl+W (close the tab; the last one closes the window; Esc
+  does nothing, by request), F12 (debug), +/- zoom.
+  A plain hotkey works on its own only: with Ctrl or Alt, keys without a
+  Ctrl/Alt binding do nothing; with Shift, only Shift+F, Shift+Del,
+  Ctrl+Shift+Tab and "+" work. The wheel pages without modifiers only
+  (Ctrl+wheel zooms).
 - CLI: `flick <file|dir>…`, `--new-window`, `--slideshow`, `--bench`.
 
 ## 14. Observability and benchmarks

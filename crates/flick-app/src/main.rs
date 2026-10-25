@@ -82,7 +82,9 @@ pub enum Event {
     Copy { viewer: ViewerId, image: Result<Image, String> },
     /// A watched folder changed (`watch.rs`).
     FolderChanged { dir: PathBuf, changes: Vec<Change> },
-    /// A file's stars changed (F / Shift+F in that window): the new count.
+    /// `[` / `]`: a sibling folder, listed (or why there's none).
+    Entered { viewer: ViewerId, tab: TabId, result: Result<Folder, String> },
+    /// A file's stars changed (Ctrl+F / Shift+F in that window): the new count.
     Starred { viewer: ViewerId, path: PathBuf, result: Result<library::Stars, String> },
     /// A later launch's request, from the pipe.
     Open(Request),
@@ -626,6 +628,12 @@ impl ApplicationHandler<Event> for App {
                     v.on_copy(image);
                 }
             }
+            Event::Entered { viewer, tab, result } => {
+                if let Some(v) = self.viewers.get_mut(&viewer) {
+                    let action = v.on_entered(tab, result, &self.shared);
+                    self.act(event_loop, viewer, Ok(action));
+                }
+            }
             Event::Starred { viewer, path, result } => {
                 for v in self.viewers.values_mut() {
                     let here = v.id == viewer;
@@ -686,7 +694,7 @@ impl App {
                 let mut others: Vec<_> = self.viewers.values().filter(|v| v.id != id && v.is_shown()).map(Viewer::menu_entry).collect();
                 others.sort_by_key(|(other, _, _)| *other);
                 let Some(viewer) = self.viewers.get_mut(&id) else { return };
-                let chosen = viewer.show_menu(&others, self.global);
+                let chosen = viewer.show_menu(&others, self.global, &self.shared);
                 self.act(event_loop, id, Ok(chosen));
             }
             Ok(Action::ReopenMenu) => {

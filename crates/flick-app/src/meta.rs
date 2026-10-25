@@ -22,7 +22,10 @@ pub struct Info {
     pub format: String,
     /// From the library (kept up to date as stars change).
     pub stars: crate::library::Stars,
+    /// About the file: size, date.
     pub lines: Vec<(&'static str, String)>,
+    /// About the shot (EXIF): camera, lens, exposure, … (shown after a gap).
+    pub exif: Vec<(&'static str, String)>,
 }
 
 pub fn read(path: &Path) -> Info {
@@ -34,6 +37,7 @@ pub fn read(path: &Path) -> Info {
         }
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_uppercase();
+    let mut exif = Vec::new();
     let format = match formats::kind(path) {
         Kind::Jxl => "JPEG XL".to_string(),
         Kind::Svg => "SVG".to_string(),
@@ -41,12 +45,12 @@ pub fn read(path: &Path) -> Info {
         Kind::Float => "Radiance HDR (tone-mapped)".to_string(),
         Kind::Apng(_) => "APNG".to_string(),
         Kind::AnimatedWebp(_) => "WebP (animated)".to_string(),
-        Kind::Wic => match wic(path, &mut lines) {
+        Kind::Wic => match wic(path, &mut exif) {
             Some(format) => format,
             None => ext,
         },
     };
-    Info { format, stars: crate::library::stars(path), lines }
+    Info { format, stars: crate::library::stars(path), lines, exif }
 }
 
 fn file_size(bytes: u64) -> String {
@@ -203,7 +207,7 @@ mod tests {
         for file in files {
             let info = read(&file);
             println!("{}: {}", file.file_name().unwrap().to_string_lossy(), info.format);
-            for (label, value) in info.lines {
+            for (label, value) in info.lines.into_iter().chain(info.exif) {
                 println!("    {label}: {value}");
             }
         }
@@ -260,13 +264,18 @@ mod tests {
         let Ok(jpeg) = std::fs::read(&sample) else { return };
         let (ascii, short, rational) = (2u16, 3u16, 5u16);
         let r = |n: u32, d: u32| [n.to_le_bytes(), d.to_le_bytes()].concat();
+        let s = |v: u16| v.to_le_bytes().to_vec();
         let app1 = exif_app1(
-            &[(0x010F, ascii, b"Canon\0".to_vec()), (0x0110, ascii, b"Canon EOS R5\0".to_vec())],
+            &[(0x010F, ascii, b"Canon\0".to_vec()), (0x0110, ascii, b"Canon EOS R5\0".to_vec()), (0x013B, ascii, b"A. Photographer\0".to_vec())],
             &[
                 (0x829A, rational, r(1, 250)),
                 (0x829D, rational, r(28, 10)),
-                (0x8827, short, 200u16.to_le_bytes().to_vec()),
+                (0x8822, short, s(3)),
+                (0x8827, short, s(200)),
                 (0x9003, ascii, b"2026:10:01 12:34:56\0".to_vec()),
+                (0x9011, ascii, b"+03:00\0".to_vec()),
+                (0x9207, short, s(3)),
+                (0x9209, short, s(0)),
                 (0x920A, rational, r(50, 1)),
                 (0xA434, ascii, b"RF50mm F1.8 STM\0".to_vec()),
             ],
@@ -275,11 +284,15 @@ mod tests {
         std::fs::write(&path, [&jpeg[..2], &app1, &jpeg[2..]].concat()).unwrap();
         let info = read(&path);
         let _ = std::fs::remove_file(&path);
-        let line = |label: &str| info.lines.iter().find(|(l, _)| *l == label).map(|(_, v)| v.as_str());
+        let line = |label: &str| info.exif.iter().find(|(l, _)| *l == label).map(|(_, v)| v.as_str());
         assert_eq!(line("Camera"), Some("Canon EOS R5"), "maker not repeated");
         assert_eq!(line("Lens"), Some("RF50mm F1.8 STM"));
         assert_eq!(line("Exposure"), Some("1/250 s  f/2.8  ISO 200  50 mm"));
-        assert_eq!(line("Taken"), Some("2026-10-01 12:34:56"));
+        assert_eq!(line("Taken"), Some("2026-10-01 12:34:56 (+03:00)"));
+        assert_eq!(line("Artist"), Some("A. Photographer"));
+        assert_eq!(line("Program"), Some("Aperture priority"));
+        assert_eq!(line("Metering"), Some("Spot"));
+        assert_eq!(line("Flash"), Some("No"), "0 is an answer too");
     }
 
     /// The burst set (baseline 4:2:0 JPEGs); skipped where it isn't present.
@@ -310,6 +323,16 @@ fn exif(reader: &IWICMetadataQueryReader, lines: &mut Vec<(&'static str, String)
     if let Some(lens) = text(reader, &["System.Photo.LensModel"]) {
         lines.push(("Lens", lens));
     }
+    if let Some(artist) = text(reader, &["/app1/ifd/{ushort=315}", "/ifd/{ushort=315}"]) {
+        lines.push(("Artist", artist));
+    }
+    // The camera's own "2026:10:22 17:20:57", as written, with its time zone if recorded.
+    let taken = text(reader, &["/app1/ifd/exif/{ushort=36867}", "/ifd/exif/{ushort=36867}"]);
+    if let Some(taken) = taken.filter(|t| t.len() >= 19) {
+        let (date, time) = taken.split_at(10);
+        let zone = text(reader, &["/app1/ifd/exif/{ushort=36881}", "/ifd/exif/{ushort=36881}"]).map(|z| format!(" ({z})")).unwrap_or_default();
+        lines.push(("Taken", format!("{}{}{zone}", date.replace(':', "-"), time)));
+    }
     let mut exposure = Vec::new();
     if let Some(t) = number(reader, "System.Photo.ExposureTime") {
         exposure.push(if t < 1.0 { format!("1/{:.0} s", 1.0 / t) } else { format!("{t:.1} s") });
@@ -326,10 +349,41 @@ fn exif(reader: &IWICMetadataQueryReader, lines: &mut Vec<(&'static str, String)
     if !exposure.is_empty() {
         lines.push(("Exposure", exposure.join("  ")));
     }
-    // The camera's own "2026:10:22 17:20:57", as written (no time zone games).
-    let taken = text(reader, &["/app1/ifd/exif/{ushort=36867}", "/ifd/exif/{ushort=36867}"]);
-    if let Some(taken) = taken.filter(|t| t.len() >= 19) {
-        let (date, time) = taken.split_at(10);
-        lines.push(("Taken", format!("{}{}", date.replace(':', "-"), time)));
+    let program = match whole(reader, "System.Photo.ExposureProgram") {
+        Some(1) => "Manual",
+        Some(2) => "Normal program",
+        Some(3) => "Aperture priority",
+        Some(4) => "Shutter priority",
+        Some(5) => "Creative (depth of field)",
+        Some(6) => "Action (shutter speed)",
+        Some(7) => "Portrait",
+        Some(8) => "Landscape",
+        _ => "",
+    };
+    if !program.is_empty() {
+        lines.push(("Program", program.into()));
+    }
+    let metering = match whole(reader, "System.Photo.MeteringMode") {
+        Some(1) => "Average",
+        Some(2) => "Center-weighted average",
+        Some(3) => "Spot",
+        Some(4) => "Multi-spot",
+        Some(5) => "Pattern",
+        Some(6) => "Partial",
+        _ => "",
+    };
+    if !metering.is_empty() {
+        lines.push(("Metering", metering.into()));
+    }
+    if let Some(flash) = whole(reader, "System.Photo.Flash") {
+        lines.push(("Flash", if flash & 1 == 1 { "Fired" } else { "No" }.into()));
+    }
+}
+
+/// A whole-number value, 0 included (for codes like the flash's).
+fn whole(reader: &IWICMetadataQueryReader, name: &str) -> Option<u32> {
+    match get(reader, name)? {
+        Value::Number(n) if n.is_finite() && n >= 0.0 => Some(n as u32),
+        _ => None,
     }
 }

@@ -22,18 +22,26 @@ const FADE_IN_S: f32 = 0.10;
 const FADE_OUT_S: f32 = 0.20;
 
 /// Window colours (ARCHITECTURE.md §10a): each window's hover bar has its
-/// own pastel, so windows are easy to tell apart (and to pick in Move to
-/// Window). Light enough for the bar's dark text.
+/// own deep jewel tone, so windows are easy to tell apart (and to pick in
+/// Move to Window), quiet next to the dark picture area. Light text (`INK`).
 pub const PALETTE: [(&str, [f32; 3]); 8] = [
-    ("Sky", [0.81, 0.89, 0.96]),
-    ("Mint", [0.80, 0.92, 0.83]),
-    ("Peach", [0.98, 0.86, 0.77]),
-    ("Lavender", [0.87, 0.84, 0.95]),
-    ("Butter", [0.96, 0.93, 0.72]),
-    ("Rose", [0.96, 0.84, 0.86]),
-    ("Aqua", [0.80, 0.92, 0.92]),
-    ("Sand", [0.91, 0.89, 0.83]),
+    ("Sapphire", [0.180, 0.290, 0.420]),
+    ("Emerald", [0.184, 0.365, 0.310]),
+    ("Garnet", [0.420, 0.227, 0.180]),
+    ("Amethyst", [0.290, 0.235, 0.420]),
+    ("Topaz", [0.420, 0.353, 0.137]),
+    ("Ruby", [0.420, 0.180, 0.290]),
+    ("Teal", [0.141, 0.345, 0.369]),
+    ("Smoke", [0.310, 0.290, 0.247]),
 ];
+
+/// The bar's text and glyphs.
+const INK: [f32; 3] = [0.93, 0.93, 0.93];
+
+/// `a` moved toward `b` by `t` (0: `a`, 1: `b`).
+fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+}
 
 /// The background behind each colour's pictures: a slightly different dark
 /// grey per window (same order as PALETTE), so overlapping windows are told
@@ -381,9 +389,10 @@ impl Chrome {
         let brush = |r: f32, g: f32, b: f32, alpha: f32| -> Option<ID2D1SolidColorBrush> {
             unsafe { context.CreateSolidColorBrush(&D2D1_COLOR_F { r, g, b, a: alpha * a }, None).ok() }
         };
-        // Light, as in Honeyview, in the window's pastel; dark text and glyphs.
-        let [r, g, b] = PALETTE[self.color % PALETTE.len()].1;
-        let (Some(panel), Some(ink), Some(on_red)) = (brush(r, g, b, 0.95), brush(0.10, 0.10, 0.10, 1.0), brush(1.0, 1.0, 1.0, 1.0)) else {
+        // The window's jewel tone; light text and glyphs.
+        let tone = PALETTE[self.color % PALETTE.len()].1;
+        let shade = |c: [f32; 3]| brush(c[0], c[1], c[2], 1.0);
+        let (Some(panel), Some(ink), Some(on_red)) = (brush(tone[0], tone[1], tone[2], 0.95), shade(INK), brush(1.0, 1.0, 1.0, 1.0)) else {
             return;
         };
         let button = BUTTON * s;
@@ -393,8 +402,8 @@ impl Chrome {
 
             let hovered = match self.hover {
                 Some(Hit::Close) => Some((0.0, brush(0.77, 0.17, 0.11, 1.0))),
-                Some(Hit::Maximize) => Some((1.0, brush(0.0, 0.0, 0.0, 0.09))),
-                Some(Hit::Minimize) => Some((2.0, brush(0.0, 0.0, 0.0, 0.09))),
+                Some(Hit::Maximize) => Some((1.0, brush(1.0, 1.0, 1.0, 0.10))),
+                Some(Hit::Minimize) => Some((2.0, brush(1.0, 1.0, 1.0, 0.10))),
                 _ => None,
             };
             if let Some((i, Some(fill))) = hovered {
@@ -446,13 +455,15 @@ impl Chrome {
                 }
                 Some((strip, corners)) => {
                     let tab = strip.tab;
-                    // The active tab lifts out of the bar; the others are
-                    // quieter; a dragged one is lifted too, and drawn last.
+                    // The active tab is a brighter shade of the bar's tone;
+                    // the others' text quieter (the ink part-way into the
+                    // tone); a dragged one is lifted too, and drawn last.
                     let (Some(lifted), Some(quiet), Some(hover_fill), Some(rule)) =
-                        (brush(1.0, 1.0, 1.0, 1.0), brush(0.10, 0.10, 0.10, 0.62), brush(0.0, 0.0, 0.0, 0.06), brush(0.0, 0.0, 0.0, 0.12))
+                        (shade(mix(tone, [1.0; 3], 0.2)), shade(mix(INK, tone, 0.4)), brush(1.0, 1.0, 1.0, 0.07), shade(mix(INK, tone, 0.72)))
                     else {
                         return;
                     };
+                    let round = |rect: D2D_RECT_F| D2D1_ROUNDED_RECT { rect, radiusX: 4.0 * s, radiusY: 4.0 * s };
                     let pad = 4.0 * s;
                     let dragged = |i: usize| self.drag.is_some_and(|(id, _)| id == tabs[i].0);
                     let mut order: Vec<usize> = (0..tabs.len()).filter(|&i| !dragged(i)).collect();
@@ -461,9 +472,9 @@ impl Chrome {
                         let ((x, y), label) = (corners[i], &tabs[i].1);
                         let cell = D2D_RECT_F { left: x + 1.0 * s, top: y + pad, right: x + tab - 1.0 * s, bottom: y + bar - pad };
                         if i == active || dragged(i) {
-                            context.FillRectangle(&cell, &lifted);
+                            context.FillRoundedRectangle(&round(cell), &lifted);
                         } else if self.hover == Some(Hit::Tab(i)) && self.drag.is_none() {
-                            context.FillRectangle(&cell, &hover_fill);
+                            context.FillRoundedRectangle(&round(cell), &hover_fill);
                         }
                         // A rule between neighbours in a row, not beside the lifted tab.
                         if !strip.starts_row(i) && i != active && i != active + 1 && self.drag.is_none() {

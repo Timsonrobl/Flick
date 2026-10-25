@@ -32,7 +32,10 @@ impl Osd {
                 factory.CreateTextFormat(w!("Segoe UI"), None, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size * scale, w!("")).map_err(|e| e.to_string())
             };
             let info = format(17.0, DWRITE_FONT_WEIGHT_NORMAL)?;
-            let note = format(13.0, DWRITE_FONT_WEIGHT_NORMAL)?;
+            // Airier than the font's own spacing, as Honeyview's panel.
+            info.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, 17.0 * scale * 1.6, 17.0 * scale * 1.2).map_err(|e| e.to_string())?;
+            // The info panel's font (its own line spacing: one line).
+            let note = format(17.0, DWRITE_FONT_WEIGHT_NORMAL)?;
             Ok(Osd { factory, info, note, scale })
         }
     }
@@ -55,7 +58,8 @@ impl Osd {
     /// The info panel: "Label: value" lines on a dark panel at the top left.
     /// Returns where it was drawn (a click there closes it).
     pub fn draw_info(&self, context: &ID2D1DeviceContext, lines: &[(&str, String)], window: (f32, f32)) -> Option<D2D_RECT_F> {
-        let text = lines.iter().map(|(label, value)| format!("{label}: {value}")).collect::<Vec<_>>().join("\n");
+        // An empty label is a gap between groups.
+        let text = lines.iter().map(|(label, value)| if label.is_empty() { String::new() } else { format!("{label}: {value}") }).collect::<Vec<_>>().join("\n");
         let (s, margin, padding) = (self.scale, MARGIN * self.scale, PADDING * self.scale);
         let max_width = (window.0 - 2.0 * (margin + padding)).min(1000.0 * s);
         let (layout, width, height) = self.layout(&text, &self.info, max_width)?;
@@ -74,7 +78,7 @@ impl Osd {
         Some(panel)
     }
 
-    /// A brief note, small, at the top right.
+    /// A brief note at the top right, in the info panel's lettering.
     pub fn draw_note(&self, context: &ID2D1DeviceContext, text: &str, window: (f32, f32)) {
         let (s, margin) = (self.scale, MARGIN * self.scale);
         let (pad_x, pad_y) = (8.0 * s, 3.0 * s);
@@ -85,7 +89,7 @@ impl Osd {
         unsafe {
             let (Ok(fill), Ok(ink)) = (
                 context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.35 }, None),
-                context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 0.9 }, None),
+                context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.95, g: 0.95, b: 0.95, a: 1.0 }, None),
             ) else {
                 return;
             };

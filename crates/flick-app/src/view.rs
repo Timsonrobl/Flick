@@ -55,6 +55,45 @@ pub fn orientation(o: u16, w: f32, h: f32) -> Affine {
     }
 }
 
+/// The 2×2 matrix of each EXIF orientation (1–8), as (x', y') = (a x + b y,
+/// c x + d y) on screen axes (y down), matching `orientation`.
+const ORIENTATIONS: [[i8; 4]; 8] = [[1, 0, 0, 1], [-1, 0, 0, 1], [-1, 0, 0, -1], [1, 0, 0, -1], [0, 1, 1, 0], [0, -1, 1, 0], [0, -1, -1, 0], [0, 1, -1, 0]];
+
+fn multiply(m: [i8; 4], n: [i8; 4]) -> [i8; 4] {
+    [m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3], m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3]]
+}
+
+/// The Rotate menu, for a tab's pictures: quarter turns clockwise, then
+/// mirrored left-right and/or upside down, on top of each picture's EXIF
+/// orientation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Turn {
+    /// 0–3 quarter turns clockwise (3: 90° counter-clockwise).
+    pub quarter: u8,
+    pub flip_h: bool,
+    pub flip_v: bool,
+}
+
+impl Turn {
+    /// The orientation (1–8) a picture stored with EXIF `orientation` is
+    /// drawn with, turned.
+    pub fn after(self, orientation: u16) -> u16 {
+        let exif = ORIENTATIONS[usize::from(orientation.clamp(1, 8)) - 1];
+        let mut turn = ORIENTATIONS[0];
+        for _ in 0..self.quarter % 4 {
+            turn = multiply(ORIENTATIONS[5], turn); // 90° clockwise
+        }
+        if self.flip_h {
+            turn = multiply(ORIENTATIONS[1], turn);
+        }
+        if self.flip_v {
+            turn = multiply(ORIENTATIONS[3], turn);
+        }
+        let total = multiply(turn, exif);
+        ORIENTATIONS.iter().position(|&m| m == total).map_or(1, |i| i as u16 + 1)
+    }
+}
+
 /// Displayed size of a stored w × h image.
 pub fn oriented_size(o: u16, (w, h): (u32, u32)) -> (u32, u32) {
     if o >= 5 { (h, w) } else { (w, h) }
@@ -65,11 +104,40 @@ pub fn oriented_size(o: u16, (w, h): (u32, u32)) -> (u32, u32) {
 pub enum Fit {
     /// The whole picture in the window.
     Window,
+    /// The window filled: Fit to Width or Fit to Height, whichever leaves
+    /// no border (the picture overflows one way).
+    Fill,
     /// The window's width, from the top; taller pictures pan vertically.
     Width,
+    /// The window's height, from the left; wider pictures pan sideways.
+    Height,
     /// 100 %: one picture pixel per screen pixel.
     Original,
 }
+
+impl Fit {
+    /// As the menu and notes name it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Fit::Window => "Fit to window",
+            Fit::Fill => "Fill window",
+            Fit::Width => "Fit to width",
+            Fit::Height => "Fit to height",
+            Fit::Original => "Original size",
+        }
+    }
+}
+
+/// Middle click's stops: the modes in the menu's order (each sets the
+/// window's mode, as the menu does), then the zoom set by hand on this
+/// picture (temporary).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stop {
+    Mode(Fit),
+    Hand,
+}
+
+const STOPS: [Stop; 6] = [Stop::Mode(Fit::Window), Stop::Mode(Fit::Fill), Stop::Mode(Fit::Width), Stop::Mode(Fit::Height), Stop::Mode(Fit::Original), Stop::Hand];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Mode {
@@ -126,32 +194,59 @@ impl View {
         f32::min(1.0, f32::min(self.window.0 / self.image.0, self.window.1 / self.image.1))
     }
 
-    fn mode_scale(&self) -> f32 {
-        let fit = match self.mode.fit {
-            Fit::Window => f32::min(self.window.0 / self.image.0, self.window.1 / self.image.1),
-            Fit::Width => self.window.0 / self.image.0,
+    /// The scale `fit` gives this picture in this window (enlarging past
+    /// 100 % only with Stretch Small Images).
+    pub fn scale_for(&self, fit: Fit) -> f32 {
+        let (across, down) = (self.window.0 / self.image.0, self.window.1 / self.image.1);
+        let scale = match fit {
+            Fit::Window => across.min(down),
+            Fit::Fill => across.max(down),
+            Fit::Width => across,
+            Fit::Height => down,
             Fit::Original => return 1.0,
         };
-        if self.mode.stretch_small { fit } else { fit.min(1.0) }
+        (if self.mode.stretch_small { scale } else { scale.min(1.0) }).clamp(MIN_SCALE, MAX_SCALE)
     }
 
-    /// Fit to Window's scale, whatever the mode: the whole picture, enlarged
-    /// past 100 % only with Stretch Small Images.
-    pub fn window_fit_scale(&self) -> f32 {
-        let fit = f32::min(self.window.0 / self.image.0, self.window.1 / self.image.1);
-        (if self.mode.stretch_small { fit } else { fit.min(1.0) }).clamp(MIN_SCALE, MAX_SCALE)
+    fn mode_scale(&self) -> f32 {
+        self.scale_for(self.mode.fit)
     }
 
-    /// The whole picture, centred (in Fit to Window mode: the mode again,
-    /// so it keeps fitting as the window is resized).
-    pub fn fit_window(&mut self) {
-        if self.mode.fit == Fit::Window {
-            return self.apply_mode();
+    /// Where middle click goes from `from`: the next stop in the menu's
+    /// order, wrapping, that looks different from the picture now and from
+    /// the stops before it (Fit to Width is skipped where it is Fit to
+    /// Window, say); the zoom set by hand (`hand`: its scale) only if there
+    /// is one. None: nothing else to show.
+    pub fn next_stop(&self, from: Stop, hand: Option<f32>) -> Option<Stop> {
+        let near = |a: f32, b: f32| (a / b - 1.0).abs() < 0.002;
+        let scale = |stop: Stop| match stop {
+            Stop::Mode(fit) => Some(self.scale_for(fit)),
+            Stop::Hand => hand,
+        };
+        let at = STOPS.iter().position(|&s| s == from).unwrap_or(0);
+        let new = |i: usize| scale(STOPS[i]).is_some_and(|s| !near(s, self.scale) && !STOPS[..i].iter().any(|&before| scale(before).is_some_and(|b| near(b, s))));
+        (1..STOPS.len()).map(|k| (at + k) % STOPS.len()).find(|&i| new(i)).map(|i| STOPS[i])
+    }
+
+    /// The mode applied with the picture point under `cursor` kept there on
+    /// the axes where the picture overflows (middle click lands on a mode);
+    /// where it fits, it sits as the mode places it.
+    pub fn apply_mode_at(&mut self, cursor: (f32, f32)) {
+        let point = self.to_image(cursor);
+        self.apply_mode();
+        if self.image.0 * self.scale > self.window.0 {
+            self.center.0 = point.0 - (cursor.0 - self.window.0 / 2.0) / self.scale;
         }
-        self.scale = self.window_fit_scale();
-        self.center = (self.image.0 / 2.0, self.image.1 / 2.0);
-        self.follows_mode = false;
+        if self.image.1 * self.scale > self.window.1 {
+            self.center.1 = point.1 - (cursor.1 - self.window.1 / 2.0) / self.scale;
+        }
         self.clamp();
+    }
+
+    /// Whether the picture is at a zoom set by hand: not the mode's size
+    /// (panning in the mode doesn't count).
+    pub fn hand_zoomed(&self) -> bool {
+        !self.follows_mode && (self.scale / self.mode_scale() - 1.0).abs() >= 0.002
     }
 
     /// The zoom as set by hand: scale, and the centre as a fraction of the
@@ -167,35 +262,11 @@ impl View {
         self.clamp();
     }
 
-    /// Middle click: a zoom set by hand → Fit to Window → 100 % around
-    /// `cursor` → that zoom again (`custom`, remembered when leaving it; if
-    /// there is none, Fit to Window) → … Returns whether the view changed.
-    pub fn cycle_zoom(&mut self, cursor: (f32, f32), custom: &mut Option<(f32, (f32, f32))>) -> bool {
-        let near = |a: f32, b: f32| (a / b - 1.0).abs() < 0.002;
-        let fit_scale = self.window_fit_scale();
-        let (fit, original) = (near(self.scale, fit_scale), near(self.scale, 1.0));
-        let back = custom.filter(|&(scale, _)| !near(scale, fit_scale) && !near(scale, 1.0));
-        if !fit && !original {
-            *custom = Some(self.custom_zoom());
-            self.fit_window();
-        } else if fit && !original {
-            self.zoom_at(cursor, 1.0 / self.scale);
-        } else if let Some(back) = back {
-            self.set_custom_zoom(back);
-        } else if !fit {
-            self.fit_window();
-        } else {
-            return false; // Fit to Window is 100 %, and no zoom to go back to
-        }
-        true
-    }
-
     /// Sizes and places the picture as its mode says.
     pub fn apply_mode(&mut self) {
         self.scale = self.mode_scale().clamp(MIN_SCALE, MAX_SCALE);
-        let top = self.window.1 / 2.0 / self.scale; // picture's top at the window's
-        let y = if self.mode.fit == Fit::Width { top } else { self.image.1 / 2.0 };
-        self.center = (self.image.0 / 2.0, y);
+        // Centred, on the axis it overflows (and pans) too.
+        self.center = (self.image.0 / 2.0, self.image.1 / 2.0);
         self.follows_mode = true;
         self.clamp();
     }
@@ -323,10 +394,10 @@ mod tests {
     }
 
     #[test]
-    fn fit_width_starts_at_the_top() {
+    fn fit_width_centres_a_tall_picture() {
         let view = View::new((2000, 4000), WINDOW, mode(Fit::Width, false));
         assert_eq!(view.scale, 0.5);
-        assert_eq!(view.top(), 0.0);
+        assert_eq!(view.top(), -750.0, "the picture's top 750 px above the window's: centred");
         // A small picture stays at 100 % unless stretched.
         assert_eq!(View::new((200, 100), WINDOW, mode(Fit::Width, false)).scale, 1.0);
         assert_eq!(View::new((200, 100), WINDOW, mode(Fit::Width, true)).scale, 5.0);
@@ -348,33 +419,102 @@ mod tests {
     }
 
     #[test]
-    fn middle_click_cycles_custom_fit_original() {
-        // 4000 × 2000 in 1000 × 500: Fit to Window is 25 %.
+    fn fit_height_centres_a_wide_picture() {
+        // A 4000 × 500 panorama in 1000 × 500: Fit to Height is 100 %.
+        let view = View::new((4000, 500), WINDOW, mode(Fit::Height, false));
+        assert_eq!(view.scale, 1.0);
+        assert_eq!(view.to_image((0.0, 250.0)).0, 1500.0, "the middle 1000 columns show");
+        let tall = View::new((500, 2000), WINDOW, mode(Fit::Height, false));
+        assert_eq!(tall.scale, 0.25);
+    }
+
+    #[test]
+    fn fill_centres_the_way_the_picture_overflows() {
+        // 2000 × 4000 in 1000 × 500: the width fills (50 %), centred down.
+        let tall = View::new((2000, 4000), WINDOW, mode(Fit::Fill, false));
+        assert_eq!(tall.scale, 0.5);
+        assert_eq!(tall.to_image((500.0, 0.0)).1, 1500.0);
+        // 4000 × 1000: the height fills (50 %), centred across.
+        let wide = View::new((4000, 1000), WINDOW, mode(Fit::Fill, false));
+        assert_eq!(wide.scale, 0.5);
+        assert_eq!(wide.to_image((0.0, 250.0)).0, 1000.0);
+    }
+
+    /// Middle click as the viewer does it: a mode stop sets the mode.
+    fn click(view: &mut View, hand: &mut Option<(f32, (f32, f32))>, at: (f32, f32)) -> Option<Stop> {
+        let from = if view.hand_zoomed() {
+            *hand = Some(view.custom_zoom());
+            Stop::Hand
+        } else {
+            Stop::Mode(view.mode.fit)
+        };
+        let stop = view.next_stop(from, hand.map(|h| h.0))?;
+        match stop {
+            Stop::Mode(fit) => {
+                view.mode.fit = fit;
+                view.apply_mode_at(at);
+            }
+            Stop::Hand => view.set_custom_zoom(hand.unwrap()),
+        }
+        Some(stop)
+    }
+
+    #[test]
+    fn middle_click_steps_through_the_modes_that_differ() {
+        // 4000 × 1000 in 1000 × 500: Window and Width 25 %, Fill and Height 50 %.
+        let mut view = View::new((4000, 1000), WINDOW, mode(Fit::Window, false));
+        let mut hand = None;
+        let stops: Vec<_> = (0..4).map(|_| (click(&mut view, &mut hand, (500.0, 250.0)), view.scale)).collect();
+        let fit = |fit| Some(Stop::Mode(fit));
+        assert_eq!(stops, [(fit(Fit::Fill), 0.5), (fit(Fit::Original), 1.0), (fit(Fit::Window), 0.25), (fit(Fit::Fill), 0.5)]);
+        assert!(view.follows_mode);
+    }
+
+    #[test]
+    fn turns_compose_with_exif_orientation() {
+        let turn = |quarter, flip_h, flip_v| Turn { quarter, flip_h, flip_v };
+        assert_eq!(Turn::default().after(6), 6, "no turn: EXIF as is");
+        assert_eq!(turn(1, false, false).after(1), 6, "90° clockwise");
+        assert_eq!(turn(3, false, false).after(1), 8, "90° counter-clockwise");
+        assert_eq!(turn(2, false, false).after(1), 3);
+        assert_eq!(turn(0, true, false).after(1), 2, "mirrored");
+        assert_eq!(turn(0, false, true).after(1), 4, "upside down");
+        assert_eq!(turn(1, false, false).after(6), 3, "a portrait shot (6) turned once more: 180°");
+        assert_eq!(turn(3, false, false).after(6), 1, "and back: upright");
+        assert_eq!(turn(0, true, true).after(1), 3, "both mirrors: 180°");
+    }
+
+    #[test]
+    fn middle_click_ends_with_the_zoom_set_by_hand() {
+        // 4000 × 2000 in 1000 × 500: every fit is 25 %.
         let mut view = View::new((4000, 2000), WINDOW, mode(Fit::Window, false));
-        let mut custom = None;
+        let mut hand = None;
         view.zoom_at((500.0, 250.0), 2.0); // 50 %, by hand
-        assert!(view.cycle_zoom((500.0, 250.0), &mut custom));
-        assert_eq!((view.scale, custom.map(|c| c.0)), (0.25, Some(0.5)), "custom → fit, remembered");
-        assert!(view.follows_mode, "fit in Fit to Window mode is the mode again");
-        assert!(view.cycle_zoom((750.0, 250.0), &mut custom));
-        assert_eq!(view.scale, 1.0, "fit → 100 %");
+        assert_eq!(click(&mut view, &mut hand, (500.0, 250.0)), Some(Stop::Mode(Fit::Window)));
+        assert_eq!((view.scale, hand.map(|h| h.0)), (0.25, Some(0.5)), "hand → fit, remembered");
+        assert_eq!(click(&mut view, &mut hand, (750.0, 250.0)), Some(Stop::Mode(Fit::Original)));
         let under = view.to_image((750.0, 250.0));
         assert!((under.0 - 3000.0).abs() < 1.0, "around the click: {under:?}");
-        assert!(view.cycle_zoom((500.0, 250.0), &mut custom));
-        assert_eq!(view.scale, 0.5, "100 % → the custom zoom");
-        assert!(view.cycle_zoom((500.0, 250.0), &mut custom));
-        assert_eq!(view.scale, 0.25, "and round again");
+        assert!(view.follows_mode);
+        assert_eq!(click(&mut view, &mut hand, (500.0, 250.0)), Some(Stop::Hand));
+        assert_eq!((view.scale, view.mode.fit), (0.5, Fit::Original), "the hand zoom keeps the mode");
+        assert_eq!(click(&mut view, &mut hand, (500.0, 250.0)), Some(Stop::Mode(Fit::Window)), "and round again");
 
-        // Without a custom zoom, 100 % goes back to fit.
+        // Without a zoom by hand, 100 % goes back to fit.
         let mut view = View::new((4000, 2000), WINDOW, mode(Fit::Window, false));
         let mut none = None;
-        view.cycle_zoom((500.0, 250.0), &mut none);
-        view.cycle_zoom((500.0, 250.0), &mut none);
+        click(&mut view, &mut none, (500.0, 250.0));
+        click(&mut view, &mut none, (500.0, 250.0));
         assert_eq!(view.scale, 0.25);
 
-        // A small picture: fit is 100 %, nothing to cycle.
+        // Panning in a mode isn't a zoom by hand.
+        let mut view = View::new((4000, 2000), WINDOW, mode(Fit::Original, false));
+        view.pan((100.0, 0.0));
+        assert!(!view.hand_zoomed());
+
+        // A small picture: every mode is 100 %, nothing to cycle.
         let mut view = View::new((100, 50), WINDOW, mode(Fit::Window, false));
-        assert!(!view.cycle_zoom((500.0, 250.0), &mut None));
+        assert_eq!(click(&mut view, &mut None, (500.0, 250.0)), None);
     }
 
     #[test]
