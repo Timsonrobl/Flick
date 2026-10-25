@@ -2,3 +2,5 @@
 /bench/samples
 # Personal photos for benchmarking; never committed.
 /bench/photos
+# Raw runs of bench/quick.ps1 (its summary history is committed).
+/bench/quick-runs

@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-25_11-39-17",
+  "commit": "376a270+changes",
+  "note": "first baseline (stars)",
+  "photo": "burst-02.jpeg",
+  "metrics": {
+    "cold open, median (ms)": 198.9045,
+    "cold open, worst (ms)": 237.074,
+    "warm open, median (ms)": 116.1069,
+    "warm open, worst (ms)": 135.0808,
+    "page turn, median (ms)": 15.8995,
+    "page turn, p90 (ms)": 28.182499999999997,
+    "blank or flicker frames": 0.0,
+    "failed runs": 0.0,
+    "cold, private (MB)": 166.484375,
+    "cold, working set (MB)": 68.0625,
+    "resident after warm, private (MB)": 172.5234375,
+    "resident after warm, working set (MB)": 74.20703125,
+    "after paging, private (MB)": 199.90625,
+    "after paging, working set (MB)": 69.4375,
+    "flick.exe (MB)": 9.35
+  }
+}

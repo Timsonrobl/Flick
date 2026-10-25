@@ -10,6 +10,32 @@ the window itself costs (ARCHITECTURE.md §15, milestone 0).
   in milliseconds since **process creation** (DLL loading included), plus
   memory at exit.
 
+## Quick check for regressions: `bench/quick.ps1`
+
+One command, about 30 s of measuring (plus the build): 5 cold opens, 5 warm
+opens and 20 page turns on the first burst photo, compared with a saved
+baseline. It closes any running Flick first and watches the screen, so
+keep off the keyboard and mouse while it runs.
+
+```
+.\bench\quick.ps1 -Note "what changed"     # run, compare, log
+.\bench\quick.ps1 -SetBaseline             # this run becomes the baseline
+.\bench\quick.ps1 -NoBuild                 # skip the build
+```
+
+- **Table:** each figure's baseline, previous run, now, change, and ok/FAIL.
+  A time or memory figure fails above the baseline by more than an
+  absolute margin or a fraction, whichever is larger (cold median +15 ms or
+  8 %, warm median +15 ms or 10 %, page turn median +8 ms or 25 %, memory
+  +8–15 MB or 8–12 %); blank or flicker frames and failed runs fail at any
+  count. Exit code 1 on any failure.
+- **History:** `bench/results/quick-history.csv`, one line per run (date,
+  commit, `+changes` if uncommitted, the note, every figure): what each
+  iteration cost. The baseline is `bench/results/quick-baseline.json`; raw
+  ext-viewer output stays in `bench/quick-runs/` (git-ignored).
+- **Noise:** two back-to-back runs (2026-10-25) agreed within 1 ms on every
+  median and 1 MB on memory; worst cases moved up to 15 ms.
+
 ## Running
 
 ```
