@@ -585,13 +585,41 @@ coalescing as in §6). This is what keeps twenty tabs at the cost of one.
 **Chrome.** The tab strip is part of the hover overlay: a row of thumbnails
 (from `Thumb`, so it costs nothing new) with filename on hover. It fades
 with the rest of the chrome. Keyboard: `Ctrl+Tab`/`Ctrl+Shift+Tab` cycle,
-`Ctrl+W` close, `Ctrl+T` reopen last closed, `Ctrl+1..9` jump. Dragging a
+`Ctrl+W` close, `Ctrl+Shift+T` reopen last closed, `Ctrl+1..9` jump. Dragging a
 tab out of the window creates a new window (later milestone). In "clean"
 mode there is no visible evidence tabs exist, which is the point.
 
-**Session.** Tabs (path, folder sort, view) are saved to the session file on
-change, debounced, so a crash or "stay resident" restart restores them as
-`Cold` tabs — nothing decodes until one is activated.
+**Session: the close history** (built; `session.rs`). Restoring is undoing
+closes, newest first: `Ctrl+Shift+T` (or a click on the tray icon with no
+window open) reopens the last close, each press an earlier one, up to 50
+back; a new close becomes the last. A close is a tab (Ctrl+W, a middle click
+on it) or whole windows: the close button or a window's last tab (one window,
+all its tabs), Quit (every window at once), and a crash, kill or shutdown
+(every window the process had open, found at the next start). Moving a tab
+to another window, deleting its file, and a tab dropped because its file
+vanished aren't closes.
+- A tab goes back to its window, at its place in the strip, if that window
+  is still open (window ids count only within one run); else after the
+  active tab of the window used last, or into a window of its own. A window
+  comes back at its placement, with its tabs, active tab, menu settings
+  (stored in the settings file's form), colour (if free) and Tab Lock. Each
+  tab keeps its Rotate ▸ turn and its zoom and pan (`View::custom_zoom`, if
+  set by hand); a cooled tab now keeps its zoom too.
+- The active tab of a reopened window decodes on the open path; the others,
+  and a tab reopened into a window, wait as background tabs do (decoded when
+  viewed).
+- A reopened tab whose file can't be shown (gone, or its drive) is
+  *unavailable*: just the background, its name on the hover bar. The folder
+  is listed with the missing file in its sorted place, so the arrows and the
+  wheel go on from there; if the folder is gone too, only `[` `]` work, the
+  gone folder sorting among its siblings where it was.
+- Files in `%LOCALAPPDATA%\Flick`: `closed.json` (the history, read and
+  rewritten on each change: other Flick processes may share it) and
+  `open-<process id>.json`, this process's open windows, written a second
+  after a change (and at once on a close; nothing while idle), removed when
+  the last window closes or at Quit. At start, files of processes no longer
+  running each become one close. Writes go through a temporary file and a
+  rename. `--standalone` and `--size` runs keep no history.
 
 **Non-goals.** No tab groups, no pinned tabs, no tab search in v1.
 
@@ -827,10 +855,11 @@ only starred / not starred):
   preloaded, a held random key waited on a fresh decode at every step and
   stuttered).
   Home/End, Ctrl+W (close the tab; the last one closes the window; Esc
-  does nothing, by request), F12 (debug), +/- zoom.
+  does nothing, by request), Ctrl+Shift+T (reopen the last close, §10a),
+  F12 (debug), +/- zoom.
   A plain hotkey works on its own only: with Ctrl or Alt, keys without a
   Ctrl/Alt binding do nothing; with Shift, only Shift+F, Shift+Del,
-  Ctrl+Shift+Tab and "+" work. The wheel pages without modifiers only
+  Ctrl+Shift+Tab, Ctrl+Shift+T and "+" work. The wheel pages without modifiers only
   (Ctrl+wheel zooms).
 - CLI: `flick <file|dir>…`, `--new-window`, `--slideshow`, `--bench`.
 
@@ -863,7 +892,7 @@ only starred / not starred):
 | 5 | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path |
 | 6 | Tags/rating read + write, inline editor | Two-keystroke tag edit, file updated atomically |
 | 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. Done for all but RAW (skipped for now, by request): 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. *No `Decoder` trait yet: `formats::kind` dispatches |
-| 8 | Polish: file associations, installer, session restore, tab drag-out, Linux/macOS build | — |
+| 8 | Polish: file associations, installer, session restore (done: the close history, §10a), tab drag-out, Linux/macOS build | — |
 
 Milestones 0–3 are the thesis; if 3 doesn't beat Honeyview on cold start,
 paging and memory, stop and rethink before building chrome. Every milestone
