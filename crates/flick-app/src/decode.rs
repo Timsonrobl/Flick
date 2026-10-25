@@ -536,6 +536,31 @@ mod tests {
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
     }
 
+    /// How much heavy decodes slow each other: each file in a folder decoded
+    /// alone (screen level, as the pool does), then all of them at once on
+    /// threads of their own. `$env:FLICK_SAMPLE_DIR`.
+    #[test]
+    #[ignore]
+    fn decode_contention() {
+        let dir = std::path::PathBuf::from(std::env::var_os("FLICK_SAMPLE_DIR").expect("FLICK_SAMPLE_DIR"));
+        let files: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).collect();
+        let time = |path: &Path| {
+            let started = std::time::Instant::now();
+            decode_screen(path, (3377, 1440)).unwrap();
+            started.elapsed().as_secs_f64() * 1000.0
+        };
+        let alone: Vec<f64> = files.iter().map(|f| time(f)).collect();
+        println!("alone: {}", alone.iter().map(|t| format!("{t:.0}")).collect::<Vec<_>>().join(", "));
+        for count in [2, 4] {
+            let picked: Vec<_> = files.iter().cycle().take(count).cloned().collect();
+            let together: Vec<f64> = std::thread::scope(|s| {
+                let handles: Vec<_> = picked.iter().map(|f| s.spawn(|| time(f))).collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            println!("{count} at once: {}", together.iter().map(|t| format!("{t:.0}")).collect::<Vec<_>>().join(", "));
+        }
+    }
+
     /// What a folder of JPEGs is made of, and how each decode path does on
     /// them: markers (frame type, components and sampling, scans, restart
     /// interval, segment sizes), what WIC reports, and the preview, zune-jpeg
