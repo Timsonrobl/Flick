@@ -138,10 +138,13 @@ impl Screen {
 struct Current {
     path: PathBuf,
     screen: Screen,
-    full: Option<(ID2D1Bitmap1, (u32, u32))>,
-    /// Full resolution is decoded only once a zoom needs it.
-    full_requested: bool,
-    full_note: &'static str,
+    /// Sharper than the screen level, for zooming in: the bitmap, its size
+    /// and its fraction of native size (1: full, 2: half...).
+    detail: Option<(ID2D1Bitmap1, (u32, u32), u32)>,
+    /// The sharpest detail level asked for (decoding or done); Some(1) also
+    /// when there's none to ask for. Decoded once a zoom needs it.
+    requested: Option<u32>,
+    detail_note: String,
     view: View,
     /// An animated GIF's playback (its first frame is `screen`).
     anim: Option<Anim>,
@@ -159,15 +162,29 @@ impl Current {
         let orientation = turn.after(screen.orientation);
         let view = View::new(view::oriented_size(orientation, screen.full_size), window, mode);
         // An animation's frames are already full size: nothing to decode for zooming.
-        let (full_requested, full_note) = if screen.animated() { (true, "animation frames are full size") } else { (false, "not needed yet") };
-        Current { path, screen, full: None, full_requested, full_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
+        let (requested, note) = if screen.animated() { (Some(1), "animation frames are full size") } else { (None, "not needed yet") };
+        let detail_note = note.to_string();
+        Current { path, screen, detail: None, requested, detail_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
     }
 
     /// The same picture, drawn as it is, while another tab's decodes.
     fn stand_in(&self) -> Current {
-        let full_note = "the previous tab's picture, until this one decodes";
+        let detail_note = "the previous tab's picture, until this one decodes".to_string();
         let (path, screen, view, orientation) = (self.path.clone(), self.screen.clone(), self.view, self.orientation);
-        Current { path, screen, full: None, full_requested: true, full_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
+        Current { path, screen, detail: None, requested: Some(1), detail_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
+    }
+
+    /// The detail level a zoom of `scale` (display px per native px) needs,
+    /// if it isn't asked for yet: the coarsest fraction of native size (1/8,
+    /// 1/4, 1/2, full) the zoom doesn't magnify, no larger than one GPU
+    /// bitmap holds, and sharper than the screen level.
+    fn wanted_level(&mut self, scale: f32, max_bitmap: u32) -> Option<u32> {
+        let long = self.screen.full_size.0.max(self.screen.full_size.1);
+        if long > max_bitmap && self.requested.is_none() {
+            self.detail_note = "full size is more than one bitmap holds (tiles: milestone 4)".into();
+        }
+        let denom = detail_level(long, self.screen.size.0.max(self.screen.size.1), scale, max_bitmap)?;
+        self.requested.is_none_or(|r| denom < r).then_some(denom)
     }
 
     /// Turned another way: the view starts again in `mode`.
@@ -459,12 +476,44 @@ fn cool_after() -> Duration {
 
 /// A tab leaving the screen keeps its picture, not what only drawing needs:
 /// the full-resolution level and the animation (which restarts on return).
+/// For a picture `long` px on its long side whose screen level is `screen`
+/// px: the fraction of native size a zoom of `scale` needs (the coarsest
+/// of 1/8, 1/4, 1/2, full it doesn't magnify), made coarser until one GPU
+/// bitmap holds it; None if that is no sharper than the screen level (or
+/// even 1/8, JPEG's coarsest, is more than a bitmap holds).
+fn detail_level(long: u32, screen: u32, scale: f32, max_bitmap: u32) -> Option<u32> {
+    let mut denom = [8, 4, 2].into_iter().find(|&d| scale * d as f32 <= 1.001).unwrap_or(1);
+    while long.div_ceil(denom) > max_bitmap {
+        if denom == 8 {
+            return None;
+        }
+        denom *= 2;
+    }
+    (long.div_ceil(denom) > screen).then_some(denom)
+}
+
+/// Decodes `current`'s detail level 1/`denom` on a worker thread
+/// (`Event::DetailDecoded`, then `on_detail_decoded`).
+fn request_detail(current: &mut Current, denom: u32, viewer: ViewerId, shared: &Shared) {
+    current.requested = Some(denom);
+    current.detail_note = format!("decoding 1/{denom}");
+    let (path, proxy) = (current.path.clone(), shared.proxy.clone());
+    std::thread::spawn(move || {
+        let level = decode::decode_level(&path, denom);
+        let _ = proxy.send_event(Event::DetailDecoded { viewer, path, level, at: ms_since_start() });
+    });
+}
+
+/// With Load Full Resolution Ahead, a picture on screen this long gets its
+/// sharpest level decoded before any zoom asks (paging past doesn't).
+const PREFETCH_AFTER: Duration = Duration::from_millis(500);
+
 fn park(mut tab: Tab) -> Tab {
     tab.parked = Some(Instant::now());
     if let Some(current) = &mut tab.current {
         current.anim = None;
-        current.full = None;
-        current.full_requested = current.screen.animated();
+        current.detail = None;
+        current.requested = current.screen.animated().then_some(1);
     }
     tab
 }
@@ -517,6 +566,8 @@ pub struct Viewer {
     slideshow: Option<Slideshow>,
     /// Tab Lock's last step was random (a slideshow through tabs follows it).
     tab_random: bool,
+    /// Preferences ▸ Load Full Resolution Ahead (`PREFETCH_AFTER`).
+    prefetch: bool,
 }
 
 /// A running slideshow. Each picture stays `Prefs::slide_ms` from when it
@@ -601,12 +652,14 @@ impl Viewer {
             info_rect: None,
             slideshow: None,
             tab_random: false,
+            prefetch: global.prefetch,
         }
     }
 
     /// Preferences changed: the strip follows Multi-row Tabs.
     pub fn set_global(&mut self, global: Global) {
         self.chrome.set_multirow(global.multirow);
+        self.prefetch = global.prefetch;
         self.redraw();
     }
 
@@ -1118,6 +1171,7 @@ impl Viewer {
         let slid = self.slide_due().is_some_and(|due| due <= Instant::now()) && self.slide(shared);
         self.cool_tabs(shared);
         self.next_frame(shared);
+        self.prefetch(shared);
         self.advance(shared) || slid
     }
 
@@ -1142,7 +1196,28 @@ impl Viewer {
         let step = self.tab.folder.as_ref().filter(|f| f.index != self.tab.target).and_then(|_| self.tab.shown_at).map(|t| t + DWELL);
         let cool = self.others.iter().filter_map(|t| t.parked).min().map(|t| t + cool_after());
         let note = self.note.as_ref().map(|(_, until)| *until);
-        [frame, step, cool, self.chrome.reveal_deadline(), note, self.slide_due()].into_iter().flatten().min()
+        [frame, step, cool, self.chrome.reveal_deadline(), note, self.slide_due(), self.prefetch_due()].into_iter().flatten().min()
+    }
+
+    /// When Load Full Resolution Ahead decodes the picture's sharpest level:
+    /// once it has been on screen PREFETCH_AFTER, if nothing asked yet.
+    fn prefetch_due(&self) -> Option<Instant> {
+        let current = self.tab.current.as_ref().filter(|c| self.prefetch && c.requested.is_none())?;
+        let smaller = current.screen.size.0 < current.screen.full_size.0;
+        let settled = self.tab.folder.as_ref().is_none_or(|f| f.index == self.tab.target);
+        (smaller && settled).then_some(self.tab.shown_at? + PREFETCH_AFTER)
+    }
+
+    fn prefetch(&mut self, shared: &Shared) {
+        if !self.prefetch_due().is_some_and(|due| due <= Instant::now()) {
+            return;
+        }
+        let max_bitmap = shared.gpu.as_ref().map_or(u32::MAX, Gpu::max_bitmap_size);
+        let Some(current) = self.tab.current.as_mut() else { return };
+        match current.wanted_level(1.0, max_bitmap) {
+            Some(denom) => request_detail(current, denom, self.id, shared),
+            None => current.requested = Some(1), // nothing sharper to get
+        }
     }
 
     /// If the current picture is animated, schedules its playback: frames
@@ -1428,18 +1503,26 @@ impl Viewer {
         self.redraw();
     }
 
-    pub fn on_full_decoded(&mut self, path: PathBuf, image: Result<Image, String>, shared: &Shared) {
+    /// A detail level arrived (`request_detail`): kept if it is sharper than
+    /// the one shown.
+    pub fn on_detail_decoded(&mut self, path: PathBuf, level: Result<(Image, u32), String>, shared: &Shared) {
         let (Some(current), Some(gpu)) = (&mut self.tab.current, &shared.gpu) else { return };
         if current.path != path {
             return; // paged away meanwhile
         }
-        match image {
-            Ok(image) if image.width.max(image.height) <= gpu.max_bitmap_size() => match gpu.upload(&image) {
-                Ok(bitmap) => current.full = Some((bitmap, (image.width, image.height))),
-                Err(_) => current.full_note = "upload failed",
+        match level {
+            Ok((_, denom)) if current.detail.as_ref().is_some_and(|d| d.2 <= denom) => {} // as sharp already
+            Ok((image, denom)) if image.width.max(image.height) <= gpu.max_bitmap_size() => match gpu.upload(&image) {
+                Ok(bitmap) => {
+                    // A codec that can't scale while decoding gave full size.
+                    current.requested = current.requested.map(|r| r.min(denom));
+                    current.detail = Some((bitmap, (image.width, image.height), denom));
+                    current.detail_note = if denom == 1 { "full".into() } else { format!("1/{denom}") };
+                }
+                Err(_) => current.detail_note = "upload failed".into(),
             },
-            Ok(_) => current.full_note = "too large for one bitmap (tiles: milestone 4)",
-            Err(_) => current.full_note = "decode failed",
+            Ok(_) => current.detail_note = "too large for one bitmap (tiles: milestone 4)".into(),
+            Err(_) => current.detail_note = "decode failed".into(),
         }
         self.redraw();
     }
@@ -1922,27 +2005,16 @@ impl Viewer {
             Some(current) => {
                 let magnified = current.screen.magnified(current.view.scale);
                 let max_bitmap = shared.gpu.as_ref().map_or(u32::MAX, Gpu::max_bitmap_size);
-                if magnified && !current.full_requested && current.screen.full_size.0.max(current.screen.full_size.1) > max_bitmap {
-                    // Not decoded only to be refused by the GPU (a 20000 px panorama).
-                    current.full_requested = true;
-                    current.full_note = "too large for one bitmap (tiles: milestone 4)";
-                }
-                if magnified && !current.full_requested {
-                    // Zoomed past the screen level: decode full resolution,
-                    // drawing the screen level (slightly soft) until it lands.
-                    current.full_requested = true;
-                    current.full_note = "decoding";
-                    let (viewer, path, proxy) = (self.id, current.path.clone(), shared.proxy.clone());
-                    std::thread::spawn(move || {
-                        let image = decode::decode_full(&path);
-                        let _ = proxy.send_event(Event::FullDecoded { viewer, path, image, at: ms_since_start() });
-                    });
+                // Zoomed past the screen level: decode the level this zoom
+                // needs, drawing what there is (slightly soft) until it lands.
+                if let Some(denom) = magnified.then(|| current.wanted_level(current.view.scale, max_bitmap)).flatten() {
+                    request_detail(current, denom, self.id, shared);
                 }
                 let frame = current.anim.as_ref().and_then(|a| a.frames.get(a.shown)).map(|(bitmap, _)| bitmap.clone());
-                let (bitmap, size) = match (&current.full, frame) {
+                let (bitmap, size) = match (&current.detail, frame) {
                     // Animation frames are the screen level's size (both full size).
                     (_, Some(frame)) => (frame, current.screen.size),
-                    (Some((bitmap, size)), _) if magnified => (bitmap.clone(), *size),
+                    (Some((bitmap, size, _)), _) if magnified => (bitmap.clone(), *size),
                     _ => (current.screen.bitmap.clone(), current.screen.size),
                 };
                 let (fw, fh) = (current.screen.full_size.0 as f32, current.screen.full_size.1 as f32);
@@ -2014,17 +2086,17 @@ impl Viewer {
         }
         if let Some(current) = &self.tab.current {
             let s = &current.screen;
-            let full = match &current.full {
-                Some((_, (w, h))) => format!("{w}x{h}"),
-                None => current.full_note.to_string(),
+            let detail = match &current.detail {
+                Some((_, (w, h), _)) => format!("{w}x{h} ({})", current.detail_note),
+                None => current.detail_note.clone(),
             };
-            let level = match (s.magnified(current.view.scale), current.full.is_some()) {
+            let level = match (s.magnified(current.view.scale), current.detail.is_some()) {
                 (false, _) => "screen",
-                (true, true) => "full",
-                (true, false) => "screen (soft, full not ready)",
+                (true, true) => "detail",
+                (true, false) => "screen (soft, detail not ready)",
             };
             text += &format!(
-                "image   {}x{} stored, orientation {}\nlevels  screen {}x{}, full {full}\ndrawing {level}\nzoom    {:.1} %{}\n",
+                "image   {}x{} stored, orientation {}\nlevels  screen {}x{}, detail {detail}\ndrawing {level}\nzoom    {:.1} %{}\n",
                 s.full_size.0,
                 s.full_size.1,
                 s.orientation,
@@ -2783,5 +2855,26 @@ impl Viewer {
             "{{\"adapter\":\"flick\",\"stages\":[{stages}],\"turns\":[{turns}],\"private_mb\":{private:.1},\"working_set_mb\":{working:.1},\"error\":{error}}}"
         );
         let _ = std::fs::write(path, json);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detail_level;
+
+    #[test]
+    fn zoom_picks_the_coarsest_sharp_level() {
+        // A 12000 px picture, its screen level 3000 px (1/4), GPU limit 16384.
+        let level = |scale| detail_level(12000, 3000, scale, 16384);
+        assert_eq!(level(0.25), None, "the screen level is sharp enough");
+        assert_eq!(level(0.4), Some(2), "1/2 is enough at 40 %");
+        assert_eq!(level(0.5), Some(2));
+        assert_eq!(level(0.6), Some(1));
+        assert_eq!(level(2.0), Some(1), "past 100 %: full size");
+        // A 24 MP photo whose screen level is 3377 px of 6000: 1/2 is no sharper.
+        assert_eq!(detail_level(6000, 3377, 0.6, 16384), Some(1));
+        // A 40000 px panorama: full size is more than a bitmap holds; 1/4 is the most.
+        assert_eq!(detail_level(40000, 3377, 1.0, 16384), Some(4));
+        assert_eq!(detail_level(200_000, 3377, 1.0, 16384), None, "even 1/8 is too large");
     }
 }

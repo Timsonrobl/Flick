@@ -214,7 +214,7 @@ Each open image (`ImageId` = canonical path + mtime + size) has up to four
 |---|---|---|---|---|
 | `Thumb` | embedded EXIF/HEIC/JXL preview, else 1/8 decode | ≤ 512 px | on folder scan / first touch | cheap, kept long |
 | `Screen` | scaled decode to ≥ largest window's fit size (rounded up to power-of-2 fraction) | ~2–8 MP | on navigate to / preload | the working set |
-| `Full` | full decode, mipmapped texture | native | 300–500 ms after image becomes current, or on zoom > fit | one per *active* window, dropped on page-away (grace 2 s) |
+| `Full` (built as "detail") | the level a zoom needs: 1/8, 1/4, 1/2 by JPEG's DCT scaling (~4× faster per halving), else full; no mipmaps (Direct2D's high-quality cubic pre-shrinks) | the coarsest a zoom doesn't magnify, sharper than `Screen`, within one bitmap | on zoom past `Screen`; with Preferences ▸ Load Full Resolution Ahead (off by default), 500 ms after a picture settles | the current picture's; dropped on page-away and with a parked tab |
 | `Tiles` | region decode (JPEG DCT-domain crop, JXL crop, TIFF tiles) | 1024² tiles | only if native > GPU max texture size, or image > N MP | visible region + margin |
 
 Each level has a CPU form (`Pixels`: RGBA8/BGRA8 or RGBA16F) and a GPU form
@@ -512,6 +512,12 @@ decides whether tabs stay, so these are the goal, not all built in 3b):**
   rows (the dragged tab takes the cell nearest its centre); the others
   glide in both directions. **Preferences ▸ Multi-row Tabs** (app-wide,
   saved; on by default): off keeps one row, the tabs narrowing to fit.
+- **Preferences ▸ Load Full Resolution Ahead** (app-wide, saved; off by
+  default, added 2026-10-25): a picture on screen for 500 ms (paging past
+  doesn't count) gets its sharpest level decoded before any zoom, so the
+  first zoom is sharp at once. It costs, for every picture paused on,
+  zoomed or not, a full decode (~170 ms of CPU for 24 MP) and its GPU
+  bitmap (~100 MB for 24 MP) while the picture is on screen.
 - **Remembered placement of a snapped window:** Windows' normal rect for a
   snapped window is the one before snapping, so `placement::save` stores
   the window's rect on screen instead (`IsWindowArranged`).
@@ -814,7 +820,7 @@ only starred / not starred):
 | 2 ✓* | Folder paging with Screen levels, preload ring, cancellation | RAM flat ✓ (~70 MB working set while paging 22 files; Honeyview grows to 416 MB); every turn a preloaded swap ✓ (< 1 ms in Flick); cold open 249 ms ✓. *Key → screen still 7–90 ms (compositor, see §16); fast mouse-wheel spinning to be judged by hand |
 | 3a ✓ | Resident process + tray icon, single instance (named pipe, warm open), multiple windows sharing GPU/pool/cache, trim after 30 s idle, idle = 0 % CPU | Warm open **120 ms** ✓ (137 ms after trim), cold 241 ms unchanged, 0 blank/flicker; resident idle working set ~0 MB after trim ✓, 0 ms CPU ✓; memory levels off across opens (after the D3D11 flush fix) |
 | 3b (first cut) | Tabs (with a minimal tab strip in the hover bar), tab cooldown (warm → cold after 3 min, no disk tier, no cap on warm tabs: user decision) | 20 tabs: working set **99 MB** (Honeyview: 153–416 MB for one window) ✓; GPU 410 MB warm → **172 MB** once cooled; warm tab switch **0.6 ms** to present ✓; open into a tab **83–93 ms** request → on screen (warm open into a new window ~102) ✓. Window colours, Move to Window, Ctrl-drag reorder: after the user's verdict on tabs |
-| 4 | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open |
+| 4 (part A ✓) | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open. Part A (2026-10-25): the detail level a zoom needs (1/2, 1/4 decode fast for moderate zooms; a picture over 16 384 px gets the finest fraction a bitmap holds), optional dwell prefetch; mips dropped (Direct2D's high-quality cubic pre-shrinks). Part B (tiles for > 16 384 px) next |
 | 5 | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path |
 | 6 | Tags/rating read + write, inline editor | Two-keystroke tag edit, file updated atomically |
 | 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. Done for all but RAW (skipped for now, by request): 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. *No `Decoder` trait yet: `formats::kind` dispatches |
@@ -928,8 +934,9 @@ closed by a commit that says so; review this list at every milestone.
 - [x] **Tray icon after an Explorer restart** (closed 2026-10-25). The
   tray's window is a hidden top-level window (message-only windows miss
   broadcasts) that re-adds the icon on `TaskbarCreated`.
-- [ ] **Start with Windows.** Optional `Run` key entry so the first open of
-  the day is warm too (a tray menu toggle).
+- [-] **Start with Windows** (not planned: user decision, 2026-10-25).
+  Optional `Run` key entry so the first open of the day is warm too (a
+  tray menu toggle).
 - [ ] **Latency after composition** (§16): ~35 ms between present and the
   picture on screen during page turns. Separate display-path latency from
   measurement lag with DXGI Desktop Duplication timestamps.

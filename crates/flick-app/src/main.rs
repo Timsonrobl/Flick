@@ -76,7 +76,9 @@ pub enum Event {
     Listed { viewer: ViewerId, tab: TabId, folder: Result<Folder, String> },
     /// A screen level for some window's ring, from the decode pool.
     Preloaded { path: PathBuf, picture: Result<Picture, String>, decode_ms: f64 },
-    FullDecoded { viewer: ViewerId, path: PathBuf, image: Result<Image, String>, at: f64 },
+    /// A zoom's detail level (`decode::decode_level`): the image and its
+    /// fraction of native size.
+    DetailDecoded { viewer: ViewerId, path: PathBuf, level: Result<(Image, u32), String>, at: f64 },
     /// An animated GIF's next frame (or its end), for one window.
     Anim { viewer: ViewerId, serial: u64, update: viewer::AnimUpdate },
     /// The info panel's details for a file (`meta::read`).
@@ -679,10 +681,10 @@ impl ApplicationHandler<Event> for App {
             Event::OnScreen { viewer, tab, at } => self.on_screen(self.window_of(tab).unwrap_or(viewer), tab, at),
             Event::Listed { viewer, tab, folder } => self.on_listed(self.window_of(tab).unwrap_or(viewer), tab, folder),
             Event::Preloaded { path, picture, decode_ms } => self.on_preloaded(path, picture, decode_ms),
-            Event::FullDecoded { viewer, path, image, at } => {
+            Event::DetailDecoded { viewer, path, level, at } => {
                 if let Some(v) = self.viewers.get_mut(&viewer) {
-                    v.tab.timeline.push("full_decoded", at);
-                    v.on_full_decoded(path, image, &self.shared);
+                    v.tab.timeline.push("detail_decoded", at);
+                    v.on_detail_decoded(path, level, &self.shared);
                 }
             }
             Event::Anim { viewer, serial, update } => {

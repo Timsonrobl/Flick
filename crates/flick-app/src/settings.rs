@@ -68,11 +68,15 @@ pub struct Global {
     pub tabs: bool,
     /// Tabs wrap onto more rows (else one row, squeezed).
     pub multirow: bool,
+    /// A picture looked at for a moment gets its full resolution decoded,
+    /// so a first zoom is sharp at once (GPU memory and CPU for every
+    /// picture paused on, zoomed or not).
+    pub prefetch: bool,
 }
 
 impl Default for Global {
     fn default() -> Global {
-        Global { tabs: true, multirow: true }
+        Global { tabs: true, multirow: true, prefetch: false }
     }
 }
 
@@ -98,6 +102,7 @@ pub fn load() -> (Prefs, Global) {
             }
             "tabs" => global.tabs = value != "0",
             "multirow" => global.multirow = value != "0",
+            "prefetch_full" => global.prefetch = value == "1",
             _ => {}
         }
     }
@@ -110,7 +115,7 @@ pub fn save(prefs: Prefs, global: Global) {
         let _ = std::fs::create_dir_all(dir);
     }
     let text = format!(
-        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\npersist_turn={}\nturn={},{},{}\nslideshow_ms={}\ntabs={}\nmultirow={}\n",
+        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\npersist_turn={}\nturn={},{},{}\nslideshow_ms={}\ntabs={}\nmultirow={}\nprefetch_full={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
         name(&FILTERS, prefs.filter),
@@ -125,6 +130,7 @@ pub fn save(prefs: Prefs, global: Global) {
         prefs.slide_ms,
         u8::from(global.tabs),
         u8::from(global.multirow),
+        u8::from(global.prefetch),
     );
     let _ = std::fs::write(path, text);
 }

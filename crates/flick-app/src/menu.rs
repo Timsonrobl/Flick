@@ -128,6 +128,7 @@ const LOCK: usize = 901;
 const OPEN_IN_TABS: usize = 902;
 const MULTIROW: usize = 903;
 const FAVORITES: usize = 904;
+const PREFETCH: usize = 905;
 /// Rotate ▸ 910 + quarter turns, flips, persist.
 const TURN: usize = 910;
 const FLIP_H: usize = 914;
@@ -290,6 +291,7 @@ pub fn show(
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
+        let _ = AppendMenuW(prefs_menu, checked(global.prefetch), PREFETCH, w!("Load Full Resolution Ahead"));
         let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
         let folder = match favorites {
             Some(folder) => HSTRING::from(format!("Favorites Folder: {}…", folder.display())),
@@ -314,6 +316,7 @@ pub fn show(
             LOCK => Some(Choice::Lock),
             OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs, ..global })),
             MULTIROW => Some(Choice::Global(Global { multirow: !global.multirow, ..global })),
+            PREFETCH => Some(Choice::Global(Global { prefetch: !global.prefetch, ..global })),
             FAVORITES => Some(Choice::ChooseFavorites),
             id if (TURN..TURN + 4).contains(&id) => Some(Choice::Turn(Turn { quarter: (id - TURN) as u8, ..turn })),
             FLIP_H => Some(Choice::Turn(Turn { flip_h: !turn.flip_h, ..turn })),

@@ -574,6 +574,20 @@ pub fn decode_full(path: &Path) -> Result<Image, String> {
     result.map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// A zoom's detail level: 1/`denom` of native size where the codec scales
+/// while decoding (JPEG's DCT: 1/2 is ~4× faster than full size), else
+/// full size. Returns it with the fraction it got.
+pub fn decode_level(path: &Path, denom: u32) -> Result<(Image, u32), String> {
+    if denom > 1 && formats::kind(path) == Kind::Wic {
+        let level = open(path).and_then(|source| match scaled(&source, denom)? {
+            Some(image) => Ok((image, denom)),
+            None => full(&source).map(|image| (image, 1)),
+        });
+        return level.map_err(|e| format!("{}: {e}", path.display()));
+    }
+    decode_full(path).map(|image| (image, 1))
+}
+
 /// DCT-scaled decode through the codec's own transform, if it has one.
 fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
     unsafe {
