@@ -319,6 +319,7 @@ it. The table above is the plan; what each format actually uses:
 | Format | Decoder | Screen level |
 |---|---|---|
 | JPEG | WIC | DCT scale 1/2–1/8 (unchanged) |
+| JPEG, progressive (YCbCr, greyscale) | `zune-jpeg`, colour-managed and scaled through WIC (2026-10-25) | full decode, Fant scaler, then the colour profile on the small picture. WIC took twice as long on these (24 MP at top quality: 1.9 s against 1.0 s; its DCT scaling saves nothing, every scan is read anyway); pixels match WIC's within rounding (a test). Heavy set paging: cold open 1.97 → 1.06 s, first turn 1.39 → 0.38 s. Each such decode holds ~300 MB while it runs (coefficients, file, output), so three preloads at once peak near 0.9 GB, briefly. CMYK and anything WIC can't call YCbCr stay with WIC; zune failing falls back to WIC |
 | PNG, TIFF (8/16-bit), BMP, ICO, JPEG XR, static WebP, HEIC/HEIF, AVIF | WIC (HEIC/AVIF through Windows' HEIF + HEVC / AV1 extensions) | WIC's Fant scaler to the fit size, after converting to premultiplied BGRA (a PNG panorama of 20000 px now opens; before, its full size went to the GPU and was refused) |
 | APNG, animated WebP | `image` crate (composes frames) | first frame, full size, then played like a GIF |
 | GIF | WIC + `decode::compose` | unchanged |

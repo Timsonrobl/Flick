@@ -37,6 +37,8 @@ pub struct Picture {
     pub orientation: u16,
     /// More than one: an animated GIF (`animate` plays it).
     pub frames: u32,
+    /// A quick soft stand-in (`decode_preview`): the real screen level follows.
+    pub preview: bool,
 }
 
 /// One composed frame of an animation and how long it shows.
@@ -234,18 +236,38 @@ fn fit_size((w, h): (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
     (scale < 1.0).then(|| (((f64::from(w) * scale).ceil() as u32).max(1), ((f64::from(h) * scale).ceil() as u32).max(1)))
 }
 
+/// A progressive JPEG's first scans only, at 1/8 size: a soft stand-in in
+/// ~90 ms where the screen level takes ~1 s (24 MP at top quality), for
+/// paging fast. None for anything else (or should it fail).
+pub fn decode_preview(path: &Path) -> Option<Picture> {
+    if formats::kind(path) != Kind::Wic {
+        return None;
+    }
+    let source = open(path).ok()?;
+    let jpeg = source.frame.cast::<IWICJpegFrameDecode>().ok()?;
+    let mut header = WICJpegFrameHeader::default();
+    unsafe { jpeg.GetFrameHeader(&mut header) }.ok()?;
+    if header.ScanType != WICJpegScanTypeProgressive {
+        return None;
+    }
+    // Level 0: the DC scan, an 1/8 picture in its own right.
+    unsafe { source.frame.cast::<IWICProgressiveLevelControl>().ok()?.SetCurrentLevel(0) }.ok()?;
+    let screen = scaled(&source, 8).ok()??;
+    Some(Picture { screen, full_size: source.size, orientation: orientation(&source.frame), frames: 1, preview: true })
+}
+
 /// The Screen level: the picture as a window first shows it, no larger than
 /// `target` (in displayed orientation) where the format allows.
 pub fn decode_screen(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
     let named = |e: String| format!("{}: {e}", path.display());
-    let still = |screen: Image, full_size| Picture { screen, full_size, orientation: 1, frames: 1 };
+    let still = |screen: Image, full_size| Picture { screen, full_size, orientation: 1, frames: 1, preview: false };
     match formats::kind(path) {
         Kind::Wic => wic_screen(path, target).map_err(|e| named(e.to_string())),
         kind @ (Kind::Apng(frames) | Kind::AnimatedWebp(frames)) => {
             // Animations are shown at full size, as GIFs are.
             let screen = first_frame(path, kind).map_err(named)?;
             let full_size = (screen.width, screen.height);
-            Ok(Picture { screen, full_size, orientation: 1, frames })
+            Ok(Picture { screen, full_size, orientation: 1, frames, preview: false })
         }
         Kind::Jxl => {
             let full = formats::jxl(path).map_err(named)?;
@@ -289,8 +311,54 @@ fn shrink(image: Image, target: (u32, u32)) -> windows::core::Result<Image> {
     }
 }
 
+/// A progressive JPEG decoded by zune-jpeg, colour-managed as the rest: WIC's
+/// decoder takes about twice as long on these (24 MP at top quality: 1.9 s
+/// against 0.93), and its DCT scaling saves nothing (every scan is read
+/// whatever the size wanted). Only YCbCr and greyscale ones (WIC's frame
+/// format says which): a CMYK JPEG's colours need its profile on the CMYK
+/// values themselves. None: not one of these, or zune-jpeg failed (WIC then
+/// decodes it).
+fn zune_full(path: &Path, source: &Source) -> Option<Image> {
+    managed(source, zune_raw(path, source)?)
+}
+
+/// `image` (opaque BGRA of `source`'s frame) converted from the frame's
+/// colour profile to sRGB, if it has one to convert from.
+fn managed(source: &Source, image: Image) -> Option<Image> {
+    if source.profile.is_none() {
+        return Some(image); // opaque: premultiplied as it is
+    }
+    let (width, height) = (image.width, image.height);
+    unsafe {
+        let bitmap = source.factory.CreateBitmapFromMemory(width, height, &GUID_WICPixelFormat32bppBGRA, width * 4, &image.pixels).ok()?;
+        let mut pixels = vec![0u8; image.pixels.len()];
+        to_srgb(source, bitmap.cast().ok()?).ok()?.CopyPixels(std::ptr::null(), width * 4, &mut pixels).ok()?;
+        Some(Image { width, height, pixels })
+    }
+}
+
+/// zune-jpeg's decode, before colour management (`zune_full`).
+fn zune_raw(path: &Path, source: &Source) -> Option<Image> {
+    use zune_jpeg::zune_core::{bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions};
+    let jpeg = source.frame.cast::<IWICJpegFrameDecode>().ok()?;
+    let mut header = WICJpegFrameHeader::default();
+    unsafe { jpeg.GetFrameHeader(&mut header) }.ok()?;
+    let format = unsafe { source.frame.GetPixelFormat() }.ok()?;
+    if header.ScanType != WICJpegScanTypeProgressive || !(format == GUID_WICPixelFormat24bppBGR || format == GUID_WICPixelFormat8bppGray) {
+        return None;
+    }
+    let data = std::fs::read(path).ok()?;
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::BGRA).set_max_width(1 << 16).set_max_height(1 << 16);
+    let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&data), options);
+    let pixels = decoder.decode().ok()?;
+    let info = decoder.info()?;
+    let (width, height) = (u32::from(info.width), u32::from(info.height));
+    ((width, height) == source.size && pixels.len() == width as usize * height as usize * 4).then_some(Image { width, height, pixels })
+}
+
 /// WIC formats: the smallest DCT scale (1/2, 1/4, 1/8) whose output still
-/// covers `target`; else, for a picture larger than it, the Fant scaler.
+/// covers `target`; else, for a picture larger than it, the Fant scaler. A
+/// progressive JPEG: zune-jpeg's full size, then the Fant scaler.
 fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture> {
     let source = open(path)?;
     if source.gif {
@@ -302,9 +370,14 @@ fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture>
         })?;
         let screen = first.ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?;
         let full_size = (screen.width, screen.height);
-        return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames });
+        return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames, preview: false });
     }
     let orientation = orientation(&source.frame);
+    let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
+    // Shrunk first, then colour-managed: converting the whole picture took ~3× as long.
+    if let Some(screen) = zune_raw(path, &source).and_then(|full| managed(&source, shrink(full, stored_target).ok()?)) {
+        return Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false });
+    }
     let (w, h) = source.size;
     let (dw, dh) = if orientation >= 5 { (h, w) } else { (w, h) };
     let fit = f64::min(f64::from(target.0) / f64::from(dw), f64::from(target.1) / f64::from(dh));
@@ -316,7 +389,7 @@ fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture>
         (None, Some(size)) => fitted(&source, size)?,
         (None, None) => full(&source)?,
     };
-    Ok(Picture { screen, full_size: source.size, orientation, frames: 1 })
+    Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false })
 }
 
 /// Decodes an animation (GIF, APNG, animated WebP) frame by frame, each
@@ -461,6 +534,49 @@ mod tests {
         let Some(file) = std::fs::read_dir(dir).ok().and_then(|mut d| d.find_map(|e| e.ok().map(|e| e.path()))) else { return };
         let picture = decode_screen(&file, (1920, 1080)).unwrap();
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
+    }
+
+    /// How fast WIC gives a progressive JPEG's early levels (scans), each from
+    /// a fresh open at 1/8 size: for a preview while paging fast. `$env:FLICK_SAMPLE`.
+    #[test]
+    #[ignore]
+    fn progressive_level_timings() {
+        let file = std::path::PathBuf::from(std::env::var_os("FLICK_SAMPLE").expect("FLICK_SAMPLE"));
+        let levels = unsafe { open(&file).unwrap().frame.cast::<IWICProgressiveLevelControl>().unwrap().GetLevelCount().unwrap() };
+        println!("{levels} levels");
+        for level in 0..levels.min(6) {
+            let started = std::time::Instant::now();
+            let source = open(&file).unwrap();
+            unsafe { source.frame.cast::<IWICProgressiveLevelControl>().unwrap().SetCurrentLevel(level).unwrap() };
+            let image = scaled(&source, 8).unwrap().unwrap();
+            let mean = image.pixels.iter().map(|&v| f64::from(v)).sum::<f64>() / image.pixels.len() as f64;
+            println!("level {level}: {}x{} in {:.0} ms (mean {mean:.0})", image.width, image.height, started.elapsed().as_secs_f64() * 1000.0);
+        }
+    }
+
+    /// Progressive JPEGs (local samples; skipped where not present) decode
+    /// through zune-jpeg to what WIC's decoder makes, within rounding, a
+    /// Display P3 one colour-managed alike; and faster. With `--nocapture`,
+    /// prints both times and the differences.
+    #[test]
+    fn zune_decodes_progressive_jpegs_as_wic_does() {
+        let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples");
+        for name in ["heavy/progressive-1.jpg", "progressive-2.jpg"] {
+            let file = samples.join(name);
+            let Ok(source) = open(&file) else { continue };
+            let started = std::time::Instant::now();
+            let zune = zune_full(&file, &source).expect("a progressive YCbCr JPEG: zune-jpeg's");
+            let zune_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let started = std::time::Instant::now();
+            let wic = full(&source).unwrap();
+            let wic_ms = started.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!((zune.width, zune.height), (wic.width, wic.height));
+            let diffs: Vec<u32> = zune.pixels.iter().zip(&wic.pixels).map(|(a, b)| u32::from(a.abs_diff(*b))).collect();
+            let mean = diffs.iter().sum::<u32>() as f64 / diffs.len() as f64;
+            let large = diffs.iter().filter(|&&d| d > 8).count() as f64 / diffs.len() as f64;
+            println!("{name}: zune {zune_ms:.0} ms, WIC {wic_ms:.0} ms; mean difference {mean:.2}, over 8: {:.3} %, profile {}", large * 100.0, source.profile.is_some());
+            assert!(mean < 1.5 && large < 0.001, "{name}: mean {mean}, {large} of values off by more than 8");
+        }
     }
 
     /// A Display P3 photo (local sample; skipped where it isn't present)
@@ -647,7 +763,7 @@ fn fill(canvas: &mut [u8], stride: usize, (width, height): (u32, u32), (x, y, w,
 /// The Full level: native resolution (for an SVG, its `full_size`).
 pub fn decode_full(path: &Path) -> Result<Image, String> {
     let result = match formats::kind(path) {
-        Kind::Wic => open(path).and_then(|source| full(&source)).map_err(|e| e.to_string()),
+        Kind::Wic => open(path).and_then(|source| zune_full(path, &source).map_or_else(|| full(&source), Ok)).map_err(|e| e.to_string()),
         kind @ (Kind::Apng(_) | Kind::AnimatedWebp(_)) => first_frame(path, kind),
         Kind::Jxl => formats::jxl(path),
         Kind::Svg => formats::Svg::open(path).and_then(|svg| svg.render(svg.full_size())),

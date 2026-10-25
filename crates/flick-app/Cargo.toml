@@ -49,6 +49,7 @@ windows = { version = "0.62", features = [
 jxl-oxide = "0.12.6"
 image = { version = "0.25.10", default-features = false, features = ["png", "webp", "hdr", "exr"] }
 resvg = "0.49.0"
+zune-jpeg = "0.5.15"
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 
 [build-dependencies]
