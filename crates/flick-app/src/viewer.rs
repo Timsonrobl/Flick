@@ -111,6 +111,8 @@ pub struct Screen {
     orientation: u16,
     /// More than one: an animation, and this is its first frame, at full size.
     frames: u32,
+    /// A quick soft stand-in; the real screen level replaces it.
+    pub preview: bool,
 }
 
 impl Screen {
@@ -121,6 +123,7 @@ impl Screen {
             full_size: picture.full_size,
             orientation: picture.orientation,
             frames: picture.frames,
+            preview: picture.preview,
         })
     }
 
@@ -1167,7 +1170,8 @@ impl Viewer {
     /// direction, reaching AHEAD past the target so the images on the way
     /// decode in order, then the two random neighbours. Paging randomly: the
     /// same shape along the shuffled order, then the two sequential
-    /// neighbours.
+    /// neighbours. (The target itself decodes at once: `urgent_path`; heavy
+    /// pictures on the way get previews instead: `passing_paths`.)
     fn ring(&self) -> Vec<usize> {
         let Some(folder) = &self.tab.folder else { return Vec::new() };
         let (i, n, d) = (folder.index as i64, folder.files.len() as i64, self.heading());
@@ -1201,6 +1205,35 @@ impl Viewer {
             add(folder.random_at(-1));
         }
         ring
+    }
+
+    /// The pictures the walk will pass on its way to the target (not the
+    /// target itself). Each is shown (no skipping), but in passing a quick
+    /// preview will do (`decode_preview`): waiting for every heavy one's
+    /// full decode queued seconds behind a fast wheel.
+    pub fn passing_paths(&self) -> Vec<PathBuf> {
+        let Some(folder) = &self.tab.folder else { return Vec::new() };
+        let (i, t) = (folder.index as i64, self.tab.target as i64);
+        let d = (t - i).signum();
+        (1..(t - i).abs()).filter_map(|k| folder.files.get((i + k * d) as usize).cloned()).collect()
+    }
+
+    /// The picture paging is headed for, if it isn't decoded: decoded at
+    /// once, ahead of any preloading (`Pool::urgent`), with a preview first
+    /// unless it has one already.
+    pub fn urgent_path(&self, shared: &Shared) -> Option<(PathBuf, bool)> {
+        let path = match &self.tab.folder {
+            Some(folder) => folder.files.get(self.tab.target)?.clone(),
+            None => self.tab.wanted.clone()?,
+        };
+        if shared.failed.contains_key(&path) {
+            return None;
+        }
+        match shared.cache.get(&path) {
+            None => Some((path, true)),
+            Some(screen) if screen.preview => Some((path, false)),
+            Some(_) => None,
+        }
     }
 
     pub fn ring_paths(&self) -> Vec<PathBuf> {
@@ -1266,7 +1299,9 @@ impl Viewer {
     }
 
     /// One image toward the target, once the current one has been on screen
-    /// for DWELL. Returns whether it moved.
+    /// for DWELL. No skipping (§6): every picture passed is shown, waited for
+    /// if it isn't decoded yet (a heavy progressive JPEG's preview counts:
+    /// `passing_paths`). Returns whether it moved.
     fn advance(&mut self, shared: &Shared) -> bool {
         let Some(folder) = &self.tab.folder else { return false };
         let index = folder.index as i64;
@@ -1292,7 +1327,7 @@ impl Viewer {
     /// When Load Full Resolution Ahead decodes the picture's sharpest level:
     /// once it has been on screen PREFETCH_AFTER, if nothing asked yet.
     fn prefetch_due(&self) -> Option<Instant> {
-        let current = self.tab.current.as_ref().filter(|c| self.prefetch && c.requested.is_none())?;
+        let current = self.tab.current.as_ref().filter(|c| self.prefetch && c.requested.is_none() && !c.screen.preview)?;
         let smaller = current.screen.size.0 < current.screen.full_size.0;
         let settled = self.tab.folder.as_ref().is_none_or(|f| f.index == self.tab.target);
         (smaller && settled).then_some(self.tab.shown_at? + PREFETCH_AFTER)
@@ -1510,6 +1545,12 @@ impl Viewer {
 
     /// A screen level arrived from the pool: show it if this window waits for it.
     pub fn on_preloaded(&mut self, path: &Path, screen: &Screen, shared: &Shared) {
+        // The real level after its preview: swapped in, the view kept.
+        if let Some(current) = self.tab.current.as_mut().filter(|c| c.path == path && c.screen.preview && !screen.preview) {
+            current.screen = screen.clone();
+            self.redraw();
+            return;
+        }
         let shown = self.tab.current.as_ref().filter(|c| c.path == path && !c.stale).is_some();
         if self.tab.wanted.as_deref() == Some(path) && !shown {
             self.display(path.to_path_buf(), screen.clone(), "decoded", shared);
@@ -2124,7 +2165,9 @@ impl Viewer {
                 let max_bitmap = shared.gpu.as_ref().map_or(u32::MAX, Gpu::max_bitmap_size);
                 // Zoomed past the screen level: decode the level this zoom
                 // needs, drawing what there is (slightly soft) until it lands.
-                if let Some(denom) = magnified.then(|| current.wanted_level(max_bitmap)).flatten() {
+                // (Not over a preview: the real screen level is on its way, and a
+                // full decode now would compete with it.)
+                if let Some(denom) = (magnified && !current.screen.preview).then(|| current.wanted_level(max_bitmap)).flatten() {
                     request_detail(current, denom, self.id, shared);
                 }
                 if current.fade.as_ref().is_some_and(|(at, _)| at.elapsed() >= FADE) {

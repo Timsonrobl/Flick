@@ -415,16 +415,28 @@ impl App {
     fn plan(&mut self) {
         let mut queue = Vec::new();
         let mut keep = HashSet::new();
+        let focused = self.focus_order.first().and_then(|id| self.viewers.get(id));
+        // Pictures the focused window's walk passes: a preview each will do.
+        let passing = focused.map(Viewer::passing_paths).unwrap_or_default();
         for id in &self.focus_order {
             let Some(viewer) = self.viewers.get(id) else { continue };
             for path in viewer.ring_paths() {
-                if !self.shared.cache.contains_key(&path) && !self.shared.failed.contains_key(&path) && !queue.contains(&path) {
+                // A preview still wants its real level, unless it is only passed.
+                let decoded = self.shared.cache.get(&path).is_some_and(|s| !s.preview || passing.contains(&path));
+                if !decoded && !self.shared.failed.contains_key(&path) && !queue.contains(&path) {
                     queue.push(path);
                 }
             }
             keep.extend(viewer.keep_paths());
         }
         if let Some(pool) = &self.shared.pool {
+            // Where the focused window is headed decodes at once, not behind preloads.
+            if let Some((path, preview)) = focused.and_then(|v| v.urgent_path(&self.shared)) {
+                pool.urgent(path, preview);
+            }
+            for path in passing.iter().filter(|p| !self.shared.cache.contains_key(*p) && !self.shared.failed.contains_key(*p)) {
+                pool.preview(path.clone());
+            }
             pool.set_queue(queue);
         }
         self.shared.cache.retain(|path, _| keep.contains(path));
@@ -494,8 +506,10 @@ impl App {
 
     fn on_preloaded(&mut self, path: PathBuf, picture: Result<Picture, String>, decode_ms: f64) {
         let needed = self.viewers.values().any(|v| v.keep_paths().contains(&path));
+        // A preview landing after the real level (a preload got there first): nothing to do.
+        let late = picture.as_ref().is_ok_and(|p| p.preview) && self.shared.cache.get(&path).is_some_and(|s| !s.preview);
         match picture {
-            Ok(picture) if needed => {
+            Ok(picture) if needed && !late => {
                 let Some(gpu) = &self.shared.gpu else { return };
                 match Screen::upload(gpu, &picture) {
                     Ok(screen) => {

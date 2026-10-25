@@ -263,6 +263,24 @@ Scheduler rules:
   plan showed thumbnails for passed images instead; measured, the ⅛-scale
   decode costs ~60 ms against ~74 ms for the Screen level, and the burst
   files carry no EXIF thumbnail, so a second path would buy almost nothing.
+- **Heavy files, fast wheel (2026-10-25).** On 24 MP top-quality
+  progressive JPEGs (~1 s per decode) the walk above queued: it waited for
+  each picture passed, the ring decoded them all in full, and the
+  destination waited behind those on busy threads (1.1 s after a fast spin
+  stopped, 0.7 s after steady scrolling; `flick-bench ext-viewer
+  --wheel-bursts`). Now: the destination decodes at once on its own thread
+  (`Pool::urgent`), a stale one stopping after its preview; a progressive
+  JPEG gets a preview first, its first scans at ⅛ size via WIC's
+  progressive levels (~90 ms), swapped for the real level when that lands
+  (the view kept; no zoom decode over a preview); pictures passed get the
+  preview only (`passing_paths`). The walk itself is unchanged: every
+  picture passed is shown and waited for (no skipping is not negotiable:
+  user, 2026-10-25; a version that skipped undecoded pictures, and one
+  that gave up waiting after 250 ms, were dropped). Measured: steady
+  scrolling shows the destination in 11–124 ms (sharp ~0.65 s, one full
+  decode); a fast 12-notch spin shows 5–6 pictures on the way and the
+  destination in 45–133 ms. Key paging unchanged (first turn ~0.38 s,
+  then 8–18 ms).
 - **Direction memory.** Preload depth is biased toward the direction of
   travel (toward the target, else the last turn); reversing swaps the ring
   within one navigation.
