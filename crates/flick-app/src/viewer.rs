@@ -37,6 +37,7 @@ use crate::menu;
 use crate::meta;
 use crate::osd::Osd;
 use crate::settings::{Global, Prefs};
+use crate::history::History;
 use crate::view::{self, Affine, Filter, Fit, Mode, Stop, Turn, View};
 
 pub type ViewerId = u64;
@@ -321,6 +322,8 @@ fn is_navigation(event: &KeyEvent, modifiers: ModifiersState) -> bool {
                     | NamedKey::Backspace
                     | NamedKey::Home
                     | NamedKey::End
+                    | NamedKey::BrowserBack
+                    | NamedKey::BrowserForward
             )
         )
 }
@@ -399,6 +402,10 @@ pub struct Tab {
     /// The picture's zoom and pan when the graphics device was lost, for
     /// when it is decoded again (`restore_view`).
     lost_view: Option<(PathBuf, View)>,
+    /// The pictures looked at, for the Back and Forward keys.
+    history: History,
+    /// The next move is Back or Forward's: it isn't a visit to record.
+    by_history: bool,
 }
 
 impl Tab {
@@ -1278,6 +1285,11 @@ impl Viewer {
         let Some(folder) = &mut self.tab.folder else { return Action::None };
         folder.index = index;
         let path = folder.files[index].clone();
+        // Leaving a picture: a visit, unless Back or Forward left it.
+        if let Some(left) = self.tab.current.as_ref().filter(|c| c.path != path && !self.tab.by_history) {
+            self.tab.history.visited(left.path.clone());
+        }
+        self.tab.by_history = false;
         self.tab.turn_started = Some(Instant::now());
         self.tab.turn_started_wall = clock::wall_ms();
         self.tab.wanted = Some(path.clone());
@@ -1705,14 +1717,40 @@ impl Viewer {
         let (viewer, tab, sort, proxy) = (self.id, self.tab.id, self.prefs.sort, shared.proxy.clone());
         std::thread::spawn(move || {
             let result = folder::sibling(&dir, sort, forward);
-            let _ = proxy.send_event(Event::Entered { viewer, tab, result });
+            let _ = proxy.send_event(Event::Entered { viewer, tab, result, at: None });
         });
         Action::None
     }
 
-    /// A sibling folder, listed: the tab pages through it from its first
-    /// picture (if the tab is still the one shown), or says why not.
-    pub fn on_entered(&mut self, tab: TabId, result: Result<Folder, String>, shared: &Shared) -> Action {
+    /// The Back and Forward keys or mouse buttons: the picture looked at
+    /// before (or after, having gone back), in its folder, wherever that is.
+    fn history(&mut self, back: bool, shared: &Shared) -> Action {
+        let Some(here) = self.tab.wanted.clone().or_else(|| self.tab.current.as_ref().map(|c| c.path.clone())) else { return Action::None };
+        let to = if back { self.tab.history.back(&here) } else { self.tab.history.forward(&here) };
+        clock::trace(format_args!("history: from {here:?} to {to:?}"));
+        let Some(to) = to else {
+            self.show_note(if back { "Nothing further back" } else { "Nothing further forward" }.into());
+            return Action::None;
+        };
+        self.tab.random_heading = 0;
+        if let Some(index) = self.tab.folder.as_ref().and_then(|f| f.position(&to)) {
+            self.tab.target = index;
+            self.tab.by_history = true;
+            return self.show_index(index, shared);
+        }
+        // In another folder: listed on a worker thread, then shown (`on_entered`).
+        let (viewer, tab, sort, proxy) = (self.id, self.tab.id, self.prefs.sort, shared.proxy.clone());
+        std::thread::spawn(move || {
+            let result = folder::list(&to, sort);
+            let _ = proxy.send_event(Event::Entered { viewer, tab, result, at: Some(to) });
+        });
+        Action::None
+    }
+
+    /// A folder listed for `[` / `]` (a sibling: from its first picture) or
+    /// Back / Forward (`at`: that picture): the tab pages through it (if the
+    /// tab is still the one shown), or says why not.
+    pub fn on_entered(&mut self, tab: TabId, result: Result<Folder, String>, at: Option<PathBuf>, shared: &Shared) -> Action {
         if self.tab.id != tab {
             return Action::None;
         }
@@ -1726,15 +1764,17 @@ impl Viewer {
         if folder.sort != self.prefs.sort {
             folder.sort(self.prefs.sort);
         }
-        folder.index = 0;
+        let index = at.as_ref().and_then(|p| folder.position(p)).unwrap_or(0);
+        folder.index = index;
         let name = folder.dir.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         let count = folder.files.len();
         self.tab.folder = Some(folder);
-        self.tab.target = 0;
+        self.tab.target = index;
         self.tab.random_heading = 0;
         self.tab.listing = true;
+        self.tab.by_history = at.is_some();
         self.show_note(format!("{name}  ({count})"));
-        self.show_index(0, shared)
+        self.show_index(index, shared)
     }
 
     /// Ctrl+[ / Ctrl+]: the slideshow interval shorter or longer, in steps of
@@ -2598,6 +2638,9 @@ impl Viewer {
             Key::Named(NamedKey::ArrowLeft | NamedKey::PageUp | NamedKey::Backspace) if page => self.step(-1, shared),
             Key::Named(NamedKey::ArrowDown) if page => self.random(true, shared),
             Key::Named(NamedKey::ArrowUp) if page => self.random(false, shared),
+            // The keyboard's Back and Forward (media) keys: the tab's history.
+            Key::Named(NamedKey::BrowserBack) => self.history(true, shared),
+            Key::Named(NamedKey::BrowserForward) => self.history(false, shared),
             Key::Named(NamedKey::Home) => self.jump(0, shared),
             Key::Named(NamedKey::End) => match self.tab.folder.as_ref().map(|f| f.files.len().saturating_sub(1)) {
                 Some(last) => self.jump(last, shared),
@@ -2693,6 +2736,11 @@ impl Viewer {
                 ElementState::Pressed => Action::None,
                 ElementState::Released => self.on_left_release(shared),
             },
+            // The mouse's side buttons, as the keyboard's Back and Forward.
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: button @ (MouseButton::Back | MouseButton::Forward), .. } => {
+                self.stop_slideshow_by_hand();
+                self.history(button == MouseButton::Back, shared)
+            }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Middle, .. } => self.on_middle_press(),
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Middle, .. } => self.on_middle_release(shared),
             WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => match state {

@@ -750,6 +750,16 @@ only starred / not starred):
   thread, at its first picture, with a note naming it. Paging past the
   first or last picture says so in a note ("First picture" / "Last
   picture").
+- **History** (`history.rs`, added 2026-10-25): each tab remembers every
+  picture it showed, the ones the wheel walks through too (no dwell
+  filter: 50 deep is plenty, and a push costs nothing), up to 50 back and
+  50 forward, a few KB at most. The mouse's side
+  buttons (Back, Forward) and the keyboard's Back and Forward keys walk it
+  as a browser does: moving on any other way
+  drops the way forward; a picture in another folder lists that folder
+  (worker thread, as `[` `]`); deleted files are skipped; at either end a
+  note says there's nothing further. No other UI. They stop a slideshow,
+  as moving by hand does.
 - **Ctrl+C** copies the picture at full resolution, upright (EXIF
   orientation applied), as a 32-bit DIBv5 with straight alpha; decoded on
   a worker thread. **Ctrl+Enter** opens the folder in Explorer with the file

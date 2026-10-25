@@ -25,6 +25,7 @@ mod elevation;
 mod folder;
 mod formats;
 mod gpu;
+mod history;
 mod icon;
 mod instance;
 mod library;
@@ -84,8 +85,9 @@ pub enum Event {
     Copy { viewer: ViewerId, image: Result<Image, String> },
     /// A watched folder changed (`watch.rs`).
     FolderChanged { dir: PathBuf, changes: Vec<Change> },
-    /// `[` / `]`: a sibling folder, listed (or why there's none).
-    Entered { viewer: ViewerId, tab: TabId, result: Result<Folder, String> },
+    /// `[` / `]`: a sibling folder, listed (or why there's none); or Back /
+    /// Forward's picture (`at`) in another folder, its folder listed.
+    Entered { viewer: ViewerId, tab: TabId, result: Result<Folder, String>, at: Option<PathBuf> },
     /// A file's stars changed (Ctrl+F / Shift+F in that window): the new count.
     Starred { viewer: ViewerId, path: PathBuf, result: Result<library::Stars, String> },
     /// A later launch's request, from the pipe.
@@ -698,9 +700,9 @@ impl ApplicationHandler<Event> for App {
                     v.on_copy(image);
                 }
             }
-            Event::Entered { viewer, tab, result } => {
+            Event::Entered { viewer, tab, result, at } => {
                 if let Some(v) = self.viewers.get_mut(&viewer) {
-                    let action = v.on_entered(tab, result, &self.shared);
+                    let action = v.on_entered(tab, result, at, &self.shared);
                     self.act(event_loop, viewer, Ok(action));
                 }
             }
