@@ -208,13 +208,6 @@ const MOUSE: [PCWSTR; 9] = [
 /// Slideshow ▸ intervals offered (`[` and `]` adjust in between).
 const SLIDE_PRESETS: [u32; 8] = [250, 500, 1000, 2000, 3000, 5000, 10_000, 30_000];
 
-/// Another window, as Move to Window lists it: its colour
-/// (chrome::PALETTE index) and the file it shows.
-pub struct Target {
-    pub color: usize,
-    pub label: String,
-}
-
 const NEW_WINDOW: usize = 900;
 const LOCK: usize = 901;
 const OPEN_IN_TABS: usize = 902;
@@ -281,7 +274,7 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 }
 
 /// Shows the menu at the cursor and returns what was chosen. `targets` are
-/// the other windows; `can_split` whether the active tab can leave for a
+/// the other windows' colours (chrome::PALETTE indices); `can_split` whether the active tab can leave for a
 /// new window (not when it is the window's only tab, nor with tabs off);
 /// `lock` this window's Tab Lock (None: one tab, greyed); `starred` the
 /// starred folder, if chosen; `turn` this tab's Rotate ▸ choice;
@@ -290,7 +283,7 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 pub fn show(
     hwnd: HWND,
     prefs: Prefs,
-    targets: &[Target],
+    targets: &[usize],
     can_split: bool,
     lock: Option<bool>,
     global: Global,
@@ -392,10 +385,10 @@ pub fn show(
         let destinations = targets.len() + usize::from(can_split);
         let inline = destinations < 4;
         let (into, prefix) = if inline { (menu, "Move to ") } else { (move_menu, "") };
-        for (i, target) in targets.iter().enumerate() {
-            let text = HSTRING::from(format!("{prefix}{}   {}", PALETTE[target.color % PALETTE.len()].0, target.label));
+        for (i, &color) in targets.iter().enumerate() {
+            let text = HSTRING::from(format!("{prefix}{}", PALETTE[color % PALETTE.len()].0));
             let _ = AppendMenuW(into, MF_STRING, MOVE_TO + i, &text);
-            let bitmap = swatch(target.color);
+            let bitmap = swatch(color);
             let info = MENUITEMINFOW { cbSize: size_of::<MENUITEMINFOW>() as u32, fMask: MIIM_BITMAP, hbmpItem: bitmap, ..Default::default() };
             let _ = SetMenuItemInfoW(into, (MOVE_TO + i) as u32, false, &info);
             swatches.push(bitmap);

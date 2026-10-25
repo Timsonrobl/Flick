@@ -2800,11 +2800,11 @@ impl Viewer {
         Action::PrefsChanged(prefs)
     }
 
-    /// The right-click menu; `others` are the other windows (id, colour,
-    /// the file each shows) for Move to Window.
-    pub fn show_menu(&mut self, others: &[(ViewerId, usize, String)], global: Global, shared: &Shared) -> Action {
+    /// The right-click menu; `others` are the other windows (id, colour)
+    /// for Move to Window.
+    pub fn show_menu(&mut self, others: &[(ViewerId, usize)], global: Global, shared: &Shared) -> Action {
         let Some(hwnd) = self.hwnd else { return Action::None };
-        let targets: Vec<menu::Target> = others.iter().map(|(_, color, label)| menu::Target { color: *color, label: label.clone() }).collect();
+        let targets: Vec<usize> = others.iter().map(|(_, color)| *color).collect();
         // A tab can leave for a new window if it isn't the only one, and tabs are on.
         let can_split = self.tab_count() > 1 && global.tabs;
         // Tab Lock only means something with tabs.
@@ -2823,7 +2823,7 @@ impl Viewer {
         }
         match chosen {
             Some(menu::Choice::Prefs(prefs)) => self.set_prefs(prefs),
-            Some(menu::Choice::MoveTo(i)) => Action::MoveTab(others.get(i).map(|(id, _, _)| *id)),
+            Some(menu::Choice::MoveTo(i)) => Action::MoveTab(others.get(i).map(|(id, _)| *id)),
             Some(menu::Choice::NewWindow) => Action::MoveTab(None),
             Some(menu::Choice::Lock) => self.toggle_lock(),
             Some(menu::Choice::Global(global)) => Action::GlobalChanged(global),
@@ -2952,9 +2952,9 @@ impl Viewer {
         self.activate(at, shared)
     }
 
-    /// What Move to Window shows for this window: its colour and file.
-    pub fn menu_entry(&self) -> (ViewerId, usize, String) {
-        (self.id, self.color, self.tab.label())
+    /// What Move to Window shows for this window: its colour.
+    pub fn menu_entry(&self) -> (ViewerId, usize) {
+        (self.id, self.color)
     }
 
     /// One step in the window's shuffled order (S/Down forward, W/Up back).

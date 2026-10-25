@@ -924,7 +924,7 @@ impl App {
             Ok(Action::Menu) => {
                 // Move to Window lists the other windows, oldest first.
                 let mut others: Vec<_> = self.viewers.values().filter(|v| v.id != id && v.is_shown()).map(Viewer::menu_entry).collect();
-                others.sort_by_key(|(other, _, _)| *other);
+                others.sort_by_key(|(other, _)| *other);
                 let Some(viewer) = self.viewers.get_mut(&id) else { return };
                 let chosen = viewer.show_menu(&others, self.global, &self.shared);
                 self.act(event_loop, id, Ok(chosen));
