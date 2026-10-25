@@ -261,11 +261,11 @@ impl View {
         (1..STOPS.len()).map(|k| (at + k) % STOPS.len()).find(|&i| new(i)).map(|i| STOPS[i])
     }
 
-    /// The mode applied with the picture point under `cursor` kept there on
-    /// the axes where the picture overflows (middle click lands on a mode);
-    /// where it fits, it sits as the mode places it.
-    pub fn apply_mode_at(&mut self, cursor: (f32, f32)) {
-        let point = self.to_image(cursor);
+    /// The mode applied with the picture `point` (where the click was, taken
+    /// before the mode changed anything) at `cursor`, on the axes where the
+    /// picture overflows (middle click lands on a mode); where it fits, it
+    /// sits as the mode places it.
+    pub fn apply_mode_at(&mut self, point: (f32, f32), cursor: (f32, f32)) {
         self.apply_mode();
         if self.image.0 * self.scale > self.window.0 {
             self.center.0 = point.0 - (cursor.0 - self.window.0 / 2.0) / self.scale;
@@ -307,23 +307,6 @@ impl View {
     pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode;
         self.apply_mode();
-    }
-
-    pub fn actual_size(&mut self, cursor: (f32, f32)) {
-        self.zoom_at(cursor, 1.0 / self.scale);
-    }
-
-    /// Double-click: from the mode's sizing to 100 % at the cursor (or, when
-    /// that already is 100 %, to the whole picture), and back to the mode.
-    pub fn toggle_zoom(&mut self, cursor: (f32, f32)) {
-        if !self.follows_mode {
-            self.apply_mode();
-        } else if (self.scale - 1.0).abs() > 0.001 {
-            self.actual_size(cursor);
-        } else {
-            let center = (self.window.0 / 2.0, self.window.1 / 2.0);
-            self.zoom_at(center, self.fit_scale() / self.scale);
-        }
     }
 
     pub fn resize(&mut self, window: (u32, u32)) {
@@ -505,8 +488,9 @@ mod tests {
         let stop = view.next_stop(from, hand.map(|h| h.0))?;
         match stop {
             Stop::Mode(fit) => {
+                let point = view.to_image(at);
                 view.mode.fit = fit;
-                view.apply_mode_at(at);
+                view.apply_mode_at(point, at);
             }
             Stop::Hand => view.set_custom_zoom(hand.unwrap()),
         }

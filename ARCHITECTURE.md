@@ -712,8 +712,9 @@ only starred / not starred):
   folder at once (100 000 files: ~40-70 ms) and the preload ring follows.
 - **Mouse.** Wheel pages (walking through every picture passed); Ctrl+wheel
   zooms. Left-drag pans (nothing moves while the picture fits; only the
-  title bar moves the window, so dragging means one thing); double-click
-  toggles the mode's sizing and 100 %. Right-drag zooms by horizontal
+  title bar moves the window, so dragging means one thing); double-click on
+  the picture duplicates the tab, as Ctrl+D (it toggled 100 % until
+  2026-10-25: redundant with middle click's cycle). Right-drag zooms by horizontal
   travel (right: in, left: out; 2× per 200 px) around where it started: the
   picture point pressed stays under the cursor (a picture smaller than the
   window grows from there, not from the centre, until it meets an edge).
@@ -733,15 +734,15 @@ only starred / not starred):
   Middle click on the picture
   steps through the view modes in the menu's order, each set exactly as the
   menu sets it (the window's mode, so new windows take it and it is saved),
-  around the click where the picture overflows; then, as one more stop
+  around the click where the picture overflows (the point clicked taken
+  before the mode changes the view: taken after, the zoom missed it); then, as one more stop
   after Original Size, the last zoom set by hand, which applies only to the
   picture shown and leaves the mode alone (remembered per tab, as scale and
   centre relative to the picture, when middle click leaves it; panning in a
   mode isn't a zoom by hand). Stops that look the same here as the picture
   now or as an earlier stop are skipped (Fit to Width where it is Fit in
-  Window, say). Double-click stays a quick look and never changes the mode
-  (2026-10-25: middle click and the menu used to disagree, the cycle being
-  temporary). Middle click on a tab closes it.
+  Window, say). (2026-10-25: middle click and the menu used to disagree,
+  the cycle being temporary.) Middle click on a tab closes it.
 - **On-screen text** (`osd.rs`), just below the hover bar's first row (the
   bar draws over it): the zoom level shows for 1.2 s, in the info panel's lettering (Segoe UI 17 px, near-white) on a faint pill, at
   the top right after any zoom, named by the mode when it is the mode's

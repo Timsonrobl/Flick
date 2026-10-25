@@ -2085,6 +2085,8 @@ impl Viewer {
     fn cycle_zoom(&mut self, at: (f32, f32)) -> Action {
         let Some(current) = &mut self.tab.current else { return Action::None };
         let view = &mut current.view;
+        // The picture point clicked, before the mode changes the view.
+        let point = view.to_image(at);
         let from = if view.hand_zoomed() {
             self.tab.custom_zoom = Some(view.custom_zoom()); // leaving it
             Stop::Hand
@@ -2095,7 +2097,7 @@ impl Viewer {
             Some(Stop::Mode(fit)) => {
                 let action = self.set_prefs(Prefs { mode: Mode { fit, ..self.prefs.mode }, ..self.prefs });
                 if let Some(current) = &mut self.tab.current {
-                    current.view.apply_mode_at(at);
+                    current.view.apply_mode_at(point, at);
                 }
                 self.show_zoom();
                 action
@@ -2429,19 +2431,19 @@ impl Viewer {
             return self.set_prefs(Prefs { info: false, ..self.prefs });
         }
 
-        let Some(current) = &mut self.tab.current else {
+        if self.tab.current.is_none() {
             self.pressed = Some(Press::Move(self.cursor));
             return Action::None;
-        };
-        if double {
-            current.view.toggle_zoom(cursor);
-            self.show_zoom();
-        } else {
-            // Pans (nothing moves while the picture fits); only the title
-            // bar moves the window.
-            self.panning = Some(self.cursor);
-            self.update_cursor_icon();
         }
+        // Double-click: the picture again in a tab beside this one, as Ctrl+D
+        // (100 % was redundant with middle click's cycle).
+        if double {
+            return self.duplicate(false);
+        }
+        // Pans (nothing moves while the picture fits); only the title bar
+        // moves the window.
+        self.panning = Some(self.cursor);
+        self.update_cursor_icon();
         Action::None
     }
 
