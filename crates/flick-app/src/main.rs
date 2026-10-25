@@ -68,6 +68,8 @@ pub enum Event {
     /// A window's first picture, decoded on its open path.
     Decoded { viewer: ViewerId, tab: TabId, picture: Result<Picture, String>, at: f64 },
     GpuReady(Result<Gpu, String>, Vec<(&'static str, f64)>),
+    /// Windows reported that device lost (`App::gpu_generation` when it was made).
+    GpuLost(u64),
     /// The compositor has shown a window's first picture (after `DwmFlush`).
     OnScreen { viewer: ViewerId, tab: TabId, at: f64 },
     Listed { viewer: ViewerId, tab: TabId, folder: Result<Folder, String> },
@@ -123,6 +125,8 @@ struct App {
     /// Changes reported per folder, applied once it has been quiet for
     /// FOLDER_SETTLE (a file being written reports many).
     folder_changes: HashMap<PathBuf, (Vec<Change>, Instant)>,
+    /// Counts graphics devices made after a loss (`Event::GpuLost`).
+    gpu_generation: u64,
 }
 
 /// A folder's changes wait this long for the next one before they're applied.
@@ -280,8 +284,12 @@ impl App {
         }
     }
 
-    /// A window that can't open or draw: tell the user and drop it.
+    /// A window that can't open or draw: tell the user and drop it (unless
+    /// the graphics device was lost: then every window comes back on a new one).
     fn fail_viewer(&mut self, id: ViewerId, error: String) {
+        if self.shared.gpu.as_ref().is_some_and(Gpu::lost) {
+            return self.recover_gpu();
+        }
         let first = self.viewers.len() == 1 && !self.viewers.values().any(Viewer::is_shown);
         if first && !self.resident {
             self.error = Some(error);
@@ -327,14 +335,70 @@ impl App {
         }
     }
 
-    fn on_listed(&mut self, id: ViewerId, tab: TabId, listed: Result<Folder, String>) {
-        let Ok(folder) = listed else { return }; // single-image mode
+    /// The graphics device is gone (a driver update or reset, a GPU hang, the
+    /// adapter removed): every window lets go of what was on it, a new
+    /// device is made, and each window draws again, its picture decoded anew
+    /// through the pool. The windows stay where they are; nothing closes.
+    fn recover_gpu(&mut self) {
+        clock::trace(format_args!("graphics device lost: recovering"));
+        let shown: Vec<ViewerId> = self.viewers.values().filter(|v| v.is_shown()).map(|v| v.id).collect();
+        self.shared.cache.clear();
+        self.shared.failed.clear();
+        for viewer in self.viewers.values_mut() {
+            viewer.drop_gpu();
+        }
+        // The old device's removal signal now means nothing.
+        self.gpu_generation += 1;
+        self.shared.gpu = None;
+        match Gpu::create(&mut |_| {}) {
+            Ok(gpu) => {
+                self.watch_gpu(&gpu);
+                self.shared.gpu = Some(gpu);
+            }
+            Err(e) => {
+                self.error = Some(format!("The graphics device was lost and couldn't be started again.\n{e}"));
+                return;
+            }
+        }
+        for id in shown {
+            let Some(viewer) = self.viewers.get_mut(&id) else { continue };
+            if let Err(e) = viewer.restore_gpu(&self.shared) {
+                report(&e);
+                self.remove_viewer(id);
+            }
+        }
+        // Windows still opening carry on as when the first device arrived.
+        let ids: Vec<ViewerId> = self.viewers.keys().copied().collect();
+        for id in ids {
+            self.try_show(id);
+        }
+        self.ensure_pool();
+        self.plan();
+    }
+
+    /// Recovers when Windows reports the device lost, without waiting for a
+    /// window to fail drawing on it (an idle window would stay blank).
+    fn watch_gpu(&self, gpu: &Gpu) {
+        let Some(removed) = gpu.removed() else { return };
+        let (proxy, generation) = (self.shared.proxy.clone(), self.gpu_generation);
+        std::thread::spawn(move || {
+            removed.wait();
+            let _ = proxy.send_event(Event::GpuLost(generation));
+        });
+    }
+
+    fn ensure_pool(&mut self) {
         if self.shared.pool.is_none() {
             let proxy = Mutex::new(self.shared.proxy.clone());
             self.shared.pool = Some(Pool::new(DECODE_THREADS, self.shared.target, move |path, picture, decode_ms| {
                 let _ = proxy.lock().unwrap_or_else(|e| e.into_inner()).send_event(Event::Preloaded { path, picture, decode_ms });
             }));
         }
+    }
+
+    fn on_listed(&mut self, id: ViewerId, tab: TabId, listed: Result<Folder, String>) {
+        let Ok(folder) = listed else { return }; // single-image mode
+        self.ensure_pool();
         if let Some(viewer) = self.viewers.get_mut(&id) {
             viewer.on_listed(tab, folder, &mut self.shared);
         }
@@ -595,6 +659,7 @@ impl ApplicationHandler<Event> for App {
                 }
                 match gpu {
                     Ok(gpu) => {
+                        self.watch_gpu(&gpu);
                         self.shared.gpu = Some(gpu);
                         let ids: Vec<ViewerId> = self.viewers.keys().copied().collect();
                         for id in ids {
@@ -602,6 +667,11 @@ impl ApplicationHandler<Event> for App {
                         }
                     }
                     Err(e) => self.error = Some(e),
+                }
+            }
+            Event::GpuLost(generation) => {
+                if generation == self.gpu_generation && self.shared.gpu.as_ref().is_some_and(Gpu::lost) {
+                    self.recover_gpu();
                 }
             }
             Event::OnScreen { viewer, tab, at } => self.on_screen(self.window_of(tab).unwrap_or(viewer), tab, at),
@@ -897,6 +967,7 @@ fn main() {
         error: None,
         watchers: HashMap::new(),
         folder_changes: HashMap::new(),
+        gpu_generation: 0,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         app.error.get_or_insert(e.to_string());

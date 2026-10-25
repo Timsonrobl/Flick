@@ -1,7 +1,10 @@
 //! The renderer chosen in milestone 0: Direct2D on a Direct3D 11 device,
 //! presented through a DirectComposition swap chain (ARCHITECTURE.md §9).
 
-use windows::Win32::Foundation::HWND;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use windows::Win32::Foundation::{CloseHandle, D2DERR_RECREATE_TARGET, HANDLE, HWND};
 use windows::Win32::Graphics::Direct2D::Common::*;
 use windows::Win32::Graphics::Direct2D::*;
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
@@ -9,13 +12,45 @@ use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::DirectComposition::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
+use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForSingleObject};
 use windows::core::Interface;
 use windows_numerics::Matrix3x2;
 
 use crate::decode::Image;
 
+/// A call reported the device gone (`Gpu::lost`).
+static LOST: AtomicBool = AtomicBool::new(false);
+
 fn err(e: windows::core::Error) -> String {
+    if [DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET, D2DERR_RECREATE_TARGET].contains(&e.code()) {
+        LOST.store(true, Ordering::Relaxed);
+    }
     e.to_string()
+}
+
+/// Shift+F12: acts as if the device were lost, to try the recovery.
+pub fn simulate_loss() {
+    LOST.store(true, Ordering::Relaxed);
+}
+
+/// An event Windows sets when the device is lost (a driver update or
+/// reset, a GPU hang, the adapter removed); `Gpu`'s drop sets it too.
+pub struct Removed(HANDLE);
+
+// An event handle may be waited on and set from any thread.
+unsafe impl Send for Removed {}
+unsafe impl Sync for Removed {}
+
+impl Removed {
+    pub fn wait(&self) {
+        unsafe { WaitForSingleObject(self.0, INFINITE) };
+    }
+}
+
+impl Drop for Removed {
+    fn drop(&mut self) {
+        let _ = unsafe { CloseHandle(self.0) };
+    }
 }
 
 /// Pictures: transparent pixels (GIF, PNG) show the window's background.
@@ -32,6 +67,8 @@ pub struct Gpu {
     /// For creating bitmaps outside any window; bitmaps from one device
     /// context can be drawn by every context of the same D2D device.
     uploads: ID2D1DeviceContext,
+    /// Windows' signal that the device is lost, and its registration.
+    removed: Option<(Arc<Removed>, u32)>,
 }
 
 // The D3D11 device is free-threaded and the D2D factory is multi-threaded, so
@@ -40,6 +77,7 @@ unsafe impl Send for Gpu {}
 
 impl Gpu {
     pub fn create(mark: &mut dyn FnMut(&'static str)) -> Result<Gpu, String> {
+        LOST.store(false, Ordering::Relaxed);
         unsafe {
             let mut device = None;
             D3D11CreateDevice(
@@ -62,8 +100,25 @@ impl Gpu {
             let d2d = d2d_factory.CreateDevice(&dxgi).map_err(err)?;
             let uploads = d2d.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE).map_err(err)?;
             mark("d2d_device");
-            Ok(Gpu { d3d, dxgi, factory, d2d, uploads })
+            let removed = d3d.cast::<ID3D11Device4>().ok().and_then(|d3d| {
+                let event = Arc::new(Removed(CreateEventW(None, true, false, None).ok()?));
+                let cookie = d3d.RegisterDeviceRemovedEvent(event.0).ok()?;
+                Some((event, cookie))
+            });
+            Ok(Gpu { d3d, dxgi, factory, d2d, uploads, removed })
         }
+    }
+
+    /// Whether the device is gone: everything made on it must be made again
+    /// on a new one.
+    pub fn lost(&self) -> bool {
+        LOST.load(Ordering::Relaxed) || unsafe { self.d3d.GetDeviceRemovedReason() }.is_err()
+    }
+
+    /// Set when the device is lost (or this `Gpu` is dropped), for a thread
+    /// to wait on.
+    pub fn removed(&self) -> Option<Arc<Removed>> {
+        self.removed.as_ref().map(|(event, _)| event.clone())
     }
 
     pub fn upload(&self, image: &Image) -> Result<ID2D1Bitmap1, String> {
@@ -102,6 +157,20 @@ impl Gpu {
             if let Ok(context) = self.d3d.GetImmediateContext() {
                 context.ClearState();
                 context.Flush();
+            }
+        }
+    }
+}
+
+impl Drop for Gpu {
+    fn drop(&mut self) {
+        if let Some((event, cookie)) = &self.removed {
+            unsafe {
+                if let Ok(d3d) = self.d3d.cast::<ID3D11Device4>() {
+                    d3d.UnregisterDeviceRemoved(*cookie);
+                }
+                // Releases the thread waiting on it.
+                let _ = SetEvent(event.0);
             }
         }
     }

@@ -396,6 +396,9 @@ pub struct Tab {
     custom_zoom: Option<(f32, (f32, f32))>,
     /// Rotate ▸ chosen in this tab (else the window's persisted turn, if any).
     turn: Option<Turn>,
+    /// The picture's zoom and pan when the graphics device was lost, for
+    /// when it is decoded again (`restore_view`).
+    lost_view: Option<(PathBuf, View)>,
 }
 
 impl Tab {
@@ -421,6 +424,17 @@ impl Tab {
     /// window): then there's nothing to list.
     pub fn mark_listing(&mut self) -> bool {
         std::mem::replace(&mut self.listing, true) || self.folder.is_some()
+    }
+
+    /// Its picture is back after a lost graphics device: the zoom and pan
+    /// it had then (at the window's size now), unless it has paged on.
+    fn restore_view(&mut self) {
+        let Some((path, view)) = self.lost_view.take() else { return };
+        if let Some(current) = self.current.as_mut().filter(|c| c.path == path) {
+            let window = (current.view.window.0 as u32, current.view.window.1 as u32);
+            current.view = view;
+            current.view.resize(window);
+        }
     }
 }
 
@@ -694,6 +708,7 @@ impl Viewer {
                 if let Some(screen) = self.tab.wanted.as_ref().and_then(|p| shared.cache.get(p)) {
                     let path = self.tab.wanted.clone().unwrap_or_default();
                     self.tab.current = Some(Current::new(path, screen.clone(), size, self.prefs.mode, turn));
+                    self.tab.restore_view();
                     self.tab.shown_at = Some(Instant::now());
                 }
             }
@@ -801,6 +816,31 @@ impl Viewer {
             }
             clock::trace(format_args!("cooled {cooled} tab(s)"));
         }
+    }
+
+    /// The graphics device is lost: everything made on it goes (the
+    /// window's surface, every tab's picture); each tab keeps the file it
+    /// shows, to decode it again.
+    pub fn drop_gpu(&mut self) {
+        self.surface = None;
+        self.holdover = None;
+        for tab in std::iter::once(&mut self.tab).chain(self.others.iter_mut()) {
+            if let Some(current) = tab.current.take() {
+                tab.lost_view = Some((current.path.clone(), current.view));
+                tab.wanted.get_or_insert(current.path);
+            }
+        }
+    }
+
+    /// A new device, for a window that was shown: a new surface at the
+    /// window's size. The picture comes back through the preload pool
+    /// (`on_preloaded`), as after paging.
+    pub fn restore_gpu(&mut self, shared: &Shared) -> Result<(), String> {
+        let (Some(gpu), Some(window), Some(hwnd)) = (&shared.gpu, &self.window, self.hwnd) else { return Ok(()) };
+        let size = window.inner_size();
+        self.surface = Some(Surface::new(gpu, hwnd, (size.width, size.height))?);
+        self.redraw();
+        Ok(())
     }
 
     /// A tab's first picture is decoded. Returns true once it is on screen
@@ -1261,6 +1301,7 @@ impl Viewer {
         let window = self.surface.as_ref().map_or((1, 1), |s| s.size);
         let turn = self.turn_of(&self.tab);
         self.tab.current = Some(Current::new(path, screen, window, self.prefs.mode, turn));
+        self.tab.restore_view();
         self.tab.notice = None;
         self.tab.shown_at = Some(Instant::now());
         if self.render(shared).is_err() {
@@ -1814,6 +1855,11 @@ impl Viewer {
     }
 
     pub fn render(&mut self, shared: &Shared) -> Result<(), String> {
+        // Nothing can be drawn on a lost device: the error takes the app
+        // to its recovery (`App::fail_viewer`).
+        if self.surface.is_some() && shared.gpu.as_ref().is_some_and(Gpu::lost) {
+            return Err("graphics device lost".into());
+        }
         let debug_text = self.show_debug.then(|| self.debug_text(shared));
         let title = self.title();
         let (tabs, active) = (self.tab_labels(), self.active_at);
@@ -2479,6 +2525,13 @@ impl Viewer {
                 (PhysicalKey::Code(KeyCode::KeyF), _) if !event.repeat => self.star(-1, shared),
                 // Delete for good (always asks first).
                 (_, Key::Named(NamedKey::Delete)) if !event.repeat => self.delete(true, shared),
+                // Debugging, beside F12: the next frame finds the graphics
+                // device lost, and the app recovers as from a real loss.
+                (_, Key::Named(NamedKey::F12)) if !event.repeat => {
+                    crate::gpu::simulate_loss();
+                    self.redraw();
+                    Action::None
+                }
                 (_, Key::Character("+")) => {
                     self.zoom(None, ZOOM_STEP);
                     Action::None

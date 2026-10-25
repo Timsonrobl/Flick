@@ -372,7 +372,7 @@ Full decode that would only be refused.
 - One D3D11 device with a Direct2D device and a DirectComposition device on
   top, created at process start on a background thread and kept for the
   life of the resident process. Recreated on device loss (driver update,
-  GPU reset). Windows-only by decision; the renderer sits behind a small
+  GPU reset; §17). Windows-only by decision; the renderer sits behind a small
   trait so another platform can bring its own.
 - Per window: a flip-model swap chain as a DirectComposition visual (the
   picture), a second visual for the overlay UI, and a D2D device context.
@@ -903,12 +903,19 @@ closed by a commit that says so; review this list at every milestone.
   Explorer and `register.ps1`'s `DefaultIcon` use it, windows set it as
   their small and taskbar icons, the tray loads it at the system's small
   icon size.
-- [ ] **Graphics device loss.** No recovery after a driver update or GPU
-  reset (`D2DERR_RECREATE_TARGET`, `DXGI_ERROR_DEVICE_REMOVED`): recreate
-  the device, surfaces and cached screen levels instead of failing the
-  windows.
-- [ ] **Tray icon after an Explorer restart.** Handle the
-  `TaskbarCreated` message and re-add the icon.
+- [x] **Graphics device loss** (closed 2026-10-25). A lost device (driver
+  update, GPU reset or hang, adapter removed) is noticed three ways: a call
+  failing with `DXGI_ERROR_DEVICE_REMOVED`/`_RESET` or
+  `D2DERR_RECREATE_TARGET`, `GetDeviceRemovedReason` before each frame,
+  and Windows' device-removed event (`ID3D11Device4`), waited on by a
+  thread so an idle window recovers too. The app then drops every
+  window's surface, every tab's picture and the cache, makes a new device
+  (on the UI thread: a rare ~170 ms), gives each shown window a new
+  surface and decodes its picture again through the pool, back at the zoom
+  and pan it had (every tab's); windows stay open. Shift+F12 simulates a loss to try it.
+- [x] **Tray icon after an Explorer restart** (closed 2026-10-25). The
+  tray's window is a hidden top-level window (message-only windows miss
+  broadcasts) that re-adds the icon on `TaskbarCreated`.
 - [ ] **Start with Windows.** Optional `Run` key entry so the first open of
   the day is warm too (a tray menu toggle).
 - [ ] **Latency after composition** (§16): ~35 ms between present and the

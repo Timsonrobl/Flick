@@ -1,7 +1,9 @@
 //! Tray icon for the resident process (ARCHITECTURE.md §3): shows that Flick
 //! keeps running with no windows open, and is how it is quit. Callbacks go to
-//! a message-only window on the UI thread, whose messages winit's loop
-//! dispatches like any other.
+//! a hidden window on the UI thread, whose messages winit's loop dispatches
+//! like any other. When Explorer restarts, its new taskbar has no icons: it
+//! broadcasts "TaskbarCreated" to top-level windows (not message-only
+//! ones, hence a hidden top-level window), and the icon is added again.
 
 use std::sync::OnceLock;
 
@@ -23,6 +25,8 @@ const QUIT: usize = 1;
 
 type Handler = Box<dyn Fn(Command) + Send + Sync>;
 static HANDLER: OnceLock<Handler> = OnceLock::new();
+/// Explorer's "TaskbarCreated" message.
+static TASKBAR_CREATED: OnceLock<u32> = OnceLock::new();
 
 pub struct Tray {
     hwnd: HWND,
@@ -34,23 +38,21 @@ impl Tray {
     pub fn create(on_command: impl Fn(Command) + Send + Sync + 'static) -> Result<Tray, String> {
         let _ = HANDLER.set(Box::new(on_command));
         unsafe {
+            let _ = TASKBAR_CREATED.set(RegisterWindowMessageW(w!("TaskbarCreated")));
             let instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
             let class = WNDCLASSW { lpfnWndProc: Some(window_proc), hInstance: instance.into(), lpszClassName: w!("FlickTray"), ..Default::default() };
             RegisterClassW(&class);
-            let hwnd = CreateWindowExW(Default::default(), w!("FlickTray"), w!("Flick"), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, Some(instance.into()), None)
+            // Never shown; a tool window, so it would stay off the taskbar anyway.
+            let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, w!("FlickTray"), w!("Flick"), WS_POPUP, 0, 0, 0, 0, None, None, Some(instance.into()), None)
                 .map_err(|e| e.to_string())?;
-            let mut data = icon_data(hwnd);
-            data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-            data.uCallbackMessage = CALLBACK;
             let icon = crate::icon::tray();
-            data.hIcon = match icon {
+            let shown = match icon {
                 Some(icon) => icon,
                 None => LoadIconW(None, IDI_APPLICATION).map_err(|e| e.to_string())?,
             };
-            for (slot, c) in data.szTip.iter_mut().zip("Flick".encode_utf16()) {
-                *slot = c;
-            }
-            if !Shell_NotifyIconW(NIM_ADD, &data).as_bool() {
+            // Kept with the window, to add it again.
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, shown.0 as isize);
+            if !add(hwnd, shown) {
                 let _ = DestroyWindow(hwnd);
                 if let Some(icon) = icon {
                     let _ = DestroyIcon(icon);
@@ -78,6 +80,18 @@ fn icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
     NOTIFYICONDATAW { cbSize: size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, ..Default::default() }
 }
 
+/// Puts the icon in the taskbar's notification area.
+fn add(hwnd: HWND, icon: HICON) -> bool {
+    let mut data = icon_data(hwnd);
+    data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    data.uCallbackMessage = CALLBACK;
+    data.hIcon = icon;
+    for (slot, c) in data.szTip.iter_mut().zip("Flick".encode_utf16()) {
+        *slot = c;
+    }
+    unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool()
+}
+
 fn send(command: Command) {
     if let Some(handler) = HANDLER.get() {
         handler(command);
@@ -91,6 +105,12 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
             WM_RBUTTONUP | WM_CONTEXTMENU => unsafe { show_menu(hwnd) },
             _ => {}
         }
+        return LRESULT(0);
+    }
+    if TASKBAR_CREATED.get() == Some(&msg) {
+        // Explorer restarted: the new taskbar starts without our icon.
+        let icon = HICON(unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut _);
+        add(hwnd, icon);
         return LRESULT(0);
     }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
