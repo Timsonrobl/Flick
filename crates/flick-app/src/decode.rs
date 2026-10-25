@@ -536,6 +536,38 @@ mod tests {
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
     }
 
+    /// Adobe CMYK JPEGs (the user's samples; skipped where not present) scale
+    /// while decoding, with WIC's own colours: half size matches the whole
+    /// picture averaged 2×2; and they get a preview.
+    #[test]
+    fn cmyk_jpegs_scale_with_wics_colours() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/real-heavy");
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for path in entries.flatten().map(|e| e.path()) {
+            let source = open(&path).unwrap();
+            if unsafe { source.frame.GetPixelFormat() }.ok() != Some(GUID_WICPixelFormat32bppCMYK) {
+                continue;
+            }
+            assert!(decode_preview(&path).is_some(), "{}: a preview", path.display());
+            let half = scaled(&source, 2).unwrap().expect("scaled while decoding");
+            let whole = full(&source).unwrap();
+            let (w, ww) = (half.width as usize, whole.width as usize);
+            let mut sum = 0u64;
+            for y in 0..half.height as usize {
+                for x in 0..w {
+                    for c in 0..3 {
+                        let at = |dx: usize, dy: usize| u32::from(whole.pixels[((y * 2 + dy).min(whole.height as usize - 1) * ww + (x * 2 + dx).min(ww - 1)) * 4 + c]);
+                        let average = (at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1)) / 4;
+                        sum += u64::from(half.pixels[(y * w + x) * 4 + c].abs_diff(average as u8));
+                    }
+                }
+            }
+            let mean = sum as f64 / (w * half.height as usize * 3) as f64;
+            println!("{}: half size against the whole averaged: mean difference {mean:.2}", path.display());
+            assert!(mean < 3.0, "{}: half size off by {mean:.2} on average", path.display());
+        }
+    }
+
     /// How much heavy decodes slow each other: each file in a folder decoded
     /// alone (screen level, as the pool does), then all of them at once on
     /// threads of their own. `$env:FLICK_SAMPLE_DIR`.
@@ -929,17 +961,31 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
         }
         let mut format: GUID = GUID_WICPixelFormat32bppBGRA;
         transform.GetClosestPixelFormat(&mut format)?;
+        // CMYK (Adobe's print JPEGs) too: scaled here, its colours converted
+        // after, on the small picture (before, the whole picture was
+        // converted, then shrunk: 3.0 s for an 18 MP one, and no preview).
+        let cmyk = format == GUID_WICPixelFormat32bppCMYK;
         let bpp = match format {
             f if f == GUID_WICPixelFormat32bppBGRA => 4,
             f if f == GUID_WICPixelFormat24bppBGR => 3,
+            _ if cmyk => 4,
             _ => return Ok(None),
         };
         let mut raw = vec![0u8; w as usize * h as usize * bpp];
         transform.CopyPixels(std::ptr::null(), w, h, &format, WICBitmapTransformRotate0, w * bpp as u32, &mut raw)?;
-        if source.profile.is_some() {
-            let bitmap = source.factory.CreateBitmapFromMemory(w, h, &format, w * bpp as u32, &raw)?;
+        if source.profile.is_some() || cmyk {
+            let bitmap: IWICBitmapSource = source.factory.CreateBitmapFromMemory(w, h, &format, w * bpp as u32, &raw)?.cast()?;
+            // With a profile, WIC's colour transform; without, its format
+            // converter, as for the whole picture (`full`).
+            let colour = if source.profile.is_some() {
+                to_srgb(source, bitmap)?
+            } else {
+                let converter = source.factory.CreateFormatConverter()?;
+                converter.Initialize(&bitmap, &GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+                converter.cast()?
+            };
             let mut pixels = vec![0u8; w as usize * h as usize * 4];
-            to_srgb(source, bitmap.cast()?)?.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
+            colour.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
             return Ok(Some(Image { width: w, height: h, pixels }));
         }
         let pixels = if bpp == 3 { raw.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect() } else { raw };
