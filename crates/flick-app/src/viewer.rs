@@ -466,6 +466,13 @@ pub struct Tab {
     /// A zoom and pan set on the picture (`View::custom_zoom`) while it isn't
     /// on the GPU: the tab cooled, or was reopened (Ctrl+Shift+T).
     kept_zoom: Option<(PathBuf, (f32, (f32, f32)))>,
+    /// Reopened (Ctrl+Shift+T): if its file can't be shown now, it is
+    /// `unavailable` rather than an error.
+    reopened: bool,
+    /// A reopened tab whose file is gone (or its drive): it shows only the
+    /// window's background, its name on the hover bar, and paging goes on
+    /// from where the file sat.
+    unavailable: bool,
     /// The pictures looked at, for the Back and Forward keys.
     history: History,
     /// The next move is Back or Forward's: it isn't a visit to record.
@@ -533,7 +540,21 @@ impl Tab {
         let mut tab = Tab::waiting(id, Request { file: saved.file, ..Default::default() }, Timeline::default());
         tab.turn = saved.turn.map(|(quarter, flip_h, flip_v)| Turn { quarter: quarter % 4, flip_h, flip_v });
         tab.kept_zoom = saved.zoom.map(|zoom| (tab.request.file.clone(), zoom));
+        tab.reopened = true;
         tab
+    }
+
+    /// `path` couldn't be decoded: true if that makes this tab unavailable
+    /// (it is a reopened tab's own file), not an error to show.
+    fn mark_unavailable(&mut self, path: &Path) -> bool {
+        if !self.reopened || path != self.request.file {
+            return false;
+        }
+        self.current = None;
+        self.notice = None;
+        self.unavailable = true;
+        self.shown_at = Some(Instant::now());
+        true
     }
 }
 
@@ -1165,8 +1186,9 @@ impl Viewer {
     /// Once the first picture, the GPU and the window are all ready: draw the
     /// picture, then show the window with it. Returns true when it did.
     pub fn try_show(&mut self, shared: &mut Shared) -> Result<bool, String> {
-        // A first picture just decoded, or a tab moved here already showing one.
-        let ready = self.tab.picture.is_some() || self.tab.current.is_some();
+        // A first picture just decoded, or a tab moved here already showing
+        // one, or a reopened window's whose file is gone (just the background).
+        let ready = self.tab.picture.is_some() || self.tab.current.is_some() || self.tab.unavailable;
         if self.surface.is_some() || !ready || shared.gpu.is_none() || self.window.is_none() {
             return Ok(false);
         }
@@ -1177,7 +1199,8 @@ impl Viewer {
         let display = match (&self.tab.picture, &self.tab.current) {
             (Some(picture), _) => view::oriented_size(turn.after(picture.orientation), picture.full_size),
             (None, Some(current)) => view::oriented_size(current.orientation, current.screen.full_size),
-            (None, None) => return Ok(false),
+            // No picture: a window of a usual shape.
+            (None, None) => (1600, 1000),
         };
         // The remembered placement (also maximized), else sized to the picture.
         let size = match &self.placement {
@@ -1616,7 +1639,7 @@ impl Viewer {
         if let Some(screen) = shared.cache.get(&path).cloned() {
             self.display(path, screen, "preloaded", shared);
         } else if let Some(error) = shared.failed.get(&path).cloned() {
-            self.show_notice(&path, &error);
+            self.on_failed(&path, &error);
         } else {
             // Not decoded yet: the previous picture stays until it is (no
             // blank frame); the title already names the new file.
@@ -1724,20 +1747,41 @@ impl Viewer {
     }
 
     pub fn on_failed(&mut self, path: &Path, error: &str) {
-        if self.tab.wanted.as_deref() == Some(path) {
+        if self.tab.wanted.as_deref() != Some(path) {
+            return;
+        }
+        if self.tab.mark_unavailable(path) {
+            self.holdover = None; // the background, not the tab before's picture
+            self.redraw();
+        } else {
             self.show_notice(path, error);
         }
     }
 
-    /// A new tab's file couldn't be decoded: the tab shows why.
-    pub fn on_decode_failed(&mut self, tab: TabId, error: &str) {
-        if self.tab.id == tab {
-            let path = self.tab.request.file.clone();
+    /// A new tab's file couldn't be decoded: the tab shows why (or nothing,
+    /// a reopened tab's). False if this leaves a window still to be shown
+    /// with nothing to show: the app drops it.
+    pub fn on_decode_failed(&mut self, tab: TabId, error: &str) -> bool {
+        let (shown, active) = (self.is_shown(), self.tab.id == tab);
+        let Some(t) = self.tab_mut(tab) else { return shown };
+        let path = t.request.file.clone();
+        if t.mark_unavailable(&path) {
+            if active {
+                self.holdover = None;
+                self.redraw();
+            }
+            return true;
+        }
+        if !shown {
+            return false;
+        }
+        if active {
             self.show_notice(&path, error);
-        } else if let Some(t) = self.tab_mut(tab) {
-            t.notice = Some(format!("Can't show {}\n{error}", file_name(&t.request.file)));
+        } else {
+            t.notice = Some(format!("Can't show {}\n{error}", file_name(&path)));
             t.shown_at = Some(Instant::now());
         }
+        true
     }
 
     fn show_notice(&mut self, path: &Path, error: &str) {
@@ -2056,7 +2100,8 @@ impl Viewer {
     fn sibling(&mut self, forward: bool, shared: &Shared) -> Action {
         let dir = match &self.tab.folder {
             Some(folder) => folder.dir.clone(),
-            None => match self.shown_file().and_then(|f| f.parent().map(Path::to_path_buf)) {
+            // Not listed: the folder of the file (also a gone one's: its siblings remain).
+            None => match self.tab.file().parent().map(Path::to_path_buf) {
                 Some(dir) => dir,
                 None => return Action::None,
             },

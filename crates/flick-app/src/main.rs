@@ -796,9 +796,15 @@ impl ApplicationHandler<Event> for App {
                 }
                 match picture {
                     Ok(picture) => self.on_decoded(viewer, tab, picture),
-                    // A new tab in a shown window gets a notice, not a closed window.
-                    Err(e) if v.is_shown() => v.on_decode_failed(tab, &e),
-                    Err(e) => self.fail_viewer(viewer, e),
+                    // A new tab in a shown window gets a notice, not a closed
+                    // window; a reopened window whose file is gone shows empty.
+                    Err(e) => {
+                        if v.on_decode_failed(tab, &e) {
+                            self.try_show(viewer);
+                        } else {
+                            self.fail_viewer(viewer, e);
+                        }
+                    }
                 }
             }
             Event::GpuReady(gpu, stages) => {

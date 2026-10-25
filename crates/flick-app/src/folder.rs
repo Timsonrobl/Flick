@@ -180,8 +180,15 @@ pub fn sibling(dir: &Path, sort: Sort, forward: bool) -> Result<Folder, String> 
     };
     folders.sort_by(|a, b| compare(by, (&a.0, a.1), (&b.0, b.1)));
     let here = name(dir).to_lowercase();
-    let at = folders.iter().position(|(n, _, _)| *n == here).ok_or("this folder isn't among its siblings")?;
-    let next: Vec<&PathBuf> = if forward { folders[at + 1..].iter().map(|f| &f.2).collect() } else { folders[..at].iter().rev().map(|f| &f.2).collect() };
+    // A folder gone since (a reopened tab's) is where it would sort.
+    let (before, after) = match folders.iter().position(|(n, _, _)| *n == here) {
+        Some(at) => (at, at + 1),
+        None => {
+            let at = folders.partition_point(|f| compare(by, (&f.0, f.1), (&here, Meta::default())) == Ordering::Less);
+            (at, at)
+        }
+    };
+    let next: Vec<&PathBuf> = if forward { folders[after..].iter().map(|f| &f.2).collect() } else { folders[..before].iter().rev().map(|f| &f.2).collect() };
     for candidate in next {
         let has_pictures = std::fs::read_dir(candidate).is_ok_and(|mut d| d.any(|e| e.is_ok_and(|e| e.file_type().is_ok_and(|t| t.is_file()) && is_image(&e.path()))));
         if has_pictures {
@@ -481,7 +488,24 @@ mod tests {
         assert!(sibling(&root.join("a 10"), name_sort, true).is_err(), "the last one");
         let descending = Sort { descending: true, ..name_sort };
         assert_eq!(sibling(&root.join("a 2"), descending, true).unwrap().dir, root.join("a 1"), "the image order's direction");
+        // A folder gone since (a reopened tab's) steps from where it would sort.
+        assert_eq!(sibling(&root.join("a 5"), name_sort, true).unwrap().dir, root.join("a 10"));
+        assert_eq!(sibling(&root.join("a 5"), name_sort, false).unwrap().dir, root.join("a 2"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn lists_a_gone_file_where_it_sat() {
+        let dir = std::env::temp_dir().join(format!("flick-gone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["a.jpg", "c.jpg"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let folder = list(&dir.join("b.jpg"), Sort::default()).unwrap();
+        assert_eq!(names(&folder), ["a.jpg", "b.jpg", "c.jpg"]);
+        assert_eq!(folder.index, 1, "paging goes on from its place");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
