@@ -1979,13 +1979,13 @@ impl Viewer {
     }
 
     /// F / Shift+F: a star more or less for the picture on screen (the
-    /// first star asks for the favourites folder if none was chosen). The
+    /// first star asks for the starred folder if none was chosen). The
     /// library work, a hard link or a copy among it, runs on a worker thread.
     fn star(&mut self, delta: i32, shared: &Shared) -> Action {
         let Some(path) = self.shown_file() else { return Action::None };
-        let favorites = match library::favorites() {
+        let starred = match library::starred_folder() {
             Some(folder) => folder,
-            None if delta > 0 => match self.choose_favorites() {
+            None if delta > 0 => match self.choose_starred_folder() {
                 Some(folder) => folder,
                 None => return Action::None,
             },
@@ -1993,7 +1993,7 @@ impl Viewer {
         };
         let (viewer, proxy) = (self.id, shared.proxy.clone());
         std::thread::spawn(move || {
-            let result = library::add_stars(&path, delta, &favorites);
+            let result = library::add_stars(&path, delta, &starred);
             let _ = proxy.send_event(Event::Starred { viewer, path, result });
         });
         Action::None
@@ -2024,19 +2024,19 @@ impl Viewer {
         }
     }
 
-    /// Preferences ▸ Favorites Folder…, or the first star with none chosen:
+    /// Preferences ▸ Starred Folder…, or the first star with none chosen:
     /// Windows' folder picker. Returns the folder (None if cancelled).
-    fn choose_favorites(&mut self) -> Option<PathBuf> {
+    fn choose_starred_folder(&mut self) -> Option<PathBuf> {
         let hwnd = self.hwnd?;
-        let start = library::favorites().or_else(|| self.shown_file().and_then(|f| f.parent().map(Path::to_path_buf)));
-        let folder = menu::pick_folder(hwnd, "Favorites folder (starred pictures are linked here)", start.as_deref())?;
-        match library::set_favorites(&folder) {
+        let start = library::starred_folder().or_else(|| self.shown_file().and_then(|f| f.parent().map(Path::to_path_buf)));
+        let folder = menu::pick_folder(hwnd, "Starred folder (pictures you star are linked here)", start.as_deref())?;
+        match library::set_starred_folder(&folder) {
             Ok(()) => {
-                self.show_note(format!("Favorites: {}", folder.display()));
+                self.show_note(format!("Starred folder: {}", folder.display()));
                 Some(folder)
             }
             Err(e) => {
-                self.show_note(format!("Couldn't set favorites: {e}"));
+                self.show_note(format!("Couldn't set the starred folder: {e}"));
                 None
             }
         }
@@ -2799,9 +2799,9 @@ impl Viewer {
         let can_split = self.tab_count() > 1 && global.tabs;
         // Tab Lock only means something with tabs.
         let lock = (self.tab_count() > 1).then_some(self.locked);
-        let favorites = library::favorites();
+        let starred = library::starred_folder();
         let turn = self.turn_of(&self.tab);
-        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, favorites.as_deref(), turn, self.slideshow.is_some());
+        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, starred.as_deref(), turn, self.slideshow.is_some());
         // Whatever the clicks that closed the menu left half-done (a press
         // without its release) is dropped, and presses queued while it was
         // open are ignored when they arrive just after (`fresh_press`).
@@ -2818,8 +2818,8 @@ impl Viewer {
             Some(menu::Choice::Lock) => self.toggle_lock(),
             Some(menu::Choice::Global(global)) => Action::GlobalChanged(global),
             Some(menu::Choice::Reopen) => Action::ReopenMenu,
-            Some(menu::Choice::ChooseFavorites) => {
-                self.choose_favorites();
+            Some(menu::Choice::ChooseStarredFolder) => {
+                self.choose_starred_folder();
                 Action::None
             }
             Some(menu::Choice::Turn(turn)) => self.set_turn(turn),

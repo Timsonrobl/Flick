@@ -655,11 +655,11 @@ only starred / not starred):
   and since when; Sort by ▸ Stars (most first) orders a folder by them,
   Sort by ▸ Date starred by when each got its first star (oldest first,
   or newest with Descending; unstarred files last). Hard links share their
-  file's dates, so the favourites folder can't be sorted by when entries
+  file's dates, so the starred folder can't be sorted by when entries
   were made the way copies could (by their date modified): the library
   keeps the date (`starred`, schema version 2; version 1 libraries are
   upgraded on open, their earlier stars undated), and Date starred works
-  in the favourites folder too.
+  in the starred folder too.
 - **Files are never modified.** Stars live in Flick's library
   (`library.rs`, SQLite, `%LOCALAPPDATA%\Flick\library.db`), keyed by the
   file's NTFS ID (volume serial + 128-bit file ID: survives renames and
@@ -667,14 +667,14 @@ only starred / not starred):
   for looking a whole folder up in one query (a file moved since starring
   is found by ID when viewed, and its path updated then). Opened on first
   use, never at startup.
-- **The favourites folder** (Preferences ▸ Favorites Folder…, asked for on
+- **The starred folder** (Preferences ▸ Starred Folder…, asked for on
   the first star): the first star puts a **hard link** there (another name
   for the same file: no copy; a file and its link share their ID, so their
   stars), or a **copy** for a file on another drive; the last star taken
   away removes it (a link only while the file has another name, never a
   file's only name). Name clashes get "name (2)". Deleting the original
-  keeps the favourite (the file lives on under that name).
-- **The favourites folder decides what is starred:** an entry deleted in
+  keeps the star (the file lives on under that name).
+- **The starred folder decides what is starred:** an entry deleted in
   Explorer unstars its file. Seen at once by a folder watcher if a tab is
   in that folder, otherwise by the daily sweep, run when the resident goes
   idle: records whose entry is gone are dropped, records whose original

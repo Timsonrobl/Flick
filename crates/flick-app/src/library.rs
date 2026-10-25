@@ -5,9 +5,9 @@
 //! A file is known by its NTFS ID (volume serial + 128-bit file ID), which
 //! survives renames and moves on its drive and is never reused for another
 //! file; its last known path is kept too, for looking up a whole folder at
-//! once (sorting by stars). A file with stars is in the favourites folder:
+//! once (sorting by stars). A file with stars is in the starred folder:
 //! a hard link to it (another name for the same file: no copy), or a copy
-//! for a file on another drive. The favourites folder decides what is
+//! for a file on another drive. The starred folder decides what is
 //! starred: a link deleted in Explorer unstars its file (`sweep`).
 //!
 //! Tags later: `tags (id, name)` and `file_tags (volume, file_id, tag)`,
@@ -38,7 +38,7 @@ const SCHEMA: &str = "
         path TEXT NOT NULL,
         dir TEXT NOT NULL,          -- the path's folder, lowercased (folder lookups)
         stars INTEGER NOT NULL DEFAULT 0,
-        link TEXT,                  -- its entry in the favourites folder
+        link TEXT,                  -- its entry in the starred folder
         copy INTEGER NOT NULL DEFAULT 0, -- that entry is a copy (another drive)
         starred INTEGER,            -- when it got its first star (Unix seconds)
         PRIMARY KEY (volume, file_id)
@@ -135,17 +135,22 @@ fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// The favourites folder, if one was chosen.
-pub fn favorites() -> Option<PathBuf> {
-    with_db(false, |db| db.query_row("SELECT value FROM settings WHERE key = 'favorites'", [], |r| r.get::<_, String>(0)).optional())
+/// The starred folder, if one was chosen (kept as 'favorites' before it
+/// was renamed: read until one is chosen again).
+pub fn starred_folder() -> Option<PathBuf> {
+    let sql = "SELECT value FROM settings WHERE key IN ('starred', 'favorites') ORDER BY key = 'starred' DESC LIMIT 1";
+    with_db(false, |db| db.query_row(sql, [], |r| r.get::<_, String>(0)).optional())
         .flatten()
         .map(PathBuf::from)
 }
 
-pub fn set_favorites(folder: &Path) -> Result<(), String> {
-    with_db(true, |db| db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('favorites', ?1)", params![text(folder)]))
-        .map(|_| ())
-        .ok_or_else(|| "can't open the library".into())
+pub fn set_starred_folder(folder: &Path) -> Result<(), String> {
+    with_db(true, |db| {
+        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('starred', ?1)", params![text(folder)])?;
+        db.execute("DELETE FROM settings WHERE key = 'favorites'", [])
+    })
+    .map(|_| ())
+    .ok_or_else(|| "can't open the library".into())
 }
 
 /// A file's row in `files`.
@@ -157,7 +162,7 @@ struct Record {
     copy: bool,
 }
 
-/// The record for `path`: by its ID, else as a copy in the favourites
+/// The record for `path`: by its ID, else as a copy in the starred
 /// folder (a copy has an ID of its own).
 fn find(db: &Connection, path: &Path, id: Option<Id>) -> rusqlite::Result<Option<Record>> {
     let row = |r: &rusqlite::Row| {
@@ -179,7 +184,7 @@ fn find(db: &Connection, path: &Path, id: Option<Id>) -> rusqlite::Result<Option
 pub fn stars(path: &Path) -> Stars {
     let id = identity(path);
     let Some(record) = with_db(false, |db| find(db, path, id)).flatten() else { return Stars::default() };
-    // Viewed through its favourites entry: the record keeps the original's path.
+    // Viewed through its starred-folder entry: the record keeps the original's path.
     let is_entry = record.link.as_deref() == Some(&*text(path));
     if !is_entry {
         with_db(false, |db| {
@@ -194,7 +199,7 @@ pub fn stars(path: &Path) -> Stars {
 
 /// The starred files in `dir` by lowercased name (one query, for sorting a
 /// folder; files moved since starring are found once viewed, by ID). Their
-/// favourites entries count as in the favourites folder.
+/// starred-folder entries count as in the starred folder.
 pub fn stars_in(dir: &Path) -> HashMap<String, Stars> {
     let key = dir.to_string_lossy().to_lowercase();
     with_db(false, |db| {
@@ -218,9 +223,9 @@ pub fn stars_in(dir: &Path) -> HashMap<String, Stars> {
 }
 
 /// Adds `delta` stars to `path` (or takes them away; not below 0) and
-/// returns the new count. The first star puts the file in the favourites
+/// returns the new count. The first star puts the file in the starred
 /// folder and notes when; the last one taken away removes it from there.
-pub fn add_stars(path: &Path, delta: i32, favorites: &Path) -> Result<Stars, String> {
+pub fn add_stars(path: &Path, delta: i32, starred: &Path) -> Result<Stars, String> {
     let id = identity(path).ok_or("the file can't be opened")?;
     let found = with_db(true, |db| find(db, path, Some(id))).ok_or("can't open the library")?;
     let Record { volume, file, stars: old, link, copy } =
@@ -231,17 +236,17 @@ pub fn add_stars(path: &Path, delta: i32, favorites: &Path) -> Result<Stars, Str
     }
     let (mut link, mut copy, mut since) = (link, copy, old.since);
     if old.count == 0 {
-        let (made, is_copy) = favourite(path, id, favorites)?;
+        let (made, is_copy) = link_starred(path, id, starred)?;
         (link, copy, since) = (Some(text(&made)), is_copy, now());
     }
     if count == 0 {
         if let Some(entry) = link.take() {
-            unfavourite(Path::new(&entry), id, copy);
+            unlink_starred(Path::new(&entry), id, copy);
         }
         with_db(true, |db| db.execute("DELETE FROM files WHERE volume = ?1 AND file_id = ?2", params![volume, file])).ok_or("can't update the library")?;
         return Ok(Stars::default());
     }
-    // A copy viewed in the favourites folder keeps its original's path.
+    // A copy viewed in the starred folder keeps its original's path.
     let original = if copy && link.as_deref() == Some(&*text(path)) { None } else { Some(path) };
     with_db(true, |db| {
         db.execute(
@@ -255,19 +260,19 @@ pub fn add_stars(path: &Path, delta: i32, favorites: &Path) -> Result<Stars, Str
     Ok(Stars { count, since })
 }
 
-/// Puts `path` in the favourites folder: a hard link, or (another drive) a
+/// Puts `path` in the starred folder: a hard link, or (another drive) a
 /// copy, under its own name or "name (2)", … Returns the entry and whether
-/// it is a copy. A file already there (viewed in the favourites folder)
+/// it is a copy. A file already there (viewed in the starred folder)
 /// is its own entry.
-fn favourite(path: &Path, id: Id, favorites: &Path) -> Result<(PathBuf, bool), String> {
-    if path.parent().is_some_and(|dir| same_dir(dir, favorites)) {
+fn link_starred(path: &Path, id: Id, starred: &Path) -> Result<(PathBuf, bool), String> {
+    if path.parent().is_some_and(|dir| same_dir(dir, starred)) {
         return Ok((path.to_path_buf(), false));
     }
-    std::fs::create_dir_all(favorites).map_err(|e| format!("{}: {e}", favorites.display()))?;
+    std::fs::create_dir_all(starred).map_err(|e| format!("{}: {e}", starred.display()))?;
     let name = Path::new(path.file_name().ok_or("no file name")?);
     let (stem, ext) = (name.file_stem().unwrap_or_default().to_string_lossy(), name.extension().map(|e| format!(".{}", e.to_string_lossy())));
     for n in 1..1000 {
-        let candidate = if n == 1 { favorites.join(name) } else { favorites.join(format!("{stem} ({n}){}", ext.as_deref().unwrap_or(""))) };
+        let candidate = if n == 1 { starred.join(name) } else { starred.join(format!("{stem} ({n}){}", ext.as_deref().unwrap_or(""))) };
         if candidate.exists() {
             if identity(&candidate).is_some_and(|c| (c.volume, c.file) == (id.volume, id.file)) {
                 return Ok((candidate, false)); // linked already
@@ -279,16 +284,16 @@ fn favourite(path: &Path, id: Id, favorites: &Path) -> Result<(PathBuf, bool), S
             Ok(()) => Ok((candidate, false)),
             Err(e) if e.code() == ERROR_NOT_SAME_DEVICE.to_hresult() => unsafe { CopyFileW(&existing, &target, true) }
                 .map(|()| (candidate, true))
-                .map_err(|e| format!("copying to favourites: {e}")),
-            Err(e) => Err(format!("linking into favourites: {e}")),
+                .map_err(|e| format!("copying to the starred folder: {e}")),
+            Err(e) => Err(format!("linking into the starred folder: {e}")),
         };
     }
-    Err("too many files of that name in favourites".into())
+    Err("too many files of that name in the starred folder".into())
 }
 
-/// Removes a favourites entry: a copy Flick made, or a hard link while the
+/// Removes a starred-folder entry: a copy Flick made, or a hard link while the
 /// file has another name (never a file's only name).
-fn unfavourite(entry: &Path, id: Id, copy: bool) {
+fn unlink_starred(entry: &Path, id: Id, copy: bool) {
     let still_ours = identity(entry).is_some_and(|e| if copy { true } else { (e.volume, e.file) == (id.volume, id.file) && e.links > 1 });
     if still_ours {
         let _ = std::fs::remove_file(entry);
@@ -305,7 +310,7 @@ pub fn renamed(old: &Path, new: &Path) {
     with_db(false, |db| db.execute("UPDATE files SET link = ?2 WHERE link = ?1", params![text(old), text(new)]));
 }
 
-/// A file's name went away (seen by a folder watcher). Its favourites
+/// A file's name went away (seen by a folder watcher). Its starred-folder
 /// entry deleted: it's unstarred. The original deleted while its hard link
 /// lives on: the record now points at the link.
 pub fn removed(path: &Path) {
@@ -322,7 +327,7 @@ pub fn removed(path: &Path) {
 }
 
 /// Brings the library in line with the disk, at most once a day (run when
-/// Flick is idle): records whose favourites entry is gone are dropped
+/// Flick is idle): records whose starred-folder entry is gone are dropped
 /// (unstarred in Explorer, or deleted), records whose file moved away
 /// point at their entry.
 pub fn sweep_if_due() {
@@ -352,14 +357,14 @@ pub fn sweep_if_due() {
 mod tests {
     use super::*;
 
-    /// Stars, the favourites folder and the records, on real files: the
-    /// temp folder (C:) for the photos and favourites, and the build folder
+    /// Stars, the starred folder and the records, on real files: the
+    /// temp folder (C:) for the photos and the starred folder, and the build folder
     /// (H: here) for a photo from another drive.
     #[test]
     fn stars_link_copy_follow_and_unstar() {
         let root = std::env::temp_dir().join(format!("flick-library-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let (photos, other, favorites) = (root.join("photos"), root.join("other"), root.join("favourites"));
+        let (photos, other, starred) = (root.join("photos"), root.join("other"), root.join("starred"));
         std::fs::create_dir_all(&photos).unwrap();
         std::fs::create_dir_all(&other).unwrap();
         *DB.lock().unwrap() = Some({
@@ -371,23 +376,23 @@ mod tests {
         let a = photos.join("a.jpg");
         std::fs::write(&a, b"a").unwrap();
 
-        // The first star links it into favourites: the same file, two names.
-        let first = add_stars(&a, 1, &favorites).unwrap();
+        // The first star links it into the starred folder: the same file, two names.
+        let first = add_stars(&a, 1, &starred).unwrap();
         assert_eq!(first.count, 1);
         assert!(first.since > 0, "the first star notes when");
-        let entry = favorites.join("a.jpg");
+        let entry = starred.join("a.jpg");
         assert_eq!(identity(&entry).map(|i| (i.volume, i.file)), identity(&a).map(|i| (i.volume, i.file)));
         assert_eq!(identity(&a).unwrap().links, 2);
-        assert_eq!(add_stars(&a, 2, &favorites), Ok(Stars { count: 3, since: first.since }), "more stars keep the date");
-        assert_eq!(stars(&entry).count, 3, "seen through the favourites entry too");
+        assert_eq!(add_stars(&a, 2, &starred), Ok(Stars { count: 3, since: first.since }), "more stars keep the date");
+        assert_eq!(stars(&entry).count, 3, "seen through the starred-folder entry too");
         assert_eq!(stars_in(&photos).get("a.jpg").map(|s| s.count), Some(3));
-        assert_eq!(stars_in(&favorites).get("a.jpg"), Some(&Stars { count: 3, since: first.since }), "the favourites folder sorts by it too");
+        assert_eq!(stars_in(&starred).get("a.jpg"), Some(&Stars { count: 3, since: first.since }), "the starred folder sorts by it too");
 
-        // Another a.jpg: a name of its own in favourites.
+        // Another a.jpg: a name of its own in the starred folder.
         let other_a = other.join("a.jpg");
         std::fs::write(&other_a, b"other").unwrap();
-        assert_eq!(count(add_stars(&other_a, 1, &favorites)), Ok(1));
-        assert!(favorites.join("a (2).jpg").exists());
+        assert_eq!(count(add_stars(&other_a, 1, &starred)), Ok(1));
+        assert!(starred.join("a (2).jpg").exists());
 
         // Renamed: the record follows (and by ID, even unannounced).
         let b = photos.join("b.jpg");
@@ -396,12 +401,12 @@ mod tests {
         assert_eq!(stars_in(&photos).get("b.jpg").map(|s| s.count), Some(3));
 
         // The last star taken away: the link goes, the photo stays.
-        assert_eq!(count(add_stars(&b, -5, &favorites)), Ok(0));
+        assert_eq!(count(add_stars(&b, -5, &starred)), Ok(0));
         assert!(!entry.exists() && b.exists());
         assert_eq!(stars(&b), Stars::default());
 
-        // A favourites entry deleted in Explorer: unstarred.
-        removed(&favorites.join("a (2).jpg"));
+        // A starred-folder entry deleted in Explorer: unstarred.
+        removed(&starred.join("a (2).jpg"));
         assert_eq!(stars(&other_a).count, 0);
 
         // Another drive: a copy, which goes with the last star.
@@ -410,11 +415,11 @@ mod tests {
         let far = far_dir.join("far.jpg");
         std::fs::write(&far, b"far").unwrap();
         if identity(&far).map(|i| i.volume) != identity(&b).map(|i| i.volume) {
-            assert_eq!(count(add_stars(&far, 1, &favorites)), Ok(1));
-            let copy = favorites.join("far.jpg");
+            assert_eq!(count(add_stars(&far, 1, &starred)), Ok(1));
+            let copy = starred.join("far.jpg");
             assert!(copy.exists() && identity(&copy).map(|i| i.file) != identity(&far).map(|i| i.file));
             assert_eq!(stars(&copy).count, 1, "the copy is found by its path");
-            assert_eq!(count(add_stars(&copy, -1, &favorites)), Ok(0));
+            assert_eq!(count(add_stars(&copy, -1, &starred)), Ok(0));
             assert!(!copy.exists() && far.exists());
         }
         *DB.lock().unwrap() = None;

@@ -105,8 +105,8 @@ pub enum Choice {
     /// Closed by a right click elsewhere: the menu opens again where that
     /// click was (in this window or another), as in Explorer.
     Reopen,
-    /// Preferences ▸ Favorites Folder…
-    ChooseFavorites,
+    /// Preferences ▸ Starred Folder…
+    ChooseStarredFolder,
     /// Rotate ▸ a turn for this tab.
     Turn(Turn),
     /// Rotate ▸ Persist.
@@ -133,7 +133,7 @@ const NEW_WINDOW: usize = 900;
 const LOCK: usize = 901;
 const OPEN_IN_TABS: usize = 902;
 const MULTIROW: usize = 903;
-const FAVORITES: usize = 904;
+const STARRED_FOLDER: usize = 904;
 const PREFETCH: usize = 905;
 /// Rotate ▸ 910 + quarter turns, flips, persist.
 const TURN: usize = 910;
@@ -198,8 +198,8 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 /// Shows the menu at the cursor and returns what was chosen. `targets` are
 /// the other windows; `can_split` whether the active tab can leave for a
 /// new window (not when it is the window's only tab, nor with tabs off);
-/// `lock` this window's Tab Lock (None: no tabs, no item); `favorites` the
-/// favourites folder, if chosen; `turn` this tab's Rotate ▸ choice;
+/// `lock` this window's Tab Lock (None: no tabs, no item); `starred` the
+/// starred folder, if chosen; `turn` this tab's Rotate ▸ choice;
 /// `slideshow` whether one is running.
 #[allow(clippy::too_many_arguments)]
 pub fn show(
@@ -209,7 +209,7 @@ pub fn show(
     can_split: bool,
     lock: Option<bool>,
     global: Global,
-    favorites: Option<&Path>,
+    starred: Option<&Path>,
     turn: Turn,
     slideshow: bool,
 ) -> Option<Choice> {
@@ -305,11 +305,11 @@ pub fn show(
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.prefetch), PREFETCH, w!("Load Full Resolution Ahead"));
         let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
-        let folder = match favorites {
-            Some(folder) => HSTRING::from(format!("Favorites Folder: {}…", folder.display())),
-            None => HSTRING::from("Choose Favorites Folder…"),
+        let folder = match starred {
+            Some(folder) => HSTRING::from(format!("Starred Folder: {}…", folder.display())),
+            None => HSTRING::from("Choose Starred Folder…"),
         };
-        let _ = AppendMenuW(prefs_menu, MF_STRING, FAVORITES, &folder);
+        let _ = AppendMenuW(prefs_menu, MF_STRING, STARRED_FOLDER, &folder);
         let _ = AppendMenuW(menu, MF_POPUP, prefs_menu.0 as usize, w!("Preferences"));
 
         let mut at = POINT::default();
@@ -329,7 +329,7 @@ pub fn show(
             OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs, ..global })),
             MULTIROW => Some(Choice::Global(Global { multirow: !global.multirow, ..global })),
             PREFETCH => Some(Choice::Global(Global { prefetch: !global.prefetch, ..global })),
-            FAVORITES => Some(Choice::ChooseFavorites),
+            STARRED_FOLDER => Some(Choice::ChooseStarredFolder),
             id if (TURN..TURN + 4).contains(&id) => Some(Choice::Turn(Turn { quarter: (id - TURN) as u8, ..turn })),
             FLIP_H => Some(Choice::Turn(Turn { flip_h: !turn.flip_h, ..turn })),
             FLIP_V => Some(Choice::Turn(Turn { flip_v: !turn.flip_v, ..turn })),

@@ -499,7 +499,7 @@ impl App {
                 self.shared.failed.remove(path);
             }
         }
-        // Stars follow renames; a favourites entry deleted unstars its file.
+        // Stars follow renames; a starred-folder entry deleted unstars its file.
         let library_changes: Vec<Change> = changes.iter().filter(|c| matches!(c, Change::Renamed(..) | Change::Removed(_))).cloned().collect();
         if !library_changes.is_empty() {
             std::thread::spawn(move || {
