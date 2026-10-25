@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_COLOR_F};
 use windows::Win32::Graphics::Direct2D::{
-    D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, ID2D1Bitmap1,
+    D2D1_ANTIALIAS_MODE_ALIASED, D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+    D2D1_LAYER_PARAMETERS1, ID2D1Bitmap1,
 };
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
@@ -38,6 +39,7 @@ use crate::meta;
 use crate::osd::Osd;
 use crate::settings::{Global, Prefs};
 use crate::history::History;
+use crate::tiles::{self, Tile};
 use crate::view::{self, Affine, Filter, Fit, Mode, Stop, Turn, View};
 
 pub type ViewerId = u64;
@@ -134,16 +136,34 @@ impl Screen {
     }
 }
 
+/// A detail level on the GPU: one bitmap, or tiles (a picture larger than
+/// one bitmap holds), with its size and fraction of native size (1: full).
+struct Detail {
+    tiles: Vec<Tile>,
+    size: (u32, u32),
+    denom: u32,
+}
+
+/// A detail level as decoded (`request_detail`).
+pub enum Level {
+    /// Pixels to upload, and their fraction of native size.
+    Pixels(Image, u32),
+    /// Full resolution, already in tiles on the GPU.
+    Tiles(tiles::Tiles, (u32, u32)),
+}
+
 /// The picture on screen.
 struct Current {
     path: PathBuf,
     screen: Screen,
-    /// Sharper than the screen level, for zooming in: the bitmap, its size
-    /// and its fraction of native size (1: full, 2: half...).
-    detail: Option<(ID2D1Bitmap1, (u32, u32), u32)>,
+    /// Sharper than the screen level, for zooming in.
+    detail: Option<Detail>,
     /// The sharpest detail level asked for (decoding or done); Some(1) also
     /// when there's none to ask for. Decoded once a zoom needs it.
     requested: Option<u32>,
+    /// The detail level arrived while zoomed in: it fades in (FADE) over
+    /// what was drawn before (the level it replaces, else the screen level).
+    fade: Option<(Instant, Option<Detail>)>,
     detail_note: String,
     view: View,
     /// An animated GIF's playback (its first frame is `screen`).
@@ -164,26 +184,19 @@ impl Current {
         // An animation's frames are already full size: nothing to decode for zooming.
         let (requested, note) = if screen.animated() { (Some(1), "animation frames are full size") } else { (None, "not needed yet") };
         let detail_note = note.to_string();
-        Current { path, screen, detail: None, requested, detail_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
+        Current { path, screen, detail: None, requested, fade: None, detail_note, view, anim: None, info: None, info_requested: false, stale: false, orientation }
     }
 
     /// The same picture, drawn as it is, while another tab's decodes.
     fn stand_in(&self) -> Current {
         let detail_note = "the previous tab's picture, until this one decodes".to_string();
         let (path, screen, view, orientation) = (self.path.clone(), self.screen.clone(), self.view, self.orientation);
-        Current { path, screen, detail: None, requested: Some(1), detail_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
+        Current { path, screen, detail: None, requested: Some(1), fade: None, detail_note, view, anim: None, info: None, info_requested: true, stale: false, orientation }
     }
 
-    /// The detail level a zoom of `scale` (display px per native px) needs,
-    /// if it isn't asked for yet: the coarsest fraction of native size (1/8,
-    /// 1/4, 1/2, full) the zoom doesn't magnify, no larger than one GPU
-    /// bitmap holds, and sharper than the screen level.
-    fn wanted_level(&mut self, scale: f32, max_bitmap: u32) -> Option<u32> {
-        let long = self.screen.full_size.0.max(self.screen.full_size.1);
-        if long > max_bitmap && self.requested.is_none() {
-            self.detail_note = "full size is more than one bitmap holds (tiles: milestone 4)".into();
-        }
-        let denom = detail_level(long, self.screen.size.0.max(self.screen.size.1), scale, max_bitmap)?;
+    /// The detail level to decode, if it isn't asked for yet (`detail_level`).
+    fn wanted_level(&mut self, max_bitmap: u32) -> Option<u32> {
+        let denom = detail_level(self.screen.full_size, self.screen.size.0.max(self.screen.size.1), max_bitmap)?;
         self.requested.is_none_or(|r| denom < r).then_some(denom)
     }
 
@@ -474,16 +487,19 @@ fn cool_after() -> Duration {
     })
 }
 
-/// A tab leaving the screen keeps its picture, not what only drawing needs:
-/// the full-resolution level and the animation (which restarts on return).
-/// For a picture `long` px on its long side whose screen level is `screen`
-/// px: the fraction of native size a zoom of `scale` needs (the coarsest
-/// of 1/8, 1/4, 1/2, full it doesn't magnify), made coarser until one GPU
-/// bitmap holds it; None if that is no sharper than the screen level (or
-/// even 1/8, JPEG's coarsest, is more than a bitmap holds).
-fn detail_level(long: u32, screen: u32, scale: f32, max_bitmap: u32) -> Option<u32> {
-    let mut denom = [8, 4, 2].into_iter().find(|&d| scale * d as f32 <= 1.001).unwrap_or(1);
-    while long.div_ceil(denom) > max_bitmap {
+/// For a `full`-size picture whose screen level is `screen` px on its long
+/// side: the sharpest fraction of native size the GPU holds (full size,
+/// in tiles up to tiles::MAX_BYTES, else the finest of 1/2, 1/4, 1/8 one
+/// bitmap holds). None if that is no sharper than the screen level (or even
+/// 1/8, JPEG's coarsest, is more than a bitmap holds). Only the sharpest:
+/// a coarser level decodes nearly as slowly (Huffman decoding dominates;
+/// 1/2 took ~85 % of full's time on three files), so steps toward it only
+/// pop and compete.
+fn detail_level(full: (u32, u32), screen: u32, max_bitmap: u32) -> Option<u32> {
+    let long = full.0.max(full.1);
+    let tiled = u64::from(full.0) * u64::from(full.1) * 4 <= tiles::MAX_BYTES;
+    let mut denom = 1;
+    while long.div_ceil(denom) > max_bitmap && !(denom == 1 && tiled) {
         if denom == 8 {
             return None;
         }
@@ -493,26 +509,79 @@ fn detail_level(long: u32, screen: u32, scale: f32, max_bitmap: u32) -> Option<u
 }
 
 /// Decodes `current`'s detail level 1/`denom` on a worker thread
-/// (`Event::DetailDecoded`, then `on_detail_decoded`).
+/// (`Event::DetailDecoded`, then `on_detail_decoded`): full size larger
+/// than one bitmap holds straight into tiles.
 fn request_detail(current: &mut Current, denom: u32, viewer: ViewerId, shared: &Shared) {
+    let Some(gpu) = &shared.gpu else { return };
     current.requested = Some(denom);
     current.detail_note = format!("decoding 1/{denom}");
+    let long = current.screen.full_size.0.max(current.screen.full_size.1);
+    let tiled = (denom == 1 && long > gpu.max_bitmap_size()).then(|| gpu.uploader());
     let (path, proxy) = (current.path.clone(), shared.proxy.clone());
     std::thread::spawn(move || {
-        let level = decode::decode_level(&path, denom);
+        let level = match tiled {
+            Some(uploader) => uploader.and_then(|uploader| tiles::build(&path, &uploader)).map(|(tiles, size)| Level::Tiles(tiles, size)),
+            None => decode::decode_level(&path, denom).map(|(image, denom)| Level::Pixels(image, denom)),
+        };
         let _ = proxy.send_event(Event::DetailDecoded { viewer, path, level, at: ms_since_start() });
     });
+}
+
+/// A sharper level arriving while zoomed in fades in over this long.
+const FADE: Duration = Duration::from_millis(120);
+
+/// A level's bitmaps: where each lies in the level, and the cell a tile draws.
+type Bitmaps = Vec<(ID2D1Bitmap1, (u32, u32), Option<(u32, u32, u32, u32)>)>;
+
+/// One level as drawn: each bitmap with its transform to the window and,
+/// a tile, its clip in window pixels (tiles out of view left out); and the
+/// interpolation for the level's scale.
+type Layer = (Vec<(ID2D1Bitmap1, Affine, Option<D2D_RECT_F>)>, D2D1_INTERPOLATION_MODE);
+
+fn tiles_of(detail: &Detail) -> Bitmaps {
+    let tiled = detail.tiles.len() > 1;
+    detail.tiles.iter().map(|t| (t.bitmap.clone(), t.origin, tiled.then_some(t.cell))).collect()
+}
+
+/// `bitmaps`, a level `size` px large, of `current`, in a `window`.
+fn layer(current: &Current, bitmaps: Bitmaps, size: (u32, u32), window: (f32, f32), filter: Filter) -> Layer {
+    let (fw, fh) = (current.screen.full_size.0 as f32, current.screen.full_size.1 as f32);
+    let to_window = Affine::scale(fw / size.0 as f32, fh / size.1 as f32).then(view::orientation(current.orientation, fw, fh)).then(current.view.transform());
+    let draws = bitmaps
+        .into_iter()
+        .filter_map(|(bitmap, (x, y), cell)| {
+            let clip = cell.map(|(l, t, r, b)| {
+                let corners = [(l, t), (r, t), (l, b), (r, b)].map(|(x, y)| to_window.apply((x as f32, y as f32)));
+                let (xs, ys) = (corners.map(|c| c.0), corners.map(|c| c.1));
+                let min = |v: [f32; 4]| v.into_iter().fold(f32::MAX, f32::min);
+                let max = |v: [f32; 4]| v.into_iter().fold(f32::MIN, f32::max);
+                D2D_RECT_F { left: min(xs), top: min(ys), right: max(xs), bottom: max(ys) }
+            });
+            let visible = clip.is_none_or(|c| c.right > 0.0 && c.bottom > 0.0 && c.left < window.0 && c.top < window.1);
+            visible.then(|| (bitmap, Affine::translate(x as f32, y as f32).then(to_window), clip))
+        })
+        .collect();
+    let shrinking = current.view.scale * fw / (size.0 as f32) < 1.0;
+    let interpolation = match filter {
+        Filter::Nearest => D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+        Filter::Soften if !shrinking => D2D1_INTERPOLATION_MODE_LINEAR,
+        Filter::Soften | Filter::Sharpen => D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
+    };
+    (draws, interpolation)
 }
 
 /// With Load Full Resolution Ahead, a picture on screen this long gets its
 /// sharpest level decoded before any zoom asks (paging past doesn't).
 const PREFETCH_AFTER: Duration = Duration::from_millis(500);
 
+/// A tab leaving the screen keeps its picture, not what only drawing needs:
+/// the full-resolution level and the animation (which restarts on return).
 fn park(mut tab: Tab) -> Tab {
     tab.parked = Some(Instant::now());
     if let Some(current) = &mut tab.current {
         current.anim = None;
         current.detail = None;
+        current.fade = None;
         current.requested = current.screen.animated().then_some(1);
     }
     tab
@@ -1214,8 +1283,15 @@ impl Viewer {
         }
         let max_bitmap = shared.gpu.as_ref().map_or(u32::MAX, Gpu::max_bitmap_size);
         let Some(current) = self.tab.current.as_mut() else { return };
-        match current.wanted_level(1.0, max_bitmap) {
-            Some(denom) => request_detail(current, denom, self.id, shared),
+        match current.wanted_level(max_bitmap) {
+            Some(mut denom) => {
+                // Not a gigabyte of tiles ahead: the finest one bitmap holds (a zoom asks for the rest).
+                let long = current.screen.full_size.0.max(current.screen.full_size.1);
+                while long.div_ceil(denom) > max_bitmap && denom < 8 {
+                    denom *= 2;
+                }
+                request_detail(current, denom, self.id, shared);
+            }
             None => current.requested = Some(1), // nothing sharper to get
         }
     }
@@ -1505,24 +1581,36 @@ impl Viewer {
 
     /// A detail level arrived (`request_detail`): kept if it is sharper than
     /// the one shown.
-    pub fn on_detail_decoded(&mut self, path: PathBuf, level: Result<(Image, u32), String>, shared: &Shared) {
+    pub fn on_detail_decoded(&mut self, path: PathBuf, level: Result<Level, String>, shared: &Shared) {
         let (Some(current), Some(gpu)) = (&mut self.tab.current, &shared.gpu) else { return };
         if current.path != path {
             return; // paged away meanwhile
         }
-        match level {
-            Ok((_, denom)) if current.detail.as_ref().is_some_and(|d| d.2 <= denom) => {} // as sharp already
-            Ok((image, denom)) if image.width.max(image.height) <= gpu.max_bitmap_size() => match gpu.upload(&image) {
+        let detail = match level {
+            Ok(Level::Pixels(image, denom)) if image.width.max(image.height) <= gpu.max_bitmap_size() => match gpu.upload(&image) {
                 Ok(bitmap) => {
-                    // A codec that can't scale while decoding gave full size.
-                    current.requested = current.requested.map(|r| r.min(denom));
-                    current.detail = Some((bitmap, (image.width, image.height), denom));
-                    current.detail_note = if denom == 1 { "full".into() } else { format!("1/{denom}") };
+                    let (size, cell) = ((image.width, image.height), (0, 0, image.width, image.height));
+                    Detail { tiles: vec![Tile { bitmap, origin: (0, 0), cell }], size, denom }
                 }
-                Err(_) => current.detail_note = "upload failed".into(),
+                Err(_) => return current.detail_note = "upload failed".into(),
             },
-            Ok(_) => current.detail_note = "too large for one bitmap (tiles: milestone 4)".into(),
-            Err(_) => current.detail_note = "decode failed".into(),
+            Ok(Level::Pixels(..)) => return current.detail_note = "too large for one bitmap".into(),
+            Ok(Level::Tiles(tiles, size)) => Detail { tiles: tiles.0, size, denom: 1 },
+            Err(e) => return current.detail_note = format!("decode failed: {e}"),
+        };
+        if current.detail.as_ref().is_some_and(|d| d.denom <= detail.denom) {
+            return; // as sharp already
+        }
+        // A codec that can't scale while decoding gave full size.
+        current.requested = current.requested.map(|r| r.min(detail.denom));
+        current.detail_note = match (detail.denom, detail.tiles.len()) {
+            (1, 1) => "full".into(),
+            (1, n) => format!("full, {n} tiles"),
+            (d, _) => format!("1/{d}"),
+        };
+        let before = current.detail.replace(detail);
+        if current.screen.magnified(current.view.scale) {
+            current.fade = Some((Instant::now(), before));
         }
         self.redraw();
     }
@@ -2007,30 +2095,37 @@ impl Viewer {
                 let max_bitmap = shared.gpu.as_ref().map_or(u32::MAX, Gpu::max_bitmap_size);
                 // Zoomed past the screen level: decode the level this zoom
                 // needs, drawing what there is (slightly soft) until it lands.
-                if let Some(denom) = magnified.then(|| current.wanted_level(current.view.scale, max_bitmap)).flatten() {
+                if let Some(denom) = magnified.then(|| current.wanted_level(max_bitmap)).flatten() {
                     request_detail(current, denom, self.id, shared);
                 }
+                if current.fade.as_ref().is_some_and(|(at, _)| at.elapsed() >= FADE) {
+                    current.fade = None; // the level it faded from goes
+                }
+                let current = &*current;
+                let filter = self.prefs.filter;
+                let screen = || layer(current, vec![(current.screen.bitmap.clone(), (0, 0), None)], current.screen.size, window, filter);
                 let frame = current.anim.as_ref().and_then(|a| a.frames.get(a.shown)).map(|(bitmap, _)| bitmap.clone());
-                let (bitmap, size) = match (&current.detail, frame) {
+                let mut layers = Vec::new();
+                match (&current.detail, frame) {
                     // Animation frames are the screen level's size (both full size).
-                    (_, Some(frame)) => (frame, current.screen.size),
-                    (Some((bitmap, size, _)), _) if magnified => (bitmap.clone(), *size),
-                    _ => (current.screen.bitmap.clone(), current.screen.size),
-                };
-                let (fw, fh) = (current.screen.full_size.0 as f32, current.screen.full_size.1 as f32);
-                let to_window = Affine::scale(fw / size.0 as f32, fh / size.1 as f32)
-                    .then(view::orientation(current.orientation, fw, fh))
-                    .then(current.view.transform());
-                let shrinking = current.view.scale * fw / (size.0 as f32) < 1.0;
-                let interpolation = match self.prefs.filter {
-                    Filter::Nearest => D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-                    Filter::Soften if !shrinking => D2D1_INTERPOLATION_MODE_LINEAR,
-                    Filter::Soften | Filter::Sharpen => D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
-                };
-                Some((bitmap, to_window, interpolation))
+                    (_, Some(frame)) => layers.push((layer(current, vec![(frame, (0, 0), None)], current.screen.size, window, filter), 1.0)),
+                    (Some(detail), _) if magnified => {
+                        // Fading in over what was drawn before, eased.
+                        let mut opacity = 1.0;
+                        if let Some((at, before)) = &current.fade {
+                            let t = at.elapsed().as_secs_f32() / FADE.as_secs_f32();
+                            opacity = t * t * (3.0 - 2.0 * t);
+                            layers.push((before.as_ref().map_or_else(screen, |b| layer(current, tiles_of(b), b.size, window, filter)), 1.0));
+                        }
+                        layers.push((layer(current, tiles_of(detail), detail.size, window, filter), opacity));
+                    }
+                    _ => layers.push((screen(), 1.0)),
+                }
+                Some(layers)
             }
             None => None,
         };
+        let picture_fading = picture.as_ref().is_some_and(|layers| layers.len() > 1);
         // Soften+Sharpen draws through an effect chain, made on first use.
         let sharpen = match self.prefs.filter {
             Filter::Sharpen if picture.is_some() => surface.sharpen.take().or_else(|| Sharpen::new(&surface.context).ok()),
@@ -2042,17 +2137,36 @@ impl Viewer {
         let grey = chrome::BACKGROUNDS[self.color % chrome::BACKGROUNDS.len()];
         let background = D2D1_COLOR_F { r: grey, g: grey, b: grey, a: 1.0 };
         surface.frame(background, |context| unsafe {
-            if let Some((bitmap, to_window, interpolation)) = &picture {
-                match &sharpen {
-                    Some(sharpen) => {
-                        let _ = sharpen.draw(context, bitmap, to_window.to_d2d());
+            for ((draws, interpolation), opacity) in picture.iter().flatten() {
+                // A layer for the fading one: its tiles (and sharpening) fade as one.
+                let faded = *opacity < 1.0;
+                if faded {
+                    let everywhere = D2D_RECT_F { left: -f32::MAX, top: -f32::MAX, right: f32::MAX, bottom: f32::MAX };
+                    let parameters = D2D1_LAYER_PARAMETERS1 { contentBounds: everywhere, maskTransform: Affine::IDENTITY.to_d2d(), opacity: *opacity, ..Default::default() };
+                    context.PushLayer(&parameters, None);
+                }
+                for (bitmap, to_window, clip) in draws {
+                    // Aliased: neighbouring cells split the pixels on their seam exactly.
+                    if let Some(clip) = clip {
+                        context.PushAxisAlignedClip(clip, D2D1_ANTIALIAS_MODE_ALIASED);
                     }
-                    None => {
-                        context.SetTransform(&to_window.to_d2d());
-                        context.DrawBitmap(bitmap, None, 1.0, *interpolation, None, None);
+                    match &sharpen {
+                        Some(sharpen) => {
+                            let _ = sharpen.draw(context, bitmap, to_window.to_d2d());
+                        }
+                        None => {
+                            context.SetTransform(&to_window.to_d2d());
+                            context.DrawBitmap(bitmap, None, 1.0, *interpolation, None, None);
+                        }
+                    }
+                    context.SetTransform(&Affine::IDENTITY.to_d2d());
+                    if clip.is_some() {
+                        context.PopAxisAlignedClip();
                     }
                 }
-                context.SetTransform(&Affine::IDENTITY.to_d2d());
+                if faded {
+                    context.PopLayer();
+                }
             }
             if let (Some(debug), Some(notice)) = (debug, notice) {
                 debug.draw(context, notice, window.1 / 2.0 - 30.0);
@@ -2072,8 +2186,8 @@ impl Viewer {
         if sharpen.is_some() {
             surface.sharpen = sharpen;
         }
-        // The bar fading, or tabs gliding into place: one more frame.
-        if fading || self.chrome.moving() {
+        // The bar fading, tabs gliding into place, or a sharper level fading in: one more frame.
+        if fading || self.chrome.moving() || picture_fading {
             self.redraw();
         }
         Ok(())
@@ -2087,7 +2201,7 @@ impl Viewer {
         if let Some(current) = &self.tab.current {
             let s = &current.screen;
             let detail = match &current.detail {
-                Some((_, (w, h), _)) => format!("{w}x{h} ({})", current.detail_note),
+                Some(Detail { size: (w, h), .. }) => format!("{w}x{h} ({})", current.detail_note),
                 None => current.detail_note.clone(),
             };
             let level = match (s.magnified(current.view.scale), current.detail.is_some()) {
@@ -2863,18 +2977,15 @@ mod tests {
     use super::detail_level;
 
     #[test]
-    fn zoom_picks_the_coarsest_sharp_level() {
-        // A 12000 px picture, its screen level 3000 px (1/4), GPU limit 16384.
-        let level = |scale| detail_level(12000, 3000, scale, 16384);
-        assert_eq!(level(0.25), None, "the screen level is sharp enough");
-        assert_eq!(level(0.4), Some(2), "1/2 is enough at 40 %");
-        assert_eq!(level(0.5), Some(2));
-        assert_eq!(level(0.6), Some(1));
-        assert_eq!(level(2.0), Some(1), "past 100 %: full size");
-        // A 24 MP photo whose screen level is 3377 px of 6000: 1/2 is no sharper.
-        assert_eq!(detail_level(6000, 3377, 0.6, 16384), Some(1));
-        // A 40000 px panorama: full size is more than a bitmap holds; 1/4 is the most.
-        assert_eq!(detail_level(40000, 3377, 1.0, 16384), Some(4));
-        assert_eq!(detail_level(200_000, 3377, 1.0, 16384), None, "even 1/8 is too large");
+    fn zoom_gets_the_sharpest_level_the_gpu_holds() {
+        // A 24 MP photo whose screen level is 3377 px of 6000: full size.
+        assert_eq!(detail_level((6000, 4000), 3377, 16384), Some(1));
+        // A screen level that already is full size: nothing sharper.
+        assert_eq!(detail_level((3000, 2000), 3000, 16384), None);
+        // A 30000 × 8000 panorama (960 MB): full size, in tiles.
+        assert_eq!(detail_level((30000, 8000), 3377, 16384), Some(1));
+        // 40000 × 10000 (1.6 GB) is past the tiles' budget: 1/4, the finest one bitmap holds.
+        assert_eq!(detail_level((40000, 10000), 3377, 16384), Some(4));
+        assert_eq!(detail_level((200_000, 20_000), 3377, 16384), None, "even 1/8 is too large");
     }
 }

@@ -365,6 +365,60 @@ fn compose(source: &Source, mut each: impl FnMut(Frame) -> bool) -> windows::cor
 mod tests {
     use super::*;
 
+    /// Milestone 4 part B's test picture: a 30000 × 8000 JPEG (240 MP) of
+    /// colour gradients, a 500 px grid and fine diagonals (a tile seam would
+    /// break them), written in strips. `cargo test --release -p flick-app
+    /// huge_test_picture -- --ignored --nocapture`; then `bands` times it.
+    #[test]
+    #[ignore]
+    fn huge_test_picture() {
+        let (w, h) = (30_000u32, 8_000u32);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/huge-30000x8000.jpg");
+        let started = std::time::Instant::now();
+        unsafe {
+            let factory = factory().unwrap();
+            let stream = factory.CreateStream().unwrap();
+            stream.InitializeFromFilename(&HSTRING::from(path.as_os_str()), windows::Win32::Foundation::GENERIC_WRITE.0).unwrap();
+            let encoder = factory.CreateEncoder(&GUID_ContainerFormatJpeg, std::ptr::null()).unwrap();
+            encoder.Initialize(&stream, WICBitmapEncoderNoCache).unwrap();
+            let (mut frame, mut options) = (None, None);
+            encoder.CreateNewFrame(&mut frame, &mut options).unwrap();
+            let frame = frame.unwrap();
+            frame.Initialize(options.as_ref()).unwrap();
+            frame.SetSize(w, h).unwrap();
+            let mut format = GUID_WICPixelFormat24bppBGR;
+            frame.SetPixelFormat(&mut format).unwrap();
+            let rows = 256;
+            let mut strip = vec![0u8; w as usize * rows * 3];
+            for top in (0..h).step_by(rows) {
+                let n = (rows as u32).min(h - top);
+                for dy in 0..n {
+                    let y = top + dy;
+                    for x in 0..w {
+                        let i = (dy * w + x) as usize * 3;
+                        let line = x % 500 < 3 || y % 500 < 3;
+                        let diagonal = (x + y) % 97 < 2 || (x + 3 * y) % 211 < 2;
+                        let px = if line { [0, 0, 0] } else if diagonal { [255, 255, 255] } else { [(255 * y / h) as u8, 128, (255 * x / w) as u8] };
+                        strip[i..i + 3].copy_from_slice(&px);
+                    }
+                }
+                frame.WritePixels(n, w * 3, &strip[..(n * w * 3) as usize]).unwrap();
+            }
+            frame.Commit().unwrap();
+            encoder.Commit().unwrap();
+        }
+        println!("wrote {} in {:.1} s", path.display(), started.elapsed().as_secs_f64());
+        let started = std::time::Instant::now();
+        let mut count = 0;
+        bands(&path, 256, |size, _, rows, pixels| {
+            assert_eq!(pixels.len(), (size.0 * rows * 4) as usize);
+            count += 1;
+            Ok(())
+        })
+        .unwrap();
+        println!("decoded in {count} bands in {:.2} s", started.elapsed().as_secs_f64());
+    }
+
     const RED: [u8; 4] = [0, 0, 255, 255];
     const GREEN: [u8; 4] = [0, 255, 0, 255];
     const BLUE: [u8; 4] = [255, 0, 0, 255];
@@ -575,7 +629,8 @@ pub fn decode_full(path: &Path) -> Result<Image, String> {
 }
 
 /// A zoom's detail level: 1/`denom` of native size where the codec scales
-/// while decoding (JPEG's DCT: 1/2 is ~4× faster than full size), else
+/// while decoding (JPEG's DCT; for a picture too large for one bitmap at
+/// full size: scaling saves little time, Huffman decoding dominates), else
 /// full size. Returns it with the fraction it got.
 pub fn decode_level(path: &Path, denom: u32) -> Result<(Image, u32), String> {
     if denom > 1 && formats::kind(path) == Kind::Wic {
@@ -586,6 +641,31 @@ pub fn decode_level(path: &Path, denom: u32) -> Result<(Image, u32), String> {
         return level.map_err(|e| format!("{}: {e}", path.display()));
     }
     decode_full(path).map(|image| (image, 1))
+}
+
+/// A WIC picture at full resolution, top to bottom in bands of `rows` rows
+/// (premultiplied BGRA, colour-managed, stored orientation), so a picture
+/// too large to hold whole never is: `each(size, y, rows, pixels)`.
+pub fn bands(path: &Path, rows: u32, mut each: impl FnMut((u32, u32), u32, u32, &[u8]) -> Result<(), String>) -> Result<(), String> {
+    let named = |e: windows::core::Error| format!("{}: {e}", path.display());
+    let source = open(path).map_err(named)?;
+    let (w, h) = source.size;
+    let converter = unsafe {
+        let converter = source.factory.CreateFormatConverter().map_err(named)?;
+        converter
+            .Initialize(&to_srgb(&source, source.frame.cast().map_err(named)?).map_err(named)?, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)
+            .map_err(named)?;
+        converter
+    };
+    let mut band = vec![0u8; w as usize * rows as usize * 4];
+    for y in (0..h).step_by(rows as usize) {
+        let n = rows.min(h - y);
+        let rect = WICRect { X: 0, Y: y as i32, Width: w as i32, Height: n as i32 };
+        let pixels = &mut band[..w as usize * n as usize * 4];
+        unsafe { converter.CopyPixels(&rect, w * 4, pixels) }.map_err(named)?;
+        each((w, h), y, n, pixels)?;
+    }
+    Ok(())
 }
 
 /// DCT-scaled decode through the codec's own transform, if it has one.

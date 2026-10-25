@@ -35,6 +35,7 @@ mod osd;
 mod placement;
 mod pool;
 mod settings;
+mod tiles;
 mod tray;
 mod view;
 mod viewer;
@@ -78,7 +79,7 @@ pub enum Event {
     Preloaded { path: PathBuf, picture: Result<Picture, String>, decode_ms: f64 },
     /// A zoom's detail level (`decode::decode_level`): the image and its
     /// fraction of native size.
-    DetailDecoded { viewer: ViewerId, path: PathBuf, level: Result<(Image, u32), String>, at: f64 },
+    DetailDecoded { viewer: ViewerId, path: PathBuf, level: Result<viewer::Level, String>, at: f64 },
     /// An animated GIF's next frame (or its end), for one window.
     Anim { viewer: ViewerId, serial: u64, update: viewer::AnimUpdate },
     /// The info panel's details for a file (`meta::read`).

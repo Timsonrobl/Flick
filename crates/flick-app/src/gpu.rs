@@ -121,6 +121,12 @@ impl Gpu {
         self.removed.as_ref().map(|(event, _)| event.clone())
     }
 
+    /// A device context for a worker thread to make and fill bitmaps with
+    /// (tiles), off the UI thread.
+    pub fn uploader(&self) -> Result<Uploader, String> {
+        unsafe { self.d2d.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE) }.map(Uploader).map_err(err)
+    }
+
     pub fn upload(&self, image: &Image) -> Result<ID2D1Bitmap1, String> {
         unsafe {
             self.uploads
@@ -173,6 +179,33 @@ impl Drop for Gpu {
                 let _ = SetEvent(event.0);
             }
         }
+    }
+}
+
+/// Makes bitmaps on a worker thread: its own device context of the shared
+/// device. Bitmaps one context makes, every context of the device draws.
+pub struct Uploader(ID2D1DeviceContext);
+
+// The device's factory is multi-threaded: Direct2D serialises calls on it,
+// so a context (and its bitmaps) may be used from another thread.
+unsafe impl Send for Uploader {}
+
+impl Uploader {
+    /// An empty premultiplied BGRA bitmap, filled with `copy`.
+    pub fn blank(&self, (width, height): (u32, u32)) -> Result<ID2D1Bitmap1, String> {
+        let properties = D2D1_BITMAP_PROPERTIES1 { pixelFormat: BGRA_PREMULTIPLIED, dpiX: 96.0, dpiY: 96.0, ..Default::default() };
+        unsafe { self.0.CreateBitmap(D2D_SIZE_U { width, height }, None, 0, &properties) }.map_err(err)
+    }
+
+    /// Copies rows of BGRA `pixels` (`pitch` bytes apart) into `bitmap` at
+    /// `rect` (left, top, right, bottom).
+    pub fn copy(bitmap: &ID2D1Bitmap1, rect: (u32, u32, u32, u32), pixels: &[u8], pitch: u32) -> Result<(), String> {
+        let (left, top, right, bottom) = rect;
+        let needed = (bottom - top).saturating_sub(1) as usize * pitch as usize + (right - left) as usize * 4;
+        if pixels.len() < needed {
+            return Err("pixels short of the rectangle".into());
+        }
+        unsafe { bitmap.CopyFromMemory(Some(&D2D_RECT_U { left, top, right, bottom }), pixels.as_ptr().cast(), pitch) }.map_err(err)
     }
 }
 

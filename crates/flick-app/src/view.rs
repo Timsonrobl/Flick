@@ -21,6 +21,15 @@ impl Affine {
         Affine([sx, 0.0, 0.0, sy, 0.0, 0.0])
     }
 
+    pub fn translate(dx: f32, dy: f32) -> Affine {
+        Affine([1.0, 0.0, 0.0, 1.0, dx, dy])
+    }
+
+    pub fn apply(self, (x, y): (f32, f32)) -> (f32, f32) {
+        let [m11, m12, m21, m22, m31, m32] = self.0;
+        (x * m11 + y * m21 + m31, x * m12 + y * m22 + m32)
+    }
+
     /// `self` first, then `next`.
     pub fn then(self, next: Affine) -> Affine {
         let [a11, a12, a21, a22, a31, a32] = self.0;
