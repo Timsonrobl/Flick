@@ -167,6 +167,9 @@ pub struct Chrome {
     /// then (`TIP_AFTER`), if its name is cut short.
     tip_at: Option<Instant>,
     tip_shown: bool,
+    /// A tip was drawn since the cursor came to rest: moving on to another
+    /// tab shows its tip at once.
+    tip_drawn: bool,
     /// The tip's text: wraps, no ellipsis.
     tip_text: Option<(IDWriteTextFormat, f32)>,
 }
@@ -201,6 +204,7 @@ impl Chrome {
             multirow,
             tip_at: None,
             tip_shown: false,
+            tip_drawn: false,
             tip_text: None,
         }
     }
@@ -332,9 +336,16 @@ impl Chrome {
         let hover = pos.and_then(|p| self.hit_raw(p, width));
         let mut changed = self.retarget() || (hover != self.hover && self.opacity > 0.0);
         if hover != self.hover {
-            // A new place to rest on: its tip waits again; one shown goes.
-            changed |= std::mem::take(&mut self.tip_shown);
-            self.tip_at = matches!(hover, Some(Hit::Tab(_) | Hit::Title)).then(|| Instant::now() + TIP_AFTER);
+            let on_tab = matches!(hover, Some(Hit::Tab(_) | Hit::Title));
+            if on_tab && self.tip_shown && self.tip_drawn {
+                // From tab to tab once a tip has shown: each tip at once.
+                changed = true;
+            } else {
+                // A new place to rest on: its tip waits again; one shown goes.
+                changed |= std::mem::take(&mut self.tip_shown);
+                self.tip_drawn = false;
+                self.tip_at = on_tab.then(|| Instant::now() + TIP_AFTER);
+            }
         }
         self.hover = hover;
         changed
@@ -570,6 +581,7 @@ impl Chrome {
             let wide: Vec<u16> = full.encode_utf16().collect();
             let inner = D2D_RECT_F { left: left + pad_x, top: top + pad_y, right: left + w - pad_x, bottom: top + h - pad_y };
             context.DrawText(&wide, tip_format, &inner, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_NATURAL);
+            self.tip_drawn = true;
         }
     }
 }
