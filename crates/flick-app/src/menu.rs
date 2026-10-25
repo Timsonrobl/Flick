@@ -69,7 +69,7 @@ fn sort_items() -> [Vec<Item>; 2] {
             item!(w!("Date modified"), |p| p.sort.key == SortKey::Modified, |p| p.sort.key = SortKey::Modified),
             item!(w!("Size"), |p| p.sort.key == SortKey::Size, |p| p.sort.key = SortKey::Size),
             item!(w!("Type"), |p| p.sort.key == SortKey::Type, |p| p.sort.key = SortKey::Type),
-            item!(w!("Stars (most first)"), |p| p.sort.key == SortKey::Stars, |p| p.sort.key = SortKey::Stars),
+            item!(w!("Star count"), |p| p.sort.key == SortKey::Stars, |p| p.sort.key = SortKey::Stars),
             item!(w!("Date starred"), |p| p.sort.key == SortKey::Starred, |p| p.sort.key = SortKey::Starred),
         ],
         vec![item!(w!("Descending"), |p| p.sort.descending, |p| p.sort.descending = !p.sort.descending)],
@@ -124,8 +124,6 @@ pub enum Choice {
 /// beside what it does, to be learnt there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
-    ZoomIn,
-    ZoomOut,
     Next,
     Previous,
     RandomNext,
@@ -147,16 +145,13 @@ pub enum Command {
     Copy,
     ShowInExplorer,
     Delete,
-    DeletePermanently,
     DebugInfo,
     NextRotation,
     NextFlip,
 }
 
 /// Each command's label and keys; its menu id is COMMAND + its place here.
-const COMMANDS: [(Command, PCWSTR); 27] = [
-    (Command::ZoomIn, w!("Zoom In\t+")),
-    (Command::ZoomOut, w!("Zoom Out\t−")),
+const COMMANDS: [(Command, PCWSTR); 24] = [
     (Command::Next, w!("Next\t→, Space, PgDn, D")),
     (Command::Previous, w!("Previous\t←, Backspace, PgUp, A")),
     (Command::RandomNext, w!("Random Next\t↓, S")),
@@ -178,7 +173,6 @@ const COMMANDS: [(Command, PCWSTR); 27] = [
     (Command::Copy, w!("Copy\tCtrl+C")),
     (Command::ShowInExplorer, w!("Show in Explorer\tCtrl+Enter")),
     (Command::Delete, w!("Delete\tDel")),
-    (Command::DeletePermanently, w!("Delete Permanently\tShift+Del")),
     (Command::DebugInfo, w!("Debug Info\tF12")),
     (Command::NextRotation, w!("Next rotation\tCtrl+R")),
     (Command::NextFlip, w!("Next flip\tAlt+F")),
@@ -301,15 +295,13 @@ pub fn show(
         let prefs_menu = CreatePopupMenu().ok()?;
         // Settings items take ids from 1 in this order: main, sort, filter, info.
         let after_main = append(menu, &main, &prefs, 1);
-        append_command(menu, Command::ZoomIn);
-        append_command(menu, Command::ZoomOut);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(menu, MF_POPUP, sort_menu.0 as usize, w!("Sort by"));
         let after_sort = append(sort_menu, &sort, &prefs, after_main);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
 
-        // Go ▸ paging, folders, the tab's history.
-        let go_menu = CreatePopupMenu().ok()?;
+        // Navigate ▸ paging, folders, the tab's history.
+        let navigate_menu = CreatePopupMenu().ok()?;
         let go = [
             &[Command::Next, Command::Previous, Command::RandomNext, Command::RandomBack, Command::First, Command::Last][..],
             &[Command::NextFolder, Command::PreviousFolder],
@@ -317,13 +309,13 @@ pub fn show(
         ];
         for (i, section) in go.iter().enumerate() {
             if i > 0 {
-                let _ = AppendMenuW(go_menu, MF_SEPARATOR, 0, None);
+                let _ = AppendMenuW(navigate_menu, MF_SEPARATOR, 0, None);
             }
             for command in *section {
-                append_command(go_menu, *command);
+                append_command(navigate_menu, *command);
             }
         }
-        let _ = AppendMenuW(menu, MF_POPUP, go_menu.0 as usize, w!("Go"));
+        let _ = AppendMenuW(menu, MF_POPUP, navigate_menu.0 as usize, w!("Navigate"));
         let _ = AppendMenuW(menu, MF_POPUP, filter_menu.0 as usize, w!("Filter"));
         let after_filter = append(filter_menu, &filter, &prefs, after_sort);
         let checked = |on: bool| if on { MF_STRING | MF_CHECKED } else { MF_STRING };
@@ -386,7 +378,7 @@ pub fn show(
         let inline = destinations < 4;
         let (into, prefix) = if inline { (menu, "Move to ") } else { (move_menu, "") };
         for (i, &color) in targets.iter().enumerate() {
-            let text = HSTRING::from(format!("{prefix}{}", PALETTE[color % PALETTE.len()].0));
+            let text = HSTRING::from(format!("{prefix}{} Window", PALETTE[color % PALETTE.len()].0));
             let _ = AppendMenuW(into, MF_STRING, MOVE_TO + i, &text);
             let bitmap = swatch(color);
             let info = MENUITEMINFOW { cbSize: size_of::<MENUITEMINFOW>() as u32, fMask: MIIM_BITMAP, hbmpItem: bitmap, ..Default::default() };
@@ -407,16 +399,11 @@ pub fn show(
         }
         // The picture's file: stars, copying, Explorer, deleting.
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
-        for command in [Command::AddStar, Command::RemoveStar, Command::Copy, Command::ShowInExplorer, Command::Delete, Command::DeletePermanently] {
+        for command in [Command::AddStar, Command::RemoveStar, Command::Copy, Command::ShowInExplorer, Command::Delete] {
             append_command(menu, command);
         }
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         append(menu, &info, &prefs, after_filter);
-        let mouse_menu = CreatePopupMenu().ok()?;
-        for text in MOUSE {
-            let _ = AppendMenuW(mouse_menu, MF_STRING | MF_GRAYED, 0, text);
-        }
-        let _ = AppendMenuW(menu, MF_POPUP, mouse_menu.0 as usize, w!("Mouse"));
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.prefetch), PREFETCH, w!("Load Full Resolution Ahead"));
@@ -426,6 +413,12 @@ pub fn show(
             None => HSTRING::from("Choose Starred Folder…"),
         };
         let _ = AppendMenuW(prefs_menu, MF_STRING, STARRED_FOLDER, &folder);
+        let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
+        let mouse_menu = CreatePopupMenu().ok()?;
+        for text in MOUSE {
+            let _ = AppendMenuW(mouse_menu, MF_STRING | MF_GRAYED, 0, text);
+        }
+        let _ = AppendMenuW(prefs_menu, MF_POPUP, mouse_menu.0 as usize, w!("Mouse"));
         let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
         append_command(prefs_menu, Command::DebugInfo);
         let _ = AppendMenuW(menu, MF_POPUP, prefs_menu.0 as usize, w!("Preferences"));

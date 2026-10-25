@@ -2850,10 +2850,6 @@ impl Viewer {
         use menu::Command as C;
         let count = self.tab_count();
         match command {
-            C::ZoomIn | C::ZoomOut => {
-                self.zoom(None, if command == C::ZoomIn { ZOOM_STEP } else { 1.0 / ZOOM_STEP });
-                Action::None
-            }
             C::Next => self.step(1, shared),
             C::Previous => self.step(-1, shared),
             C::RandomNext => self.random(true, shared),
@@ -2878,7 +2874,6 @@ impl Viewer {
             C::Copy => self.copy(shared),
             C::ShowInExplorer => self.show_in_explorer(),
             C::Delete => self.delete(false, shared),
-            C::DeletePermanently => self.delete(true, shared),
             C::DebugInfo => {
                 self.toggle_debug();
                 Action::None
