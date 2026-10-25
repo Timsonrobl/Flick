@@ -133,10 +133,19 @@ struct App {
     folder_changes: HashMap<PathBuf, (Vec<Change>, Instant)>,
     /// Counts graphics devices made after a loss (`Event::GpuLost`).
     gpu_generation: u64,
+    /// Closes go to the close history (session.rs): not in `--standalone`
+    /// and `--size` benchmark runs.
+    recording: bool,
+    /// When the open windows are next saved for a crash to leave behind
+    /// (`save_session`), and what was saved last.
+    session_due: Option<Instant>,
+    session_saved: Vec<session::SavedWindow>,
 }
 
 /// A folder's changes wait this long for the next one before they're applied.
 const FOLDER_SETTLE: Duration = Duration::from_millis(250);
+/// The open windows are saved this long after something changed.
+const SESSION_SETTLE: Duration = Duration::from_secs(1);
 
 impl App {
     fn spawn_decode(&self, viewer: ViewerId, tab: TabId, request: &Request) {
@@ -161,6 +170,7 @@ impl App {
         timeline.mark("request");
         self.last_file = Some(request.file.clone());
         self.idle_since = None;
+        self.touch_session();
         let tab_id = self.new_id();
         let tabs = request.size.is_none() && self.global.tabs;
         // Explorer opens a selection of files with one launch per file, all
@@ -249,7 +259,7 @@ impl App {
             }
         }
         if emptied {
-            self.close(event_loop, from);
+            self.close(event_loop, from, false);
         }
         self.plan();
     }
@@ -546,13 +556,19 @@ impl App {
         Some(viewer)
     }
 
-    fn close(&mut self, event_loop: &ActiveEventLoop, id: ViewerId) {
+    /// Closes a window: one Ctrl+Shift+T reopens (`reopenable`), unless it
+    /// went another way (its last tab moved out, its last file deleted).
+    fn close(&mut self, event_loop: &ActiveEventLoop, id: ViewerId, reopenable: bool) {
         let Some(viewer) = self.remove_viewer(id) else { return };
+        if reopenable && self.recording {
+            session::push(session::Closed::Windows(vec![viewer.saved()]));
+        }
         if let Some(saved) = viewer.save_placement() {
             self.placement = Some(saved);
         }
         viewer.write_timeline(None);
         drop(viewer);
+        self.save_session();
         self.plan();
         if !self.viewers.is_empty() {
             if let Some(gpu) = &self.shared.gpu {
@@ -574,9 +590,51 @@ impl App {
         self.idle_since = Some(Instant::now()); // `about_to_wait` sets the timer
     }
 
+    /// The open windows, the one focused longest ago first (reopened in
+    /// this order, the last focused ends on top).
+    fn saved_windows(&self) -> Vec<session::SavedWindow> {
+        self.focus_order.iter().rev().filter_map(|id| self.viewers.get(id)).map(Viewer::saved).collect()
+    }
+
+    /// Something in the open windows changed: they're saved SESSION_SETTLE
+    /// later (at most once per SESSION_SETTLE, nothing while idle).
+    fn touch_session(&mut self) {
+        if self.recording && self.session_due.is_none() {
+            self.session_due = Some(Instant::now() + SESSION_SETTLE);
+        }
+    }
+
+    /// Saves the open windows (if changed), for a crash or a shutdown to
+    /// leave behind (`session::recover`); none left: nothing to recover.
+    fn save_session(&mut self) {
+        self.session_due = None;
+        if !self.recording {
+            return;
+        }
+        let windows = self.saved_windows();
+        if windows != self.session_saved {
+            session::save_open(&windows);
+            self.session_saved = windows;
+        }
+    }
+
+    /// Quit: all the windows close as one close, to reopen together.
+    fn quit(&mut self, event_loop: &ActiveEventLoop) {
+        if self.recording {
+            if !self.viewers.is_empty() {
+                session::push(session::Closed::Windows(self.saved_windows()));
+            }
+            session::save_open(&[]);
+            // Nothing more to save: the windows are closed as far as the history goes.
+            self.recording = false;
+            self.session_due = None;
+        }
+        event_loop.exit();
+    }
+
     fn on_tray(&mut self, event_loop: &ActiveEventLoop, command: tray::Command) {
         match command {
-            tray::Command::Quit => event_loop.exit(),
+            tray::Command::Quit => self.quit(event_loop),
             tray::Command::Activate => match self.focus_order.first().and_then(|id| self.viewers.get(id)) {
                 Some(viewer) => {
                     if let Some(window) = &viewer.window {
@@ -620,7 +678,11 @@ impl ApplicationHandler<Event> for App {
             }
         }
         if moved {
+            self.touch_session();
             self.plan();
+        }
+        if self.session_due.is_some_and(|t| t <= now) {
+            self.save_session();
         }
         let settled: Vec<PathBuf> = self.folder_changes.iter().filter(|(_, (_, due))| *due <= now).map(|(dir, _)| dir.clone()).collect();
         for dir in settled {
@@ -634,6 +696,7 @@ impl ApplicationHandler<Event> for App {
             .filter_map(Viewer::deadline)
             .chain(self.idle_since.map(|t| t + TRIM_AFTER))
             .chain(self.folder_changes.values().map(|(_, due)| *due))
+            .chain(self.session_due)
             .min();
         event_loop.set_control_flow(wake.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
@@ -757,11 +820,13 @@ impl ApplicationHandler<Event> for App {
             self.focus_order.insert(0, id);
             self.plan();
         }
-        let Some(viewer) = self.viewers.get_mut(&id) else { return };
         let traced = !matches!(event, WindowEvent::CursorMoved { .. } | WindowEvent::RedrawRequested);
         if traced {
             clock::trace(format_args!("viewer {id}: {event:?}"));
+            // A zoom, a pan's end, a move or a resize: the session changes.
+            self.touch_session();
         }
+        let Some(viewer) = self.viewers.get_mut(&id) else { return };
         let result = viewer.window_event(event, &self.shared);
         self.act(event_loop, id, result);
         self.exit_if_failed(event_loop);
@@ -771,6 +836,9 @@ impl ApplicationHandler<Event> for App {
 impl App {
     /// Carries out what a window's event handling asked for.
     fn act(&mut self, event_loop: &ActiveEventLoop, id: ViewerId, result: Result<Action, String>) {
+        if !matches!(result, Ok(Action::None)) {
+            self.touch_session();
+        }
         match result {
             Ok(Action::None) => {}
             Ok(Action::Navigated) => self.plan(),
@@ -826,7 +894,15 @@ impl App {
             }
             Ok(Action::Close) => {
                 clock::trace(format_args!("viewer {id}: close"));
-                self.close(event_loop, id)
+                self.close(event_loop, id, true)
+            }
+            Ok(Action::Emptied) => self.close(event_loop, id, false),
+            Ok(Action::TabClosed { at, tab }) => {
+                if self.recording {
+                    session::push(session::Closed::Tab { run: session::run(), window: id, at, tab });
+                }
+                self.save_session();
+                self.plan();
             }
             Err(e) => {
                 clock::trace(format_args!("viewer {id}: failed: {e}"));
@@ -966,6 +1042,11 @@ fn main() {
     // `--size` benchmark runs keep the defaults, as they keep the default placement.
     let (prefs, global) = if request.size.is_none() { settings::load() } else { Default::default() };
     let last_file = Some(request.file.clone());
+    let recording = resident && request.size.is_none();
+    if recording {
+        // Off the open path: what a crash or a shutdown left open.
+        std::thread::spawn(session::recover);
+    }
     let mut app = App {
         shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
         viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs, global, 0))]),
@@ -988,6 +1069,10 @@ fn main() {
         watchers: HashMap::new(),
         folder_changes: HashMap::new(),
         gpu_generation: 0,
+        recording,
+        // Saved once the first window is up (a crash before then has nothing to reopen).
+        session_due: recording.then(|| Instant::now() + SESSION_SETTLE),
+        session_saved: Vec::new(),
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         app.error.get_or_insert(e.to_string());

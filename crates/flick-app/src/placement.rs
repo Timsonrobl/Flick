@@ -37,12 +37,25 @@ pub fn load() -> Option<Placement> {
         }
     }
     let normal = normal?;
-    let usable = normal.right - normal.left >= 200 && normal.bottom - normal.top >= 150;
-    let on_screen = !unsafe { MonitorFromRect(&normal, MONITOR_DEFAULTTONULL) }.is_invalid();
-    (usable && on_screen).then_some(Placement { normal, maximized })
+    Placement::from_parts(((normal.left, normal.top, normal.right, normal.bottom), maximized))
 }
 
 impl Placement {
+    /// The normal rect (left, top, right, bottom) and whether maximized:
+    /// for the close history (`session.rs`).
+    pub fn parts(&self) -> ((i32, i32, i32, i32), bool) {
+        let r = self.normal;
+        ((r.left, r.top, r.right, r.bottom), self.maximized)
+    }
+
+    /// `parts` back, if still usable and on a connected monitor.
+    pub fn from_parts(((left, top, right, bottom), maximized): ((i32, i32, i32, i32), bool)) -> Option<Placement> {
+        let normal = RECT { left, top, right, bottom };
+        let usable = right - left >= 200 && bottom - top >= 150;
+        let on_screen = !unsafe { MonitorFromRect(&normal, MONITOR_DEFAULTTONULL) }.is_invalid();
+        (usable && on_screen).then_some(Placement { normal, maximized })
+    }
+
     /// The same placement moved by (dx, dy), for cascading new windows.
     pub fn offset(&self, dx: i32, dy: i32) -> Placement {
         let r = self.normal;
@@ -50,8 +63,8 @@ impl Placement {
     }
 }
 
-/// Saves the window's placement and returns it.
-pub fn save(hwnd: HWND) -> Option<Placement> {
+/// The window's placement now.
+pub fn current(hwnd: HWND) -> Option<Placement> {
     let mut wp = WINDOWPLACEMENT { length: size_of::<WINDOWPLACEMENT>() as u32, ..Default::default() };
     unsafe { GetWindowPlacement(hwnd, &mut wp) }.ok()?;
     let maximized = wp.showCmd == SW_SHOWMAXIMIZED.0 as u32 || (wp.showCmd == SW_SHOWMINIMIZED.0 as u32 && wp.flags.contains(WPF_RESTORETOMAXIMIZED));
@@ -59,12 +72,18 @@ pub fn save(hwnd: HWND) -> Option<Placement> {
     // where it is instead, so it reopens where it was left.
     let snapped = !maximized && wp.showCmd == SW_SHOWNORMAL.0 as u32 && unsafe { IsWindowArranged(hwnd) }.as_bool();
     let r = if snapped { arranged_rect(hwnd).unwrap_or(wp.rcNormalPosition) } else { wp.rcNormalPosition };
-    let path = path()?;
+    Some(Placement { normal: r, maximized })
+}
+
+/// Saves the window's placement and returns it.
+pub fn save(hwnd: HWND) -> Option<Placement> {
+    let placement = current(hwnd)?;
+    let (r, path) = (placement.normal, path()?);
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let _ = std::fs::write(path, format!("maximized={}\nnormal={},{},{},{}\n", u8::from(maximized), r.left, r.top, r.right, r.bottom));
-    Some(Placement { normal: r, maximized })
+    let _ = std::fs::write(path, format!("maximized={}\nnormal={},{},{},{}\n", u8::from(placement.maximized), r.left, r.top, r.right, r.bottom));
+    Some(placement)
 }
 
 /// The window's rect on screen, in the workspace coordinates

@@ -37,7 +37,8 @@ use crate::library;
 use crate::menu;
 use crate::meta;
 use crate::osd::Osd;
-use crate::settings::{Global, Prefs};
+use crate::session::{SavedTab, SavedWindow};
+use crate::settings::{self, Global, Prefs};
 use crate::history::History;
 use crate::tiles::{self, Tile};
 use crate::view::{self, Affine, Filter, Fit, Mode, Stop, Turn, View};
@@ -80,7 +81,14 @@ pub struct Shared {
 /// What the app must do after a viewer handled an event.
 pub enum Action {
     None,
+    /// The user closed the window (or its last tab): Ctrl+Shift+T reopens it.
     Close,
+    /// The window's last tab went another way (its file deleted): it
+    /// closes, and isn't one to reopen.
+    Emptied,
+    /// The user closed a tab, at strip position `at`, of a window that
+    /// stays open: Ctrl+Shift+T reopens it.
+    TabClosed { at: usize, tab: SavedTab },
     /// The folder position changed: re-plan preloading.
     Navigated,
     /// The user changed a menu setting: new windows start with it, it is
@@ -453,6 +461,9 @@ pub struct Tab {
     /// The picture's zoom and pan when the graphics device was lost, for
     /// when it is decoded again (`restore_view`).
     lost_view: Option<(PathBuf, View)>,
+    /// A zoom and pan set on the picture (`View::custom_zoom`) while it isn't
+    /// on the GPU: the tab cooled, or was reopened (Ctrl+Shift+T).
+    kept_zoom: Option<(PathBuf, (f32, (f32, f32)))>,
     /// The pictures looked at, for the Back and Forward keys.
     history: History,
     /// The next move is Back or Forward's: it isn't a visit to record.
@@ -486,7 +497,13 @@ impl Tab {
 
     /// Its picture is back after a lost graphics device: the zoom and pan
     /// it had then (at the window's size now), unless it has paged on.
+    /// Also a zoom it kept (`kept_zoom`).
     fn restore_view(&mut self) {
+        if let Some((path, zoom)) = self.kept_zoom.take()
+            && let Some(current) = self.current.as_mut().filter(|c| c.path == path)
+        {
+            current.view.set_custom_zoom(zoom);
+        }
         let Some((path, view)) = self.lost_view.take() else { return };
         if let Some(current) = self.current.as_mut().filter(|c| c.path == path) {
             let window = (current.view.window.0 as u32, current.view.window.1 as u32);
@@ -494,6 +511,35 @@ impl Tab {
             current.view.resize(window);
         }
     }
+
+    /// The file it shows (or waits to show).
+    fn file(&self) -> &Path {
+        self.wanted.as_deref().or(self.current.as_ref().map(|c| c.path.as_path())).unwrap_or(&self.request.file)
+    }
+
+    /// Its picture's zoom and pan, if set by hand.
+    fn zoom(&self) -> Option<(PathBuf, (f32, (f32, f32)))> {
+        match &self.current {
+            Some(current) => (!current.view.follows_mode).then(|| (current.path.clone(), current.view.custom_zoom())),
+            None => self.kept_zoom.clone(),
+        }
+    }
+
+    /// A reopened tab (Ctrl+Shift+T), `saved` by `saved_tab`: waiting to be
+    /// decoded when viewed, with its turn, zoom and pan.
+    pub fn reopened(id: TabId, saved: SavedTab) -> Tab {
+        let mut tab = Tab::waiting(id, Request { file: saved.file, ..Default::default() }, Timeline::default());
+        tab.turn = saved.turn.map(|(quarter, flip_h, flip_v)| Turn { quarter: quarter % 4, flip_h, flip_v });
+        tab.kept_zoom = saved.zoom.map(|zoom| (tab.request.file.clone(), zoom));
+        tab
+    }
+}
+
+/// A tab as the close history keeps it.
+fn saved_tab(tab: &Tab) -> SavedTab {
+    let file = tab.file().to_path_buf();
+    let zoom = tab.zoom().filter(|(path, _)| *path == file).map(|(_, zoom)| zoom);
+    SavedTab { file, turn: tab.turn.map(|t| (t.quarter, t.flip_h, t.flip_v)), zoom }
 }
 
 /// An inactive tab keeps its picture on the GPU this long (switching back
@@ -873,10 +919,26 @@ impl Viewer {
         self.redraw();
     }
 
-    /// Closes the tab at strip position `at`; the last one closes the window.
+    /// The user closes the tab at strip position `at` (Ctrl+W, a middle
+    /// click on it); the last one closes the window.
     fn close_tab(&mut self, at: usize, shared: &Shared) -> Action {
         if self.others.is_empty() {
             return Action::Close;
+        }
+        let tab = match at.cmp(&self.active_at) {
+            std::cmp::Ordering::Equal => Some(&self.tab),
+            std::cmp::Ordering::Less => self.others.get(at),
+            std::cmp::Ordering::Greater => self.others.get(at - 1),
+        };
+        let Some(tab) = tab.map(saved_tab) else { return Action::None };
+        self.drop_tab(at, shared);
+        Action::TabClosed { at, tab }
+    }
+
+    /// Takes the tab at strip position `at` away; the last one empties the window.
+    fn drop_tab(&mut self, at: usize, shared: &Shared) -> Action {
+        if self.others.is_empty() {
+            return Action::Emptied;
         }
         if at == self.active_at {
             let next = if at < self.others.len() { at } else { at - 1 };
@@ -959,6 +1021,7 @@ impl Viewer {
         let mut cooled = 0;
         for tab in &mut self.others {
             if tab.parked.is_some_and(|t| t.elapsed() >= cool_after()) {
+                tab.kept_zoom = tab.zoom();
                 cooled += usize::from(tab.current.take().is_some());
                 tab.parked = None;
             }
@@ -1121,6 +1184,24 @@ impl Viewer {
         self.tab.timeline.mark("picture");
         self.start_animation();
         Ok(true)
+    }
+
+    /// The window as the close history keeps it.
+    pub fn saved(&self) -> SavedWindow {
+        let mut tabs: Vec<SavedTab> = self.others.iter().map(saved_tab).collect();
+        tabs.insert(self.active_at, saved_tab(&self.tab));
+        let placement = match (self.hwnd, self.surface.is_some()) {
+            (Some(hwnd), true) => placement::current(hwnd),
+            _ => self.placement,
+        };
+        SavedWindow {
+            placement: placement.map(|p| p.parts()),
+            color: self.color,
+            prefs: settings::prefs_text(self.prefs),
+            locked: self.locked,
+            active: self.active_at,
+            tabs,
+        }
     }
 
     /// Remembers where the window is (not for `--size` benchmark runs).
@@ -2062,9 +2143,9 @@ impl Viewer {
             self.show_note(format!("Couldn't delete: {e}"));
             return Action::None;
         }
-        let Some(folder) = self.tab.folder.as_mut() else { return self.close_tab(self.active_at, shared) };
+        let Some(folder) = self.tab.folder.as_mut() else { return self.drop_tab(self.active_at, shared) };
         if folder.files.len() <= 1 {
-            return self.close_tab(self.active_at, shared);
+            return self.drop_tab(self.active_at, shared);
         }
         let target = folder.files.get(self.tab.target).cloned();
         folder.apply(&[folder::Change::Removed(path)]);

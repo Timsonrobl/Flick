@@ -7,7 +7,7 @@
 //! over from a running one isn't a crash).
 
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -100,8 +100,12 @@ fn pop_in(dir: &Path) -> Option<Closed> {
     Some(last)
 }
 
+/// One change to the history at a time (`recover` runs on its own thread).
+static LOCK: Mutex<()> = Mutex::new(());
+
 /// A close, the newest; past HISTORY the oldest goes.
 pub fn push(closed: Closed) {
+    let _lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(dir) = dir() {
         push_in(&dir, closed);
     }
@@ -109,6 +113,7 @@ pub fn push(closed: Closed) {
 
 /// The newest close, taken out of the history to undo it.
 pub fn pop() -> Option<Closed> {
+    let _lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     pop_in(&dir()?)
 }
 
@@ -124,12 +129,15 @@ pub fn save_open(windows: &[SavedWindow]) {
     }
 }
 
-/// At start: the windows other Flick processes left open when they ended
-/// without closing them (a crash, a kill, a shutdown), each process's as
-/// one close. Files of processes still running stay.
+/// At start, before this process saves its own: the windows Flick
+/// processes left open when they ended without closing them (a crash, a
+/// kill, a shutdown), each process's as one close. Files of processes still
+/// running stay. (One with this process's id is an old one's.)
 pub fn recover() {
+    let _lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let Some(dir) = dir() else { return };
-    recover_in(&dir, &|pid| pid == std::process::id() || running(pid));
+    let own = std::process::id();
+    recover_in(&dir, &|pid| pid != own && running(pid));
 }
 
 fn recover_in(dir: &Path, alive: &dyn Fn(u32) -> bool) {
