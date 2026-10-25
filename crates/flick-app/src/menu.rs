@@ -11,6 +11,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{HSTRING, PCWSTR, w};
 
+use std::path::{Path, PathBuf};
+
 use crate::chrome::PALETTE;
 use crate::folder::SortKey;
 use crate::settings::{Global, Prefs};
@@ -57,6 +59,8 @@ fn sort_items() -> [Vec<Item>; 2] {
             item!(w!("Date modified"), |p| p.sort.key == SortKey::Modified, |p| p.sort.key = SortKey::Modified),
             item!(w!("Size"), |p| p.sort.key == SortKey::Size, |p| p.sort.key = SortKey::Size),
             item!(w!("Type"), |p| p.sort.key == SortKey::Type, |p| p.sort.key = SortKey::Type),
+            item!(w!("Stars (most first)"), |p| p.sort.key == SortKey::Stars, |p| p.sort.key = SortKey::Stars),
+            item!(w!("Date starred"), |p| p.sort.key == SortKey::Starred, |p| p.sort.key = SortKey::Starred),
         ],
         vec![item!(w!("Descending"), |p| p.sort.descending, |p| p.sort.descending = !p.sort.descending)],
     ]
@@ -92,6 +96,8 @@ pub enum Choice {
     /// Closed by a right click elsewhere: the menu opens again where that
     /// click was (in this window or another), as in Explorer.
     Reopen,
+    /// Preferences ▸ Favorites Folder…
+    ChooseFavorites,
 }
 
 /// Another window, as Move to Window lists it: its colour
@@ -105,6 +111,7 @@ const NEW_WINDOW: usize = 900;
 const LOCK: usize = 901;
 const OPEN_IN_TABS: usize = 902;
 const MULTIROW: usize = 903;
+const FAVORITES: usize = 904;
 const MOVE_TO: usize = 1000;
 
 /// Whether the (logical) right button is down right now: the menu closed on
@@ -114,6 +121,30 @@ pub fn right_button_down() -> bool {
     let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
     let button = if swapped { VK_LBUTTON } else { VK_RBUTTON };
     unsafe { GetAsyncKeyState(i32::from(button.0)) < 0 }
+}
+
+/// Windows' folder picker, owned by `hwnd`, starting in `start`. None if
+/// cancelled.
+pub fn pick_folder(hwnd: HWND, title: &str, start: Option<&Path>) -> Option<PathBuf> {
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree};
+    use windows::Win32::UI::Shell::{FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog, IShellItem, SHCreateItemFromParsingName, SIGDN_FILESYSPATH};
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED); // the UI thread's apartment, if not yet set
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        let options = dialog.GetOptions().ok()?;
+        dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM).ok()?;
+        let _ = dialog.SetTitle(&HSTRING::from(title));
+        if let Some(start) = start {
+            if let Ok(item) = SHCreateItemFromParsingName::<_, _, IShellItem>(&HSTRING::from(start.as_os_str()), None) {
+                let _ = dialog.SetFolder(&item);
+            }
+        }
+        dialog.Show(Some(hwnd)).ok()?;
+        let name = dialog.GetResult().ok()?.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok().map(PathBuf::from);
+        CoTaskMemFree(Some(name.0.cast()));
+        path
+    }
 }
 
 /// A colour swatch for a menu item: the window's pastel with a darker rim.
@@ -135,8 +166,9 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 /// Shows the menu at the cursor and returns what was chosen. `targets` are
 /// the other windows; `can_split` whether the active tab can leave for a
 /// new window (not when it is the window's only tab, nor with tabs off);
-/// `lock` this window's Tab Lock (None: no tabs, no item).
-pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock: Option<bool>, global: Global) -> Option<Choice> {
+/// `lock` this window's Tab Lock (None: no tabs, no item); `favorites` the
+/// favourites folder, if chosen.
+pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock: Option<bool>, global: Global, favorites: Option<&Path>) -> Option<Choice> {
     let (main, sort) = (main_items(), sort_items());
     let mut swatches = Vec::new();
     unsafe {
@@ -186,6 +218,12 @@ pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock:
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
+        let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
+        let folder = match favorites {
+            Some(folder) => HSTRING::from(format!("Favorites Folder: {}…", folder.display())),
+            None => HSTRING::from("Choose Favorites Folder…"),
+        };
+        let _ = AppendMenuW(prefs_menu, MF_STRING, FAVORITES, &folder);
         let _ = AppendMenuW(menu, MF_POPUP, prefs_menu.0 as usize, w!("Preferences"));
 
         let mut at = POINT::default();
@@ -204,6 +242,7 @@ pub fn show(hwnd: HWND, prefs: Prefs, targets: &[Target], can_split: bool, lock:
             LOCK => Some(Choice::Lock),
             OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs, ..global })),
             MULTIROW => Some(Choice::Global(Global { multirow: !global.multirow, ..global })),
+            FAVORITES => Some(Choice::ChooseFavorites),
             id if id >= MOVE_TO => Some(Choice::MoveTo(id - MOVE_TO)),
             id => {
                 let item = main.iter().chain(sort.iter()).flatten().nth(id - 1)?;

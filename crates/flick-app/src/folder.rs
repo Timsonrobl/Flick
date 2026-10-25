@@ -7,6 +7,8 @@ use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use crate::library::Stars;
+
 /// Extensions WIC can usually decode (some need Store codec extensions).
 const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "jpe", "jfif", "png", "apng", "bmp", "dib", "gif", "tif", "tiff", "webp", "heic", "heif", "avif", "jxl", "jxr", "wdp", "ico",
@@ -20,6 +22,11 @@ pub enum SortKey {
     Size,
     /// The extension, then the name.
     Type,
+    /// Most stars first (`library.rs`), then the name.
+    Stars,
+    /// When each file got its first star (oldest first, like Date
+    /// modified); unstarred files last either way.
+    Starred,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,23 +47,34 @@ impl Default for Sort {
 struct Meta {
     modified: u64,
     size: u64,
+    stars: Stars,
 }
 
 fn meta_of(m: &std::fs::Metadata) -> Meta {
-    Meta { modified: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64), size: m.len() }
+    Meta { modified: m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64), size: m.len(), stars: Stars::default() }
+}
+
+fn extension(name: &str) -> &str {
+    name.rsplit_once('.').map_or("", |(_, e)| e)
 }
 
 /// Where `a` goes relative to `b` in `sort` order (names lowercased).
 fn compare(sort: Sort, (a, a_meta): (&str, Meta), (b, b_meta): (&str, Meta)) -> Ordering {
-    let ext = |n: &str| n.rsplit_once('.').map_or("", |(_, e)| e).to_string();
+    let direction = |order: Ordering| if sort.descending { order.reverse() } else { order };
     let key = match sort.key {
         SortKey::Name => Ordering::Equal,
         SortKey::Modified => a_meta.modified.cmp(&b_meta.modified),
         SortKey::Size => a_meta.size.cmp(&b_meta.size),
-        SortKey::Type => ext(a).cmp(&ext(b)),
+        SortKey::Type => extension(a).cmp(extension(b)),
+        SortKey::Stars => b_meta.stars.count.cmp(&a_meta.stars.count),
+        SortKey::Starred => {
+            // Unstarred last, whichever way; then by date in the chosen direction.
+            let starred = |m: Meta| m.stars.count > 0;
+            let order = starred(b_meta).cmp(&starred(a_meta)).then_with(|| direction(a_meta.stars.since.cmp(&b_meta.stars.since)));
+            return order.then_with(|| natural_cmp_lower(a, b));
+        }
     };
-    let order = key.then_with(|| natural_cmp_lower(a, b));
-    if sort.descending { order.reverse() } else { order }
+    direction(key.then_with(|| natural_cmp_lower(a, b)))
 }
 
 /// A change to a watched folder (`watch.rs`), by full path.
@@ -117,6 +135,13 @@ pub fn list(file: &Path, sort: Sort) -> Result<Folder, String> {
         files.push(file.clone());
         meta.push(Meta::default());
     }
+    // Stars, by name (one query; no library yet: none).
+    let stars = crate::library::stars_in(dir);
+    if !stars.is_empty() {
+        for (path, meta) in files.iter().zip(meta.iter_mut()) {
+            meta.stars = stars.get(&name(path).to_lowercase()).copied().unwrap_or_default();
+        }
+    }
     let mut folder = Folder { dir: dir.to_path_buf(), files, meta, index: 0, sort, shuffle: None };
     folder.sort(sort);
     folder.index = folder.files.iter().position(|p| name(p).to_lowercase() == lower).unwrap_or(0);
@@ -130,21 +155,9 @@ impl Folder {
         // Lowercased once, compared without allocating: 100 000 files sort
         // in tens of milliseconds (folder.rs tests, `huge_folder_timing`).
         let names: Vec<String> = self.files.iter().map(|p| name(p).to_lowercase()).collect();
-        let ext = |i: usize| names[i].rsplit_once('.').map_or("", |(_, e)| e);
         let meta = &self.meta;
         let mut order: Vec<usize> = (0..names.len()).collect();
-        order.sort_by(|&a, &b| {
-            // As `compare`, without its per-call allocations.
-            let by_name = || natural_cmp_lower(&names[a], &names[b]);
-            let key = match sort.key {
-                SortKey::Name => Ordering::Equal,
-                SortKey::Modified => meta[a].modified.cmp(&meta[b].modified),
-                SortKey::Size => meta[a].size.cmp(&meta[b].size),
-                SortKey::Type => ext(a).cmp(ext(b)),
-            };
-            let order = key.then_with(by_name);
-            if sort.descending { order.reverse() } else { order }
-        });
+        order.sort_by(|&a, &b| compare(sort, (&names[a], meta[a]), (&names[b], meta[b])));
         self.sort = sort;
         let mut new_index = vec![0u32; order.len()];
         for (new, &old) in order.iter().enumerate() {
@@ -208,8 +221,9 @@ impl Folder {
                     // Its size and date changed: where it sorts may have too.
                     let Some(i) = self.position(path) else { continue };
                     let Ok(meta) = std::fs::metadata(path) else { continue };
+                    let stars = self.meta[i].stars;
                     self.remove_at(i);
-                    self.insert_with(path, meta_of(&meta));
+                    self.insert_with(path, Meta { stars, ..meta_of(&meta) });
                     changed = true;
                 }
                 Change::Rescan => {}
@@ -236,11 +250,27 @@ impl Folder {
         }
         match std::fs::metadata(path) {
             Ok(meta) if meta.is_file() => {
-                self.insert_with(path, meta_of(&meta));
+                let by_stars = matches!(self.sort.key, SortKey::Stars | SortKey::Starred);
+                let stars = if by_stars { crate::library::stars(path) } else { Stars::default() };
+                self.insert_with(path, Meta { stars, ..meta_of(&meta) });
                 true
             }
             _ => false,
         }
+    }
+
+    /// A file's stars changed: noted, and where it sorts too.
+    pub fn set_stars(&mut self, path: &Path, stars: Stars) {
+        let Some(i) = self.position(path) else { return };
+        if self.meta[i].stars == stars {
+            return;
+        }
+        let current = self.files[self.index].clone();
+        let meta = Meta { stars, ..self.meta[i] };
+        self.remove_at(i);
+        self.insert_with(path, meta);
+        self.index = self.position(&current).unwrap_or(0);
+        self.shuffle = None;
     }
 
     fn insert_with(&mut self, path: &Path, meta: Meta) {
@@ -353,7 +383,7 @@ mod tests {
         Folder {
             dir: PathBuf::new(),
             files: names.iter().map(|(n, _, _)| PathBuf::from(n)).collect(),
-            meta: names.iter().map(|&(_, modified, size)| Meta { modified, size }).collect(),
+            meta: names.iter().map(|&(_, modified, size)| Meta { modified, size, stars: Stars::default() }).collect(),
             index: 0,
             sort: Sort::default(),
             shuffle: None,
@@ -362,6 +392,28 @@ mod tests {
 
     fn names(folder: &Folder) -> Vec<String> {
         folder.files.iter().map(|p| name(p).into_owned()).collect()
+    }
+
+    #[test]
+    fn sorts_by_stars_most_first_and_follows_star_changes() {
+        let stars = |count, since| Stars { count, since };
+        let mut f = folder(&[("a.jpg", 0, 0), ("b.jpg", 0, 0), ("c.jpg", 0, 0)]);
+        f.index = 1; // on b
+        f.sort(Sort { key: SortKey::Stars, descending: false });
+        f.set_stars(Path::new("c.jpg"), stars(2, 200));
+        f.set_stars(Path::new("a.jpg"), stars(1, 100));
+        assert_eq!(names(&f), ["c.jpg", "a.jpg", "b.jpg"], "most stars first, then by name");
+        assert_eq!(names(&f)[f.index], "b.jpg", "the current file stays current");
+
+        // Date starred: oldest first, or newest first; unstarred last either way.
+        f.sort(Sort { key: SortKey::Starred, descending: false });
+        assert_eq!(names(&f), ["a.jpg", "c.jpg", "b.jpg"]);
+        f.sort(Sort { key: SortKey::Starred, descending: true });
+        assert_eq!(names(&f), ["c.jpg", "a.jpg", "b.jpg"]);
+
+        f.sort(Sort { key: SortKey::Stars, descending: false });
+        f.set_stars(Path::new("c.jpg"), Stars::default());
+        assert_eq!(names(&f), ["a.jpg", "b.jpg", "c.jpg"]);
     }
 
     #[test]

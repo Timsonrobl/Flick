@@ -587,6 +587,43 @@ change, debounced, so a crash or "stay resident" restart restores them as
 - Watch the file's directory for external changes (`notify`) to refresh
   metadata and the folder list.
 
+**Stars (built 2026-10-25, before tags; the plan above is for tags).**
+Replaces Honeyview's "Save to photo folder" (a copy per favourite, and
+only starred / not starred):
+
+- `F` adds a star to the picture on screen, `Shift+F` takes one away; any
+  number of stars. A brief "★★★" note confirms; the info panel shows them
+  and since when; Sort by ▸ Stars (most first) orders a folder by them,
+  Sort by ▸ Date starred by when each got its first star (oldest first,
+  or newest with Descending; unstarred files last). Hard links share their
+  file's dates, so the favourites folder can't be sorted by when entries
+  were made the way copies could (by their date modified): the library
+  keeps the date (`starred`, schema version 2; version 1 libraries are
+  upgraded on open, their earlier stars undated), and Date starred works
+  in the favourites folder too.
+- **Files are never modified.** Stars live in Flick's library
+  (`library.rs`, SQLite, `%LOCALAPPDATA%\Flick\library.db`), keyed by the
+  file's NTFS ID (volume serial + 128-bit file ID: survives renames and
+  moves on its drive, never reused), with its last known path and folder
+  for looking a whole folder up in one query (a file moved since starring
+  is found by ID when viewed, and its path updated then). Opened on first
+  use, never at startup.
+- **The favourites folder** (Preferences ▸ Favorites Folder…, asked for on
+  the first star): the first star puts a **hard link** there (another name
+  for the same file: no copy; a file and its link share their ID, so their
+  stars), or a **copy** for a file on another drive; the last star taken
+  away removes it (a link only while the file has another name, never a
+  file's only name). Name clashes get "name (2)". Deleting the original
+  keeps the favourite (the file lives on under that name).
+- **The favourites folder decides what is starred:** an entry deleted in
+  Explorer unstars its file. Seen at once by a folder watcher if a tab is
+  in that folder, otherwise by the daily sweep, run when the resident goes
+  idle: records whose entry is gone are dropped, records whose original
+  is gone point at their entry. Renames seen by watchers update records.
+- **Tags later** fit the same library: `tags (id, name)` and `file_tags
+  (volume, file_id, tag)` keyed like `files`; a tag can get its own folder
+  of links with the same link and cleanup code.
+
 ## 12. Folder navigation
 
 - Folder listing on the IO pool: directory entries filtered by supported

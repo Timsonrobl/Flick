@@ -20,6 +20,8 @@ use crate::formats::{self, Kind};
 pub struct Info {
     /// "JPEG, 4:2:0, progressive", "PNG, 16-bit", "WebP (animated)", …
     pub format: String,
+    /// From the library (kept up to date as stars change).
+    pub stars: crate::library::Stars,
     pub lines: Vec<(&'static str, String)>,
 }
 
@@ -44,7 +46,7 @@ pub fn read(path: &Path) -> Info {
             None => ext,
         },
     };
-    Info { format, lines }
+    Info { format, stars: crate::library::stars(path), lines }
 }
 
 fn file_size(bytes: u64) -> String {
@@ -56,7 +58,7 @@ fn file_size(bytes: u64) -> String {
 }
 
 /// "2026-10-22 17:20:57" in local time.
-fn local_time(time: std::time::SystemTime) -> Option<String> {
+pub fn local_time(time: std::time::SystemTime) -> Option<String> {
     let ticks = time.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos() / 100 + 116_444_736_000_000_000;
     let file_time = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
     let (mut utc, mut local) = (SYSTEMTIME::default(), SYSTEMTIME::default());

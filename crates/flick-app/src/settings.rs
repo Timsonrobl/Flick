@@ -24,7 +24,14 @@ fn path() -> Option<PathBuf> {
 
 const FITS: [(Fit, &str); 3] = [(Fit::Window, "window"), (Fit::Width, "width"), (Fit::Original, "original")];
 const FILTERS: [(Filter, &str); 3] = [(Filter::Nearest, "none"), (Filter::Soften, "soften"), (Filter::Sharpen, "soften+sharpen")];
-const SORTS: [(SortKey, &str); 4] = [(SortKey::Name, "name"), (SortKey::Modified, "modified"), (SortKey::Size, "size"), (SortKey::Type, "type")];
+const SORTS: [(SortKey, &str); 6] = [
+    (SortKey::Name, "name"),
+    (SortKey::Modified, "modified"),
+    (SortKey::Size, "size"),
+    (SortKey::Type, "type"),
+    (SortKey::Stars, "stars"),
+    (SortKey::Starred, "starred"),
+];
 
 fn find<T: Copy>(table: &[(T, &str)], text: &str) -> Option<T> {
     table.iter().find(|(_, name)| *name == text).map(|(value, _)| *value)

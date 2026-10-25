@@ -32,6 +32,7 @@ use crate::instance::Request;
 use crate::placement::{self, Placement};
 use crate::pool::Pool;
 use crate::clipboard;
+use crate::library;
 use crate::menu;
 use crate::meta;
 use crate::osd::Osd;
@@ -275,6 +276,11 @@ fn is_double_click(after: Duration, from: (f64, f64), to: (f64, f64)) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK};
     let (time, w, h) = unsafe { (GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)) };
     after.as_millis() <= u128::from(time) && (to.0 - from.0).abs() <= f64::from(w) / 2.0 && (to.1 - from.1).abs() <= f64::from(h) / 2.0
+}
+
+/// "★★★", or "★ 14" past ten.
+fn star_text(stars: u32) -> String {
+    if stars > 10 { format!("★ {stars}") } else { "★".repeat(stars as usize) }
 }
 
 fn file_name(path: &Path) -> String {
@@ -1319,6 +1325,14 @@ impl Viewer {
         }
         let mut lines = vec![("File", format!("{}{position}", file_name(&current.path))), ("Image", image)];
         if let Some(info) = &current.info {
+            if info.stars.count > 0 {
+                let since = (info.stars.since > 0)
+                    .then(|| meta::local_time(std::time::UNIX_EPOCH + Duration::from_secs(info.stars.since as u64)))
+                    .flatten()
+                    .map(|t| format!("  (since {})", &t[..16]))
+                    .unwrap_or_default();
+                lines.push(("Stars", format!("{}{since}", star_text(info.stars.count))));
+            }
             lines.extend(info.lines.iter().cloned());
         }
         Some(lines)
@@ -1366,6 +1380,70 @@ impl Viewer {
             let _ = std::process::Command::new("explorer.exe").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
         }
         Action::None
+    }
+
+    /// F / Shift+F: a star more or less for the picture on screen (the
+    /// first star asks for the favourites folder if none was chosen). The
+    /// library work, a hard link or a copy among it, runs on a worker thread.
+    fn star(&mut self, delta: i32, shared: &Shared) -> Action {
+        let Some(path) = self.shown_file() else { return Action::None };
+        let favorites = match library::favorites() {
+            Some(folder) => folder,
+            None if delta > 0 => match self.choose_favorites() {
+                Some(folder) => folder,
+                None => return Action::None,
+            },
+            None => return Action::None, // nothing starred yet
+        };
+        let (viewer, proxy) = (self.id, shared.proxy.clone());
+        std::thread::spawn(move || {
+            let result = library::add_stars(&path, delta, &favorites);
+            let _ = proxy.send_event(Event::Starred { viewer, path, result });
+        });
+        Action::None
+    }
+
+    /// Stars changed for `path`: every tab's folder notes it (and re-sorts
+    /// by it), the info panel shows it; the window that starred it says so.
+    pub fn on_starred(&mut self, path: &Path, result: &Result<library::Stars, String>, starred_here: bool) {
+        if let Ok(stars) = *result {
+            for tab in std::iter::once(&mut self.tab).chain(self.others.iter_mut()) {
+                if let Some(folder) = tab.folder.as_mut() {
+                    let target = folder.files.get(tab.target).cloned();
+                    folder.set_stars(path, stars);
+                    tab.target = target.and_then(|t| folder.position(&t)).unwrap_or(folder.index);
+                }
+                if let Some(info) = tab.current.as_mut().filter(|c| c.path == path).and_then(|c| c.info.as_mut()) {
+                    info.stars = stars;
+                }
+            }
+            self.redraw();
+        }
+        if starred_here {
+            self.show_note(match result {
+                Ok(stars) if stars.count == 0 => "☆ No stars".into(),
+                Ok(stars) => star_text(stars.count),
+                Err(e) => format!("Couldn't star: {e}"),
+            });
+        }
+    }
+
+    /// Preferences ▸ Favorites Folder…, or the first star with none chosen:
+    /// Windows' folder picker. Returns the folder (None if cancelled).
+    fn choose_favorites(&mut self) -> Option<PathBuf> {
+        let hwnd = self.hwnd?;
+        let start = library::favorites().or_else(|| self.shown_file().and_then(|f| f.parent().map(Path::to_path_buf)));
+        let folder = menu::pick_folder(hwnd, "Favorites folder (starred pictures are linked here)", start.as_deref())?;
+        match library::set_favorites(&folder) {
+            Ok(()) => {
+                self.show_note(format!("Favorites: {}", folder.display()));
+                Some(folder)
+            }
+            Err(e) => {
+                self.show_note(format!("Couldn't set favorites: {e}"));
+                None
+            }
+        }
     }
 
     /// Ctrl+D (a background tab) or Ctrl+N (a new window) with this file.
@@ -1848,7 +1926,8 @@ impl Viewer {
         let can_split = self.tab_count() > 1 && global.tabs;
         // Tab Lock only means something with tabs.
         let lock = (self.tab_count() > 1).then_some(self.locked);
-        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global);
+        let favorites = library::favorites();
+        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, favorites.as_deref());
         // Whatever the clicks that closed the menu left half-done (a press
         // without its release) is dropped, and presses queued while it was
         // open are ignored when they arrive just after (`fresh_press`).
@@ -1865,6 +1944,10 @@ impl Viewer {
             Some(menu::Choice::Lock) => self.toggle_lock(),
             Some(menu::Choice::Global(global)) => Action::GlobalChanged(global),
             Some(menu::Choice::Reopen) => Action::ReopenMenu,
+            Some(menu::Choice::ChooseFavorites) => {
+                self.choose_favorites();
+                Action::None
+            }
             None => Action::None,
         }
     }
@@ -2002,6 +2085,9 @@ impl Viewer {
                 KeyCode::KeyA if self.locked => Some(self.step_tab(-1, shared)),
                 KeyCode::KeyS if self.locked => Some(self.random_tab(true, shared)),
                 KeyCode::KeyW if self.locked => Some(self.random_tab(false, shared)),
+                // Stars: F adds one, Shift+F takes one away (once per press).
+                KeyCode::KeyF if event.repeat => Some(Action::None),
+                KeyCode::KeyF => Some(self.star(if self.modifiers.shift_key() { -1 } else { 1 }, shared)),
                 KeyCode::KeyL => {
                     // The bar shows for a moment, padlock and all, so it is
                     // clear whether L locked or unlocked.

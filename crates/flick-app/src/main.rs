@@ -27,6 +27,7 @@ mod formats;
 mod gpu;
 mod icon;
 mod instance;
+mod library;
 mod menu;
 mod meta;
 mod osd;
@@ -81,6 +82,8 @@ pub enum Event {
     Copy { viewer: ViewerId, image: Result<Image, String> },
     /// A watched folder changed (`watch.rs`).
     FolderChanged { dir: PathBuf, changes: Vec<Change> },
+    /// A file's stars changed (F / Shift+F in that window): the new count.
+    Starred { viewer: ViewerId, path: PathBuf, result: Result<library::Stars, String> },
     /// A later launch's request, from the pipe.
     Open(Request),
     /// A newer build took over as the resident instance.
@@ -388,6 +391,19 @@ impl App {
                 self.shared.failed.remove(path);
             }
         }
+        // Stars follow renames; a favourites entry deleted unstars its file.
+        let library_changes: Vec<Change> = changes.iter().filter(|c| matches!(c, Change::Renamed(..) | Change::Removed(_))).cloned().collect();
+        if !library_changes.is_empty() {
+            std::thread::spawn(move || {
+                for change in library_changes {
+                    match change {
+                        Change::Renamed(old, new) => library::renamed(&old, &new),
+                        Change::Removed(path) => library::removed(&path),
+                        _ => {}
+                    }
+                }
+            });
+        }
         if changes.contains(&Change::Rescan) {
             for viewer in self.viewers.values() {
                 for (tab, file) in viewer.files_shown_in(dir) {
@@ -464,6 +480,8 @@ impl App {
         // Resident with no windows: keep only the GPU device, trim later.
         self.shared.cache.clear();
         self.shared.failed.clear();
+        // A quiet moment to bring the stars in line with the disk (daily).
+        std::thread::spawn(library::sweep_if_due);
         if let Some(gpu) = &self.shared.gpu {
             gpu.release_unused();
         }
@@ -607,6 +625,13 @@ impl ApplicationHandler<Event> for App {
                 if let Some(v) = self.viewers.get_mut(&viewer) {
                     v.on_copy(image);
                 }
+            }
+            Event::Starred { viewer, path, result } => {
+                for v in self.viewers.values_mut() {
+                    let here = v.id == viewer;
+                    v.on_starred(&path, &result, here);
+                }
+                self.plan(); // sorted by stars, the ring may have moved
             }
             Event::FolderChanged { dir, changes } => {
                 let (pending, due) = self.folder_changes.entry(dir).or_insert_with(|| (Vec::new(), Instant::now()));
