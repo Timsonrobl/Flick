@@ -28,7 +28,7 @@ Goals, in priority order. When two conflict, the higher one wins.
    appears on hover and fades. Tabs must not cost anything in goals 1–4; if
    they do, the feature shrinks, not the goals.
 6. **Quick tags.** Edit keywords/rating in two keystrokes, saved without a
-   dialog.
+   dialog. (Rating is built as stars, §11; keywords are optional backlog, §17.)
 7. **Formats.** JPEG first-class; PNG, WebP, JXL, HEIC, AVIF, TIFF, GIF/APNG,
    SVG, camera RAW previews, 16-bit/HDR. New formats are plug-ins behind one
    trait.
@@ -898,9 +898,9 @@ only starred / not starred):
 | 3b (first cut) | Tabs (with a minimal tab strip in the hover bar), tab cooldown (warm → cold after 3 min, no disk tier, no cap on warm tabs: user decision) | 20 tabs: working set **99 MB** (Honeyview: 153–416 MB for one window) ✓; GPU 410 MB warm → **172 MB** once cooled; warm tab switch **0.6 ms** to present ✓; open into a tab **83–93 ms** request → on screen (warm open into a new window ~102) ✓. Window colours, Move to Window, Ctrl-drag reorder: after the user's verdict on tabs |
 | 4 ✓ | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open. Part A (2026-10-25): zooming past `Screen` decodes the sharpest level the GPU holds (intermediate levels tried and dropped: barely faster, they popped in steps), fading in; optional dwell prefetch; mips dropped (Direct2D's high-quality cubic pre-shrinks). Part B (2026-10-25): full resolution in tiles for WIC pictures over 16 384 px, up to 1 GiB of GPU (§5) |
 | 5 | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path |
-| 6 | Tags/rating read + write, inline editor | Two-keystroke tag edit, file updated atomically |
+| 6 ✓ | Tags/rating read + write, inline editor | Rating is done as stars (§11: Ctrl+F / Shift+F, kept in the library, files never modified). Tags: moved to the optional backlog (§17; user decision, 2026-10-27) |
 | 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. Done for all but RAW (skipped for now, by request): 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. *No `Decoder` trait yet: `formats::kind` dispatches |
-| 8 | Polish: file associations, installer, session restore (done: the close history, §10a), tab drag-out, Linux/macOS build | — |
+| 8 | Polish: file associations, installer, session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
 
 Milestones 0–3 are the thesis; if 3 doesn't beat Honeyview on cold start,
 paging and memory, stop and rethink before building chrome. Every milestone
@@ -1049,3 +1049,12 @@ closed by a commit that says so; review this list at every milestone.
   resident correctly lingers while it has windows. Add a scripted test:
   old resident with and without windows, newer launcher, check who serves
   the next open and that the old process exits after its last window.
+
+**Optional backlog** (user decision, 2026-10-27: not sure they're needed;
+build only if a real need shows up):
+
+- [ ] **Tags.** Keywords per file, as planned in §11 (the library's
+  `tags` / `file_tags` tables, a folder of links per tag). Rating is done
+  as stars.
+- [ ] **Tab drag-out.** Drag a tab off the strip into a new window, or onto
+  another Flick window. Move to Window (menu) covers the need for now.
