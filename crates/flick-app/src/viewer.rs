@@ -14,7 +14,7 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_ANTIALIAS_MODE_ALIASED, D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
     D2D1_LAYER_PARAMETERS1, ID2D1Bitmap1,
 };
-use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey};
@@ -1157,6 +1157,8 @@ impl Viewer {
             .with_taskbar_icon(taskbar_icon)
             .with_decorations(false)
             .with_visible(false)
+            // Never so small it is lost (scaled with the display it is on).
+            .with_min_inner_size(LogicalSize::new(chrome::MIN_WIDTH, chrome::MIN_HEIGHT))
             // DirectComposition draws everything; no GDI surface to flash.
             .with_no_redirection_bitmap(true);
         let window = Arc::new(event_loop.create_window(attrs).map_err(|e| e.to_string())?);
@@ -1184,7 +1186,9 @@ impl Viewer {
         let size = self.tab.request.size.unwrap_or_else(|| {
             let max = (area.0 as f32 * 0.9, area.1 as f32 * 0.9);
             let scale = f32::min(1.0, f32::min(max.0 / display.0 as f32, max.1 / display.1 as f32));
-            (((display.0 as f32 * scale) as u32).max(320), ((display.1 as f32 * scale) as u32).max(240))
+            let dpi = window.scale_factor() as f32;
+            let least = ((chrome::MIN_WIDTH * dpi).ceil() as u32, (chrome::MIN_HEIGHT * dpi).ceil() as u32);
+            (((display.0 as f32 * scale) as u32).max(least.0), ((display.1 as f32 * scale) as u32).max(least.1))
         });
         let x = origin.0 + (area.0.saturating_sub(size.0) / 2) as i32;
         let y = origin.1 + (area.1.saturating_sub(size.1) / 2) as i32;

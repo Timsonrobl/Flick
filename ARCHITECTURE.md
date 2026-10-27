@@ -461,6 +461,12 @@ Full decode that would only be refused.
   placement: sized to the picture (≤ 90 % of the monitor), centred. `--size`
   (benchmarks) neither reads nor writes it. Later: new windows cascade from
   it; "open in new window" is a modifier on open.
+- Least window size (`chrome::MIN_WIDTH` × `MIN_HEIGHT`, 404 × 300 logical
+  px): the bar with the padlock, one full tab and the three buttons across,
+  less high than wide, so a window never shrinks out of sight. Windows
+  keeps to it on resizes and display changes (winit's min inner size, at
+  each display's scaling); a placement saved smaller, or a picture's size,
+  is grown to it.
 - Hover bar colours: light, as in Honeyview (pale grey bar, dark text and
   glyphs, red close button with a white glyph on hover).
 - Multi-window semantics: each window holds its own tabs; the cache and pool

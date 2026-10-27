@@ -117,16 +117,23 @@ pub fn prepare(hwnd: HWND, placement: &Placement) -> (u32, u32) {
                 return (w as u32, h as u32);
             }
         }
-        let wp = WINDOWPLACEMENT {
-            length: size_of::<WINDOWPLACEMENT>() as u32,
-            showCmd: SW_HIDE.0 as u32,
-            rcNormalPosition: placement.normal,
-            ..Default::default()
-        };
+        let r = at_least_min(placement.normal);
+        let wp = WINDOWPLACEMENT { length: size_of::<WINDOWPLACEMENT>() as u32, showCmd: SW_HIDE.0 as u32, rcNormalPosition: r, ..Default::default() };
         let _ = SetWindowPlacement(hwnd, &wp);
-        let r = placement.normal;
         ((r.right - r.left) as u32, (r.bottom - r.top) as u32)
     }
+}
+
+/// `r` grown to the least window size (chrome::MIN_WIDTH × MIN_HEIGHT, at
+/// the DPI of the monitor it is on), keeping its top-left corner: a
+/// placement saved smaller (before there was a least size) opens usable.
+fn at_least_min(r: RECT) -> RECT {
+    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+    let (mut dpi, mut unused) = (96, 96);
+    let _ = unsafe { GetDpiForMonitor(MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), MDT_EFFECTIVE_DPI, &mut dpi, &mut unused) };
+    let scale = dpi as f32 / 96.0;
+    let (w, h) = ((crate::chrome::MIN_WIDTH * scale).ceil() as i32, (crate::chrome::MIN_HEIGHT * scale).ceil() as i32);
+    RECT { right: r.right.max(r.left + w), bottom: r.bottom.max(r.top + h), ..r }
 }
 
 /// Where a new window opens next to the window `hwnd` it came from (Move to
