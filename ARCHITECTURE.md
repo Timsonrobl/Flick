@@ -1077,3 +1077,11 @@ build only if a real need shows up):
 - [ ] **A keys file.** Remapping hotkeys without a rebuild: a file read
   over `keys.rs`'s table (and reloaded on change, with the folder watcher),
   menu labels following it. Worth it for a public release.
+- [ ] **An installer** (for other people; the daily copy stays the latest
+  dev build, registered by `tools\register.ps1`). Cheapest form: an
+  unsigned per-user Inno Setup package (no admin; Start menu, uninstaller,
+  file types, then Settings ▸ Default apps opened at Flick), with the C
+  runtime linked statically and the dependencies' licence notices. Needs
+  first: a licence (§16) and a public place for releases. Code signing
+  (to avoid SmartScreen's warning) and update checks only for a real
+  release. Build it after RAW, so it registers the RAW types too.
