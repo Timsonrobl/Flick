@@ -183,10 +183,11 @@ const TIP_AFTER: Duration = Duration::from_secs(1);
 const LOCK_WIDTH: f32 = 30.0;
 
 /// The smallest a window gets (logical px), so it can't shrink out of sight
-/// (a display change, a drag): the bar with the padlock, one full tab and
-/// the three buttons across; less high than wide.
-pub const MIN_WIDTH: f32 = MARGIN + LOCK_WIDTH + TAB_MAX + MARGIN + 3.0 * BUTTON;
-pub const MIN_HEIGHT: f32 = 300.0;
+/// (a display change, a drag): half the bar with the padlock, one full tab
+/// and the three buttons across (the whole was more than needed); less high
+/// than wide.
+pub const MIN_WIDTH: f32 = (MARGIN + LOCK_WIDTH + TAB_MAX + MARGIN + 3.0 * BUTTON) / 2.0;
+pub const MIN_HEIGHT: f32 = 150.0;
 
 /// Gliding tabs close this fraction of their distance per GLIDE_TAU seconds
 /// (exponential easing, frame-rate independent).

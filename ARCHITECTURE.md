@@ -461,9 +461,9 @@ Full decode that would only be refused.
   placement: sized to the picture (≤ 90 % of the monitor), centred. `--size`
   (benchmarks) neither reads nor writes it. Later: new windows cascade from
   it; "open in new window" is a modifier on open.
-- Least window size (`chrome::MIN_WIDTH` × `MIN_HEIGHT`, 404 × 300 logical
-  px): the bar with the padlock, one full tab and the three buttons across,
-  less high than wide, so a window never shrinks out of sight. Windows
+- Least window size (`chrome::MIN_WIDTH` × `MIN_HEIGHT`, 202 × 150 logical
+  px): half the bar with the padlock, one full tab and the three buttons
+  across, less high than wide, so a window never shrinks out of sight. Windows
   keeps to it on resizes and display changes (winit's min inner size, at
   each display's scaling); a placement saved smaller, or a picture's size,
   is grown to it.
