@@ -16,33 +16,36 @@ use std::path::{Path, PathBuf};
 
 use crate::chrome::PALETTE;
 use crate::folder::SortKey;
+use crate::keys::{self, Command};
 use crate::settings::{Global, Prefs};
 use crate::view::{Filter, Fit, Turn};
 
-/// One menu item: its label and what choosing it does to the settings.
+/// One menu item: its label, the command whose keys it shows, and what
+/// choosing it does to the settings.
 struct Item {
-    text: PCWSTR,
+    text: &'static str,
+    keys: Option<Command>,
     checked: fn(&Prefs) -> bool,
     choose: fn(&mut Prefs),
 }
 
 macro_rules! item {
-    ($text:expr, |$p:ident| $checked:expr, |$q:ident| $choose:expr) => {
-        Item { text: $text, checked: |$p: &Prefs| $checked, choose: |$q: &mut Prefs| $choose }
+    ($text:expr, $keys:expr, |$p:ident| $checked:expr, |$q:ident| $choose:expr) => {
+        Item { text: $text, keys: $keys, checked: |$p: &Prefs| $checked, choose: |$q: &mut Prefs| $choose }
     };
 }
 
 /// The main menu's first sections, separated by lines.
 fn main_items() -> [Vec<Item>; 2] {
     [
-        vec![item!(w!("Stretch Small Images\tZ"), |p| p.mode.stretch_small, |p| p.mode.stretch_small = !p.mode.stretch_small)],
+        vec![item!("Stretch Small Images", Some(Command::StretchSmall), |p| p.mode.stretch_small, |p| p.mode.stretch_small = !p.mode.stretch_small)],
         vec![
             // In middle click's order (view.rs).
-            item!(w!("Fit in Window\t9"), |p| p.mode.fit == Fit::Window, |p| p.mode.fit = Fit::Window),
-            item!(w!("Fill Window\t6"), |p| p.mode.fit == Fit::Fill, |p| p.mode.fit = Fit::Fill),
-            item!(w!("Fit to Width\t8"), |p| p.mode.fit == Fit::Width, |p| p.mode.fit = Fit::Width),
-            item!(w!("Fit to Height\t7"), |p| p.mode.fit == Fit::Height, |p| p.mode.fit = Fit::Height),
-            item!(w!("Original Size (100%)\t0"), |p| p.mode.fit == Fit::Original, |p| p.mode.fit = Fit::Original),
+            item!("Fit in Window", Some(Command::Fit(Fit::Window)), |p| p.mode.fit == Fit::Window, |p| p.mode.fit = Fit::Window),
+            item!("Fill Window", Some(Command::Fit(Fit::Fill)), |p| p.mode.fit == Fit::Fill, |p| p.mode.fit = Fit::Fill),
+            item!("Fit to Width", Some(Command::Fit(Fit::Width)), |p| p.mode.fit == Fit::Width, |p| p.mode.fit = Fit::Width),
+            item!("Fit to Height", Some(Command::Fit(Fit::Height)), |p| p.mode.fit == Fit::Height, |p| p.mode.fit = Fit::Height),
+            item!("Original Size (100%)", Some(Command::Fit(Fit::Original)), |p| p.mode.fit == Fit::Original, |p| p.mode.fit = Fit::Original),
         ],
     ]
 }
@@ -50,30 +53,36 @@ fn main_items() -> [Vec<Item>; 2] {
 /// The Filter submenu.
 fn filter_items() -> [Vec<Item>; 1] {
     [vec![
-        item!(w!("No Filter\tU"), |p| p.filter == Filter::Nearest, |p| p.filter = Filter::Nearest),
-        item!(w!("Soften\tI"), |p| p.filter == Filter::Soften, |p| p.filter = Filter::Soften),
-        item!(w!("Soften+Sharpen"), |p| p.filter == Filter::Sharpen, |p| p.filter = Filter::Sharpen),
+        item!("No Filter", Some(Command::Filter(Filter::Nearest)), |p| p.filter == Filter::Nearest, |p| p.filter = Filter::Nearest),
+        item!("Soften", Some(Command::Filter(Filter::Soften)), |p| p.filter == Filter::Soften, |p| p.filter = Filter::Soften),
+        item!("Soften+Sharpen", Some(Command::Filter(Filter::Sharpen)), |p| p.filter == Filter::Sharpen, |p| p.filter = Filter::Sharpen),
     ]]
 }
 
 /// The last section's settings item, beside Preferences.
 fn info_items() -> [Vec<Item>; 1] {
-    [vec![item!(w!("File Info\tTab"), |p| p.info, |p| p.info = !p.info)]]
+    [vec![item!("File Info", Some(Command::Info), |p| p.info, |p| p.info = !p.info)]]
 }
 
 /// The Sort by submenu's sections.
 fn sort_items() -> [Vec<Item>; 2] {
     [
         vec![
-            item!(w!("Name"), |p| p.sort.key == SortKey::Name, |p| p.sort.key = SortKey::Name),
-            item!(w!("Date modified"), |p| p.sort.key == SortKey::Modified, |p| p.sort.key = SortKey::Modified),
-            item!(w!("Size"), |p| p.sort.key == SortKey::Size, |p| p.sort.key = SortKey::Size),
-            item!(w!("Type"), |p| p.sort.key == SortKey::Type, |p| p.sort.key = SortKey::Type),
-            item!(w!("Star count"), |p| p.sort.key == SortKey::Stars, |p| p.sort.key = SortKey::Stars),
-            item!(w!("Date starred"), |p| p.sort.key == SortKey::Starred, |p| p.sort.key = SortKey::Starred),
+            item!("Name", None, |p| p.sort.key == SortKey::Name, |p| p.sort.key = SortKey::Name),
+            item!("Date modified", None, |p| p.sort.key == SortKey::Modified, |p| p.sort.key = SortKey::Modified),
+            item!("Size", None, |p| p.sort.key == SortKey::Size, |p| p.sort.key = SortKey::Size),
+            item!("Type", None, |p| p.sort.key == SortKey::Type, |p| p.sort.key = SortKey::Type),
+            item!("Star count", None, |p| p.sort.key == SortKey::Stars, |p| p.sort.key = SortKey::Stars),
+            item!("Date starred", None, |p| p.sort.key == SortKey::Starred, |p| p.sort.key = SortKey::Starred),
         ],
-        vec![item!(w!("Descending"), |p| p.sort.descending, |p| p.sort.descending = !p.sort.descending)],
+        vec![item!("Descending", None, |p| p.sort.descending, |p| p.sort.descending = !p.sort.descending)],
     ]
+}
+
+/// A menu item's text: `name`, then `command`'s keys (keys.rs) if any.
+fn label(name: &str, command: Option<Command>) -> HSTRING {
+    let keys = command.map(keys::keys).unwrap_or_default();
+    HSTRING::from(if keys.is_empty() { name.to_string() } else { format!("{name}\t{keys}") })
 }
 
 /// Appends `sections` with ids from `first`; returns the next free id.
@@ -85,7 +94,7 @@ unsafe fn append(menu: HMENU, sections: &[Vec<Item>], prefs: &Prefs, first: usiz
         }
         for item in section {
             let flags = if (item.checked)(prefs) { MF_STRING | MF_CHECKED } else { MF_STRING };
-            let _ = unsafe { AppendMenuW(menu, flags, id, item.text) };
+            let _ = unsafe { AppendMenuW(menu, flags, id, &label(item.text, item.keys)) };
             id += 1;
         }
     }
@@ -120,69 +129,41 @@ pub enum Choice {
     Command(Command),
 }
 
-/// The menu's items that do what a hotkey does: every key is in the menu,
-/// beside what it does, to be learnt there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Command {
-    Next,
-    Previous,
-    RandomNext,
-    RandomBack,
-    First,
-    Last,
-    NextFolder,
-    PreviousFolder,
-    Back,
-    Forward,
-    NextTab,
-    PreviousTab,
-    DuplicateTab,
-    DuplicateInNewWindow,
-    CloseTab,
-    ReopenClosed,
-    AddStar,
-    RemoveStar,
-    Copy,
-    ShowInExplorer,
-    Delete,
-    DebugInfo,
-    NextRotation,
-    NextFlip,
-}
-
-/// Each command's label and keys; its menu id is COMMAND + its place here.
-const COMMANDS: [(Command, PCWSTR); 24] = [
-    (Command::Next, w!("Next\t→, Space, PgDn, D")),
-    (Command::Previous, w!("Previous\t←, Backspace, PgUp, A")),
-    (Command::RandomNext, w!("Random Next\t↓, S")),
-    (Command::RandomBack, w!("Random Back\t↑, W")),
-    (Command::First, w!("First\tHome")),
-    (Command::Last, w!("Last\tEnd")),
-    (Command::NextFolder, w!("Next Folder\t]")),
-    (Command::PreviousFolder, w!("Previous Folder\t[")),
-    (Command::Back, w!("History Back\tMouse Back")),
-    (Command::Forward, w!("History Forward\tMouse Forward")),
-    (Command::NextTab, w!("Next Tab\tCtrl+Tab")),
-    (Command::PreviousTab, w!("Previous Tab\tCtrl+Shift+Tab")),
-    (Command::DuplicateTab, w!("Duplicate Tab\tCtrl+T")),
-    (Command::DuplicateInNewWindow, w!("Duplicate in New Window\tCtrl+N")),
-    (Command::CloseTab, w!("Close Tab\tCtrl+W")),
-    (Command::ReopenClosed, w!("Reopen Closed\tCtrl+Shift+T")),
-    (Command::AddStar, w!("Add Star\tCtrl+F")),
-    (Command::RemoveStar, w!("Remove Star\tShift+F")),
-    (Command::Copy, w!("Copy\tCtrl+C")),
-    (Command::ShowInExplorer, w!("Show in Explorer\tCtrl+Enter")),
-    (Command::Delete, w!("Delete\tDel")),
-    (Command::DebugInfo, w!("Debug Info\tF12")),
-    (Command::NextRotation, w!("Next rotation\tCtrl+R")),
-    (Command::NextFlip, w!("Next flip\tAlt+F")),
+/// The menu's items that do what a hotkey does (keys.rs): every key is in
+/// the menu, beside what it does, to be learnt there. Each command's name;
+/// its menu id is COMMAND + its place here.
+const COMMANDS: [(Command, &str); 24] = [
+    (Command::Next, "Next"),
+    (Command::Previous, "Previous"),
+    (Command::RandomNext, "Random Next"),
+    (Command::RandomBack, "Random Back"),
+    (Command::First, "First"),
+    (Command::Last, "Last"),
+    (Command::NextFolder, "Next Folder"),
+    (Command::PreviousFolder, "Previous Folder"),
+    (Command::Back, "History Back"),
+    (Command::Forward, "History Forward"),
+    (Command::NextTab, "Next Tab"),
+    (Command::PreviousTab, "Previous Tab"),
+    (Command::DuplicateTab, "Duplicate Tab"),
+    (Command::DuplicateInNewWindow, "Duplicate in New Window"),
+    (Command::CloseTab, "Close Tab"),
+    (Command::ReopenClosed, "Reopen Closed"),
+    (Command::AddStar, "Add Star"),
+    (Command::RemoveStar, "Remove Star"),
+    (Command::Copy, "Copy"),
+    (Command::ShowInExplorer, "Show in Explorer"),
+    (Command::Delete, "Delete"),
+    (Command::DebugInfo, "Debug Info"),
+    (Command::NextRotation, "Next rotation"),
+    (Command::NextFlip, "Next flip"),
 ];
 const COMMAND: usize = 800;
 
 /// Appends `command`'s item to `menu`.
 unsafe fn append_command(menu: HMENU, command: Command) {
     if let Some(at) = COMMANDS.iter().position(|(c, _)| *c == command) {
-        let _ = unsafe { AppendMenuW(menu, MF_STRING, COMMAND + at, COMMANDS[at].1) };
+        let _ = unsafe { AppendMenuW(menu, MF_STRING, COMMAND + at, &label(COMMANDS[at].1, Some(command))) };
     }
 }
 
@@ -322,15 +303,15 @@ pub fn show(
 
         // Rotate ▸ this tab's turn (radio-like), flips, Persist.
         let rotate_menu = CreatePopupMenu().ok()?;
-        let turns = [(0, w!("Do not rotate\tAlt+Up")), (3, w!("Rotate 90° counter-clockwise\tAlt+Left")), (1, w!("Rotate 90° clockwise\tAlt+Right")), (2, w!("180°\tAlt+Down"))];
-        for (quarter, text) in turns {
-            let _ = AppendMenuW(rotate_menu, checked(turn.quarter == quarter), TURN + usize::from(quarter), text);
+        let turns = [(0, "Do not rotate"), (3, "Rotate 90° counter-clockwise"), (1, "Rotate 90° clockwise"), (2, "180°")];
+        for (quarter, name) in turns {
+            let _ = AppendMenuW(rotate_menu, checked(turn.quarter == quarter), TURN + usize::from(quarter), &label(name, Some(Command::Turn(quarter))));
         }
         let _ = AppendMenuW(rotate_menu, MF_SEPARATOR, 0, None);
         append_command(rotate_menu, Command::NextRotation);
         let _ = AppendMenuW(rotate_menu, MF_SEPARATOR, 0, None);
-        let _ = AppendMenuW(rotate_menu, checked(turn.flip_h), FLIP_H, w!("Flip horizontally\tAlt+H"));
-        let _ = AppendMenuW(rotate_menu, checked(turn.flip_v), FLIP_V, w!("Flip vertically\tAlt+V"));
+        let _ = AppendMenuW(rotate_menu, checked(turn.flip_h), FLIP_H, &label("Flip horizontally", Some(Command::FlipH)));
+        let _ = AppendMenuW(rotate_menu, checked(turn.flip_v), FLIP_V, &label("Flip vertically", Some(Command::FlipV)));
         append_command(rotate_menu, Command::NextFlip);
         let _ = AppendMenuW(rotate_menu, MF_SEPARATOR, 0, None);
         let _ = AppendMenuW(rotate_menu, checked(prefs.persist_turn), PERSIST_TURN, w!("Persist"));
@@ -338,19 +319,20 @@ pub fn show(
 
         // Slideshow ▸ start/stop, intervals, fine steps.
         let slide_menu = CreatePopupMenu().ok()?;
-        let start = if slideshow { w!("Stop\tCtrl+G") } else { w!("Start\tCtrl+G") };
-        let _ = AppendMenuW(slide_menu, MF_STRING, SLIDESHOW, start);
+        let start = label(if slideshow { "Stop" } else { "Start" }, Some(Command::Slideshow));
+        let _ = AppendMenuW(slide_menu, MF_STRING, SLIDESHOW, &start);
+        let (shorter, longer) = (keys::keys(Command::SlideShorter), keys::keys(Command::SlideLonger));
         let _ = AppendMenuW(slide_menu, MF_SEPARATOR, 0, None);
         for (i, ms) in SLIDE_PRESETS.iter().enumerate() {
             let text = HSTRING::from(if *ms < 1000 { format!("{ms} ms") } else { format!("{} s", ms / 1000) });
             let _ = AppendMenuW(slide_menu, checked(prefs.slide_ms == *ms), SLIDE_INTERVAL + i, &text);
         }
         if !SLIDE_PRESETS.contains(&prefs.slide_ms) {
-            let text = HSTRING::from(format!("{} ms (set with Ctrl+[ ])", prefs.slide_ms));
+            let text = HSTRING::from(format!("{} ms (set with {shorter}, {longer})", prefs.slide_ms));
             let _ = AppendMenuW(slide_menu, MF_STRING | MF_CHECKED | MF_GRAYED, 0, &text);
         }
         let _ = AppendMenuW(slide_menu, MF_SEPARATOR, 0, None);
-        let _ = AppendMenuW(slide_menu, MF_STRING | MF_GRAYED, 0, w!("Shorter / longer\tCtrl+[  ]"));
+        let _ = AppendMenuW(slide_menu, MF_STRING | MF_GRAYED, 0, &HSTRING::from(format!("Shorter / longer\t{shorter}, {longer}")));
         let _ = AppendMenuW(menu, MF_POPUP, slide_menu.0 as usize, w!("Slideshow"));
 
         // Tabs ▸ switching, duplicating, closing and reopening, Tab Lock
@@ -359,7 +341,8 @@ pub fn show(
         let tabs_menu = CreatePopupMenu().ok()?;
         append_command(tabs_menu, Command::NextTab);
         append_command(tabs_menu, Command::PreviousTab);
-        let _ = AppendMenuW(tabs_menu, MF_STRING | MF_GRAYED, 0, w!("Tab 1 to 9\tCtrl+1 … Ctrl+9"));
+        let tab_keys = format!("Tab 1 to 9\t{} … {}", keys::keys(Command::Tab(0)), keys::keys(Command::Tab(8)));
+        let _ = AppendMenuW(tabs_menu, MF_STRING | MF_GRAYED, 0, &HSTRING::from(tab_keys));
         let _ = AppendMenuW(tabs_menu, MF_SEPARATOR, 0, None);
         for command in [Command::DuplicateTab, Command::DuplicateInNewWindow, Command::CloseTab, Command::ReopenClosed] {
             append_command(tabs_menu, command);
@@ -369,7 +352,7 @@ pub fn show(
             Some(locked) => checked(locked),
             None => MF_STRING | MF_GRAYED,
         };
-        let _ = AppendMenuW(tabs_menu, lock_flags, LOCK, w!("Tab Lock\tL"));
+        let _ = AppendMenuW(tabs_menu, lock_flags, LOCK, &label("Tab Lock", Some(Command::TabLock)));
         let _ = AppendMenuW(menu, MF_POPUP, tabs_menu.0 as usize, w!("Tabs"));
 
         // Move to Window, beside Tabs: up to three destinations stand in the

@@ -720,11 +720,27 @@ only starred / not starred):
 
 ## 13. Configuration and input
 
-- TOML config in the platform config dir, hot-reloaded. Everything tunable
-  mentioned above has a key: ring depth, dwell ms, budgets, overlay fade,
-  tag write policy, sort key, zoom step.
-- Keymap is data (action ↔ chord), Honeyview-compatible defaults where
-  sensible so muscle memory carries over.
+- **No config file of tunables** (decided 2026-10-27). Ring depth, dwell,
+  budgets, fades, zoom step and the like stay constants in the code: most
+  were set by measuring against §1's goals, and a file would invite
+  changes that quietly break them (and add a read to startup). A tunable
+  someone needs becomes a menu choice, saved by the settings rule below,
+  as the slideshow interval is. With no file there is nothing to reload.
+- **Hotkeys are one table** (`keys.rs`, built 2026-10-27): `BINDINGS`
+  pairs each chord with a `Command`. The key handler looks a key up there
+  and runs the command (`Viewer::run`, which the menu's items call too),
+  and the menu shows each command's keys from the same table, so the two
+  can't disagree; changing a key is one line. Honeyview's keys where
+  sensible, so muscle memory carries over. A chord names its key by
+  position (letters, digits, brackets: any layout), as a named key
+  (arrows, Tab, Enter, F12) or as a character ("+", which takes Shift on
+  most layouts, so Shift doesn't count for characters). Modifiers match
+  exactly: Ctrl+Shift+C is not Ctrl+C. Each command says whether a held
+  key repeats it (paging, tab switching, zoom, closing tabs) or runs once
+  per press, whether it pages (a held paging key waits for the picture
+  on screen) and whether it stops a slideshow. With Tab Lock on, the
+  paging commands switch tabs, from the keys and the menu alike. A user
+  keys file is in the optional backlog (§17).
 - **Right-click menu (built).** A native popup menu (no code runs until it
   opens; also the Menu key) with Honeyview's View items minus the
   double-page modes: Stretch Small Images (`Z`), and the view modes in
@@ -897,7 +913,7 @@ only starred / not starred):
 | 3a ✓ | Resident process + tray icon, single instance (named pipe, warm open), multiple windows sharing GPU/pool/cache, trim after 30 s idle, idle = 0 % CPU | Warm open **120 ms** ✓ (137 ms after trim), cold 241 ms unchanged, 0 blank/flicker; resident idle working set ~0 MB after trim ✓, 0 ms CPU ✓; memory levels off across opens (after the D3D11 flush fix) |
 | 3b (first cut) | Tabs (with a minimal tab strip in the hover bar), tab cooldown (warm → cold after 3 min, no disk tier, no cap on warm tabs: user decision) | 20 tabs: working set **99 MB** (Honeyview: 153–416 MB for one window) ✓; GPU 410 MB warm → **172 MB** once cooled; warm tab switch **0.6 ms** to present ✓; open into a tab **83–93 ms** request → on screen (warm open into a new window ~102) ✓. Window colours, Move to Window, Ctrl-drag reorder: after the user's verdict on tabs |
 | 4 ✓ | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open. Part A (2026-10-25): zooming past `Screen` decodes the sharpest level the GPU holds (intermediate levels tried and dropped: barely faster, they popped in steps), fading in; optional dwell prefetch; mips dropped (Direct2D's high-quality cubic pre-shrinks). Part B (2026-10-25): full resolution in tiles for WIC pictures over 16 384 px, up to 1 GiB of GPU (§5) |
-| 5 | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path |
+| 5 ✓ | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path. Keymap: one bindings table (§13, 2026-10-27); no config file of tunables (decided, §13); a user keys file is optional backlog (§17) |
 | 6 ✓ | Tags/rating read + write, inline editor | Rating is done as stars (§11: Ctrl+F / Shift+F, kept in the library, files never modified). Tags: moved to the optional backlog (§17; user decision, 2026-10-27) |
 | 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. Done for all but RAW (skipped for now, by request): 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. *No `Decoder` trait yet: `formats::kind` dispatches |
 | 8 | Polish: file associations, installer, session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
@@ -1058,3 +1074,6 @@ build only if a real need shows up):
   as stars.
 - [ ] **Tab drag-out.** Drag a tab off the strip into a new window, or onto
   another Flick window. Move to Window (menu) covers the need for now.
+- [ ] **A keys file.** Remapping hotkeys without a rebuild: a file read
+  over `keys.rs`'s table (and reloaded on change, with the folder watcher),
+  menu labels following it. Worth it for a public release.

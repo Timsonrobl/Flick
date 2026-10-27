@@ -17,7 +17,7 @@ use windows::Win32::Graphics::Direct2D::{
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
-use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey};
+use winit::keyboard::ModifiersState;
 use winit::platform::windows::WindowAttributesExtWindows;
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::{CursorIcon, ResizeDirection, Window};
@@ -30,6 +30,7 @@ use crate::decode::{self, Image, Picture};
 use crate::folder::{self, Folder, Sort};
 use crate::gpu::{Gpu, Sharpen, Surface};
 use crate::instance::Request;
+use crate::keys::{self, Command};
 use crate::placement::{self, Placement};
 use crate::pool::Pool;
 use crate::clipboard;
@@ -41,7 +42,7 @@ use crate::session::{SavedTab, SavedWindow};
 use crate::settings::{self, Global, Prefs};
 use crate::history::History;
 use crate::tiles::{self, Tile};
-use crate::view::{self, Affine, Filter, Fit, Mode, Stop, Turn, View};
+use crate::view::{self, Affine, Filter, Mode, Stop, Turn, View};
 
 pub type ViewerId = u64;
 
@@ -348,45 +349,6 @@ fn is_double_click(after: Duration, from: (f64, f64), to: (f64, f64)) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK};
     let (time, w, h) = unsafe { (GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)) };
     after.as_millis() <= u128::from(time) && (to.0 - from.0).abs() <= f64::from(w) / 2.0 && (to.1 - from.1).abs() <= f64::from(h) / 2.0
-}
-
-/// Whether a key moves by hand through pictures or tabs (which stops a
-/// slideshow): the paging keys, Home/End, Ctrl+Tab and Ctrl+1–9.
-fn is_navigation(event: &KeyEvent, modifiers: ModifiersState) -> bool {
-    if modifiers.alt_key() || (modifiers.shift_key() && !modifiers.control_key()) {
-        return false; // Alt+arrows turn the picture; Shift+paging keys do nothing
-    }
-    if modifiers.control_key() {
-        let digit = matches!(
-            event.physical_key,
-            PhysicalKey::Code(
-                KeyCode::Digit1 | KeyCode::Digit2 | KeyCode::Digit3 | KeyCode::Digit4 | KeyCode::Digit5 | KeyCode::Digit6 | KeyCode::Digit7 | KeyCode::Digit8 | KeyCode::Digit9
-            )
-        );
-        return digit || matches!(event.logical_key.as_ref(), Key::Named(NamedKey::Tab));
-    }
-    let letter = matches!(
-        event.physical_key,
-        PhysicalKey::Code(KeyCode::KeyA | KeyCode::KeyD | KeyCode::KeyW | KeyCode::KeyS | KeyCode::BracketLeft | KeyCode::BracketRight)
-    );
-    letter
-        || matches!(
-            event.logical_key.as_ref(),
-            Key::Named(
-                NamedKey::ArrowLeft
-                    | NamedKey::ArrowRight
-                    | NamedKey::ArrowUp
-                    | NamedKey::ArrowDown
-                    | NamedKey::PageUp
-                    | NamedKey::PageDown
-                    | NamedKey::Space
-                    | NamedKey::Backspace
-                    | NamedKey::Home
-                    | NamedKey::End
-                    | NamedKey::BrowserBack
-                    | NamedKey::BrowserForward
-            )
-        )
 }
 
 /// Moves a file to the Recycle Bin (silently: the caller asked already).
@@ -2194,7 +2156,7 @@ impl Viewer {
         let step = ((ms / 10).max(10) / 10) * 10;
         let ms = if longer { ms + step } else { ms.saturating_sub(step) }.clamp(50, 60_000);
         let action = self.set_prefs(Prefs { slide_ms: ms, ..self.prefs });
-        self.show_note(format!("Slideshow · {ms} ms{}", if self.slideshow.is_some() { "" } else { " (Ctrl+G starts)" }));
+        self.show_note(format!("Slideshow · {ms} ms{}", if self.slideshow.is_some() { String::new() } else { format!(" ({} starts)", keys::keys(Command::Slideshow)) }));
         action
     }
 
@@ -2867,11 +2829,16 @@ impl Viewer {
         }
     }
 
-    /// A hotkey's command, chosen from the menu: what the key does.
-    fn run(&mut self, command: menu::Command, shared: &Shared) -> Action {
-        use menu::Command as C;
-        let count = self.tab_count();
+    /// What a key (keys.rs) or a menu item does. With Tab Lock on, paging
+    /// switches tabs instead.
+    fn run(&mut self, command: Command, shared: &Shared) -> Action {
+        use Command as C;
+        let (count, prefs, turn) = (self.tab_count(), self.prefs, self.turn_of(&self.tab));
         match command {
+            C::Next if self.locked => self.step_tab(1, shared),
+            C::Previous if self.locked => self.step_tab(-1, shared),
+            C::RandomNext if self.locked => self.random_tab(true, shared),
+            C::RandomBack if self.locked => self.random_tab(false, shared),
             C::Next => self.step(1, shared),
             C::Previous => self.step(-1, shared),
             C::RandomNext => self.random(true, shared),
@@ -2887,24 +2854,57 @@ impl Viewer {
             C::Forward => self.history(false, shared),
             C::NextTab => self.switch_tab((self.active_at + 1) % count, shared),
             C::PreviousTab => self.switch_tab((self.active_at + count - 1) % count, shared),
+            C::Tab(at) if usize::from(at) < count => self.switch_tab(usize::from(at), shared),
+            C::Tab(_) => Action::None,
             C::DuplicateTab => self.duplicate(false),
             C::DuplicateInNewWindow => self.duplicate(true),
             C::CloseTab => self.close_tab(self.active_at, shared),
             C::ReopenClosed => Action::Reopen,
+            C::TabLock => {
+                // The bar shows for a moment, padlock and all, so it is
+                // clear whether L locked or unlocked.
+                let was = self.locked;
+                let action = self.toggle_lock();
+                if self.locked != was {
+                    self.chrome.reveal(REVEAL);
+                }
+                action
+            }
             C::AddStar => self.star(1, shared),
             C::RemoveStar => self.star(-1, shared),
             C::Copy => self.copy(shared),
             C::ShowInExplorer => self.show_in_explorer(),
             C::Delete => self.delete(false, shared),
+            C::DeletePermanently => self.delete(true, shared),
+            C::Fit(fit) => self.set_prefs(Prefs { mode: Mode { fit, ..prefs.mode }, ..prefs }),
+            C::StretchSmall => self.set_prefs(Prefs { mode: Mode { stretch_small: !prefs.mode.stretch_small, ..prefs.mode }, ..prefs }),
+            C::Filter(filter) => self.set_prefs(Prefs { filter, ..prefs }),
+            // The info panel, on or off (a setting: saved, new windows follow).
+            C::Info => self.set_prefs(Prefs { info: !prefs.info, ..prefs }),
+            C::ZoomIn | C::ZoomOut => {
+                self.zoom(None, if command == C::ZoomIn { ZOOM_STEP } else { 1.0 / ZOOM_STEP });
+                Action::None
+            }
+            C::Turn(quarter) => self.set_turn(Turn { quarter, ..turn }),
+            C::FlipH => self.set_turn(Turn { flip_h: !turn.flip_h, ..turn }),
+            C::FlipV => self.set_turn(Turn { flip_v: !turn.flip_v, ..turn }),
+            // The next quarter turn clockwise (four make normal again).
+            C::NextRotation => self.set_turn(Turn { quarter: (turn.quarter + 1) % 4, ..turn }),
+            C::NextFlip => self.set_turn(next_flip(turn)),
+            C::Slideshow => self.toggle_slideshow(),
+            C::SlideShorter => self.adjust_slide(false),
+            C::SlideLonger => self.adjust_slide(true),
+            C::Menu => Action::Menu,
             C::DebugInfo => {
                 self.toggle_debug();
                 Action::None
             }
-            C::NextRotation => {
-                let turn = self.turn_of(&self.tab);
-                self.set_turn(Turn { quarter: (turn.quarter + 1) % 4, ..turn })
+            // The app recovers as from a real loss.
+            C::SimulateLoss => {
+                crate::gpu::simulate_loss();
+                self.redraw();
+                Action::None
             }
-            C::NextFlip => self.set_turn(next_flip(self.turn_of(&self.tab))),
         }
     }
 
@@ -3022,182 +3022,22 @@ impl Viewer {
     }
 
     fn on_key(&mut self, event: &KeyEvent, shared: &Shared) -> Action {
+        let Some(command) = keys::command(event, self.modifiers) else { return Action::None };
+        if event.repeat && !command.repeats() {
+            return Action::None;
+        }
+        // Moving by hand stops a slideshow (other keys, zoom say, don't).
+        if self.slideshow.is_some() && command.navigates() {
+            self.stop_slideshow_by_hand();
+        }
         // A held key pages as fast as pictures get on screen, as in
         // Honeyview: its repeats are dropped while one is still on its way,
         // so nothing piles up and paging stops when the key is released.
         // (Separate presses always count; the wheel walks through everything.)
-        let page = !(event.repeat && self.busy());
-        // Moving by hand stops a slideshow (other keys, zoom say, don't).
-        if self.slideshow.is_some() && is_navigation(event, self.modifiers) {
-            self.stop_slideshow_by_hand();
-        }
-        // Rotate ▸ Alt+arrows (this tab's turn), Alt+H / Alt+V (mirrors).
-        if self.modifiers.alt_key() && !event.repeat {
-            let turn = self.turn_of(&self.tab);
-            let quarter = |quarter| Some(Turn { quarter, ..turn });
-            let chosen = match (event.physical_key, event.logical_key.as_ref()) {
-                (_, Key::Named(NamedKey::ArrowUp)) => quarter(0),
-                (_, Key::Named(NamedKey::ArrowRight)) => quarter(1),
-                (_, Key::Named(NamedKey::ArrowDown)) => quarter(2),
-                (_, Key::Named(NamedKey::ArrowLeft)) => quarter(3),
-                (PhysicalKey::Code(KeyCode::KeyH), _) => Some(Turn { flip_h: !turn.flip_h, ..turn }),
-                (PhysicalKey::Code(KeyCode::KeyV), _) => Some(Turn { flip_v: !turn.flip_v, ..turn }),
-                (PhysicalKey::Code(KeyCode::KeyF), _) => Some(next_flip(turn)),
-                _ => None,
-            };
-            if let Some(turn) = chosen {
-                return self.set_turn(turn);
-            }
-        }
-        // Tabs: Ctrl+Tab / Ctrl+Shift+Tab cycle, Ctrl+1..9 jump, Ctrl+W
-        // closes, Ctrl+Shift+T reopens the last closed (once per press).
-        if self.modifiers.control_key() {
-            let count = self.others.len() + 1;
-            let action = match (event.physical_key, event.logical_key.as_ref()) {
-                (_, Key::Named(NamedKey::Tab)) => {
-                    let step = if self.modifiers.shift_key() { count - 1 } else { 1 };
-                    Some(self.switch_tab((self.active_at + step) % count, shared))
-                }
-                (PhysicalKey::Code(KeyCode::KeyW), _) => Some(self.close_tab(self.active_at, shared)),
-                (PhysicalKey::Code(KeyCode::KeyT), _) if self.modifiers.shift_key() => Some(if event.repeat { Action::None } else { Action::Reopen }),
-                // Once per press, not per key repeat.
-                (PhysicalKey::Code(KeyCode::KeyC | KeyCode::KeyT | KeyCode::KeyN | KeyCode::KeyF | KeyCode::KeyG | KeyCode::KeyR), _) | (_, Key::Named(NamedKey::Enter))
-                    if event.repeat =>
-                {
-                    Some(Action::None)
-                }
-                // The slideshow's interval: finer steps than the menu's.
-                (PhysicalKey::Code(KeyCode::BracketLeft), _) => Some(self.adjust_slide(false)),
-                (PhysicalKey::Code(KeyCode::BracketRight), _) => Some(self.adjust_slide(true)),
-                // Ctrl+R: the next quarter turn clockwise (four make normal again).
-                (PhysicalKey::Code(KeyCode::KeyR), _) => {
-                    let turn = self.turn_of(&self.tab);
-                    Some(self.set_turn(Turn { quarter: (turn.quarter + 1) % 4, ..turn }))
-                }
-                (PhysicalKey::Code(KeyCode::KeyC), _) => Some(self.copy(shared)),
-                (PhysicalKey::Code(KeyCode::KeyF), _) => Some(self.star(1, shared)),
-                (PhysicalKey::Code(KeyCode::KeyG), _) => Some(self.toggle_slideshow()),
-                (PhysicalKey::Code(KeyCode::KeyT), _) => Some(self.duplicate(false)),
-                (PhysicalKey::Code(KeyCode::KeyN), _) => Some(self.duplicate(true)),
-                (_, Key::Named(NamedKey::Enter)) => Some(self.show_in_explorer()),
-                (PhysicalKey::Code(code), _) => {
-                    let digits = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9];
-                    digits.iter().position(|&d| d == code).filter(|&i| i < count).map(|i| self.switch_tab(i, shared))
-                }
-                _ => None,
-            };
-            if let Some(action) = action {
-                return action;
-            }
-        }
-        // A plain hotkey works on its own only: with Ctrl or Alt, a key not
-        // bound above does nothing; with Shift, only the Shift bindings here
-        // do (and "+", which takes Shift on most layouts).
-        if self.modifiers.control_key() || self.modifiers.alt_key() {
+        if event.repeat && command.pages() && !self.locked && self.busy() {
             return Action::None;
         }
-        if self.modifiers.shift_key() {
-            return match (event.physical_key, event.logical_key.as_ref()) {
-                // Stars: Ctrl+F adds one (above), Shift+F takes one away.
-                (PhysicalKey::Code(KeyCode::KeyF), _) if !event.repeat => self.star(-1, shared),
-                // Delete for good (always asks first).
-                (_, Key::Named(NamedKey::Delete)) if !event.repeat => self.delete(true, shared),
-                // Debugging, beside F12: the next frame finds the graphics
-                // device lost, and the app recovers as from a real loss.
-                (_, Key::Named(NamedKey::F12)) if !event.repeat => {
-                    crate::gpu::simulate_loss();
-                    self.redraw();
-                    Action::None
-                }
-                (_, Key::Character("+")) => {
-                    self.zoom(None, ZOOM_STEP);
-                    Action::None
-                }
-                _ => Action::None,
-            };
-        }
-        // Letters and digits by position, so they work in any keyboard
-        // layout (as Honeyview's do): Z is Z on a Russian keyboard too.
-        if let PhysicalKey::Code(code) = event.physical_key {
-            let prefs = self.prefs;
-            let action = match code {
-                // Tab Lock: what pages pictures switches tabs instead.
-                KeyCode::KeyD if self.locked => Some(self.step_tab(1, shared)),
-                KeyCode::KeyA if self.locked => Some(self.step_tab(-1, shared)),
-                KeyCode::KeyS if self.locked => Some(self.random_tab(true, shared)),
-                KeyCode::KeyW if self.locked => Some(self.random_tab(false, shared)),
-                KeyCode::KeyF => Some(Action::None), // stars take Ctrl or Shift
-                // The folder before or after this one.
-                KeyCode::BracketLeft | KeyCode::BracketRight if event.repeat => Some(Action::None),
-                KeyCode::BracketLeft => Some(self.sibling(false, shared)),
-                KeyCode::BracketRight => Some(self.sibling(true, shared)),
-                KeyCode::KeyL => {
-                    // The bar shows for a moment, padlock and all, so it is
-                    // clear whether L locked or unlocked.
-                    let was = self.locked;
-                    let action = self.toggle_lock();
-                    if self.locked != was {
-                        self.chrome.reveal(REVEAL);
-                    }
-                    Some(action)
-                }
-                KeyCode::KeyD if page => Some(self.step(1, shared)),
-                KeyCode::KeyA if page => Some(self.step(-1, shared)),
-                KeyCode::KeyS if page => Some(self.random(true, shared)),
-                KeyCode::KeyW if page => Some(self.random(false, shared)),
-                KeyCode::KeyD | KeyCode::KeyA | KeyCode::KeyS | KeyCode::KeyW => Some(Action::None),
-                // The menu's keys, as in Honeyview (Soften+Sharpen's S is random paging here).
-                KeyCode::Digit0 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Original, ..prefs.mode }, ..prefs })),
-                KeyCode::Digit9 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Window, ..prefs.mode }, ..prefs })),
-                KeyCode::Digit8 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Width, ..prefs.mode }, ..prefs })),
-                KeyCode::Digit7 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Height, ..prefs.mode }, ..prefs })),
-                KeyCode::Digit6 => Some(self.set_prefs(Prefs { mode: Mode { fit: Fit::Fill, ..prefs.mode }, ..prefs })),
-                KeyCode::KeyZ => Some(self.set_prefs(Prefs { mode: Mode { stretch_small: !prefs.mode.stretch_small, ..prefs.mode }, ..prefs })),
-                KeyCode::KeyU => Some(self.set_prefs(Prefs { filter: Filter::Nearest, ..prefs })),
-                KeyCode::KeyI => Some(self.set_prefs(Prefs { filter: Filter::Soften, ..prefs })),
-                _ => None,
-            };
-            if let Some(action) = action {
-                return action;
-            }
-        }
-        match event.logical_key.as_ref() {
-            // To the Recycle Bin (Shift+Del, above: for good). Always asks first.
-            Key::Named(NamedKey::Delete) if !event.repeat => self.delete(false, shared),
-            // The info panel, on or off (a setting: saved, new windows follow).
-            Key::Named(NamedKey::Tab) if event.repeat => Action::None,
-            Key::Named(NamedKey::Tab) => self.set_prefs(Prefs { info: !self.prefs.info, ..self.prefs }),
-            Key::Named(NamedKey::ArrowRight) if self.locked => self.step_tab(1, shared),
-            Key::Named(NamedKey::ArrowLeft) if self.locked => self.step_tab(-1, shared),
-            Key::Named(NamedKey::ArrowDown) if self.locked => self.random_tab(true, shared),
-            Key::Named(NamedKey::ArrowUp) if self.locked => self.random_tab(false, shared),
-            Key::Named(NamedKey::ArrowRight | NamedKey::PageDown | NamedKey::Space) if page => self.step(1, shared),
-            Key::Named(NamedKey::ArrowLeft | NamedKey::PageUp | NamedKey::Backspace) if page => self.step(-1, shared),
-            Key::Named(NamedKey::ArrowDown) if page => self.random(true, shared),
-            Key::Named(NamedKey::ArrowUp) if page => self.random(false, shared),
-            // The keyboard's Back and Forward (media) keys: the tab's history.
-            Key::Named(NamedKey::BrowserBack) => self.history(true, shared),
-            Key::Named(NamedKey::BrowserForward) => self.history(false, shared),
-            Key::Named(NamedKey::Home) => self.jump(0, shared),
-            Key::Named(NamedKey::End) => match self.tab.folder.as_ref().map(|f| f.files.len().saturating_sub(1)) {
-                Some(last) => self.jump(last, shared),
-                None => Action::None,
-            },
-            Key::Named(NamedKey::F12) => {
-                self.toggle_debug();
-                Action::None
-            }
-            Key::Named(NamedKey::ContextMenu) => Action::Menu,
-            Key::Character("+" | "=") => {
-                self.zoom(None, ZOOM_STEP);
-                Action::None
-            }
-            Key::Character("-") => {
-                self.zoom(None, 1.0 / ZOOM_STEP);
-                Action::None
-            }
-            _ => Action::None,
-        }
+        self.run(command, shared)
     }
 
     pub fn window_event(&mut self, event: WindowEvent, shared: &Shared) -> Result<Action, String> {

@@ -28,6 +28,7 @@ mod gpu;
 mod history;
 mod icon;
 mod instance;
+mod keys;
 mod library;
 mod menu;
 mod meta;
