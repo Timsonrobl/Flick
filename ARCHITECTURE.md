@@ -1058,9 +1058,8 @@ closed by a commit that says so; review this list at every milestone.
   where WIC's demosaic takes 0.6–2.5 s; full level 47–106 ms from a
   full-size JPEG. The info panel's EXIF works through WIC unchanged.
   Phone DNGs: Windows' DNG codec shows the DNG's own preview too (a
-  Pixel's is 1280×964), so nothing larger exists to zoom into. Not yet
-  verified: a portrait RAW through WIC (whether the Raw Image Extension
-  turns the pixels itself); RAW+JPEG pairs in a folder show both.
+  Pixel's is 1280×964), so nothing larger exists to zoom into. Left open
+  (below): RAW+JPEG pairs, a portrait RAW through WIC.
 - [x] **Colour management** (closed 2026-10-25, to sRGB). A scan of the
   user's 164 000 downloads: 90 % no profile, 6 % sRGB, ~2 % wide gamut
   (Display P3, Adobe RGB, a few others). WIC formats now read the frame's
@@ -1084,6 +1083,16 @@ closed by a commit that says so; review this list at every milestone.
   resident correctly lingers while it has windows. Add a scripted test:
   old resident with and without windows, newer launcher, check who serves
   the next open and that the old process exits after its last window.
+- [ ] **RAW+JPEG pairs.** A camera set to save both leaves `X.ARW` beside
+  `X.JPG`, and paging shows each picture twice. Likely fix: list the RAW
+  only where no same-name JPEG (or HEIF) sits beside it; the JPEG opens
+  faster and is the camera's own rendering. A RAW opened directly still
+  shows (in a folder of its pair).
+- [ ] **A portrait RAW through WIC.** Every sample is landscape, or its
+  embedded JPEG covers the screen. Whether the Raw Image Extension turns a
+  portrait RAW's pixels itself (Flick then turning them again, by the
+  RAW's IFD0 orientation) is unchecked: needs a portrait RAW with a small
+  JPEG (a Sony before ~2021), zoomed in past the JPEG.
 
 **Optional backlog** (user decision, 2026-10-27: not sure they're needed;
 build only if a real need shows up):
