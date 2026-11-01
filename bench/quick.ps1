@@ -8,7 +8,9 @@
   none resident), then runs flick-bench ext-viewer three ways on one photo:
     cold   -Runs launches with --standalone   (time to final picture, memory)
     warm   -Runs launches handed to a resident (time to final picture, memory)
-    paging -Pages key presses in one window    (key -> picture, memory after)
+    paging -Pages key presses in one window    (key -> picture, memory after;
+           a folder with Pages or fewer pictures is replaced by Pages + 1
+           flipped and rotated JPEG copies of the photo, made once)
   It watches the screen: don't touch the keyboard or mouse while it runs.
 
   Results:
@@ -60,20 +62,50 @@ if ($running.Count) {
 }
 
 New-Item -ItemType Directory -Force $runDir | Out-Null
+
+# Paging needs a folder with more pictures than page turns, each visibly
+# different (the bench watches the screen for the change). The committed
+# default photo has one sibling, so a small folder is replaced by Pages + 1
+# copies of the photo, flipped and rotated in turn, made once in
+# bench\quick-runs\paging-<photo> and reused.
+$pagingFile = $File
+$siblings = @(Get-ChildItem (Split-Path $File) -File | Where-Object { $_.Extension -match '^\.(jpe?g|png|gif|webp|avif|heic|jxl|tiff?|bmp)$' })
+if ($siblings.Count -le $Pages) {
+    $pagingDir = Join-Path $PSScriptRoot "quick-runs\paging-$([IO.Path]::GetFileNameWithoutExtension($File))"
+    $ext = [IO.Path]::GetExtension($File)
+    if (@(Get-ChildItem $pagingDir -File -ErrorAction SilentlyContinue).Count -lt $Pages + 1) {
+        Write-Host "Making $($Pages + 1) flipped and rotated copies of $(Split-Path $File -Leaf) in $pagingDir (once)."
+        New-Item -ItemType Directory -Force $pagingDir | Out-Null
+        Add-Type -AssemblyName System.Drawing
+        $flips = @([System.Drawing.RotateFlipType]::RotateNoneFlipNone, [System.Drawing.RotateFlipType]::RotateNoneFlipX,
+                   [System.Drawing.RotateFlipType]::Rotate180FlipNone, [System.Drawing.RotateFlipType]::RotateNoneFlipY)
+        $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object MimeType -eq 'image/jpeg'
+        $quality = New-Object System.Drawing.Imaging.EncoderParameters(1)
+        $quality.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, [long]92)
+        foreach ($i in 1..($Pages + 1)) {
+            $img = [System.Drawing.Image]::FromFile($File)
+            $img.RotateFlip($flips[($i - 1) % $flips.Count])
+            $img.Save((Join-Path $pagingDir ('{0:D3}.jpg' -f $i)), $codec, $quality)
+            $img.Dispose()
+        }
+    }
+    $pagingFile = Join-Path $pagingDir '001.jpg'
+    Write-Host "Paging through $($Pages + 1) copies of $(Split-Path $File -Leaf): its folder has only $($siblings.Count) picture(s)."
+}
 # The screen is what's measured: keep the display on meanwhile.
 $keepAwake = Start-Process $bench -ArgumentList 'keep-display', '--minutes', '10' -WindowStyle Hidden -PassThru
 $started = Get-Date
-function Invoke-Bench([string]$Name, [string[]]$Arguments) {
+function Invoke-Bench([string]$Name, [string[]]$Arguments, [string]$Target = $File) {
     $json = Join-Path $runDir "$Name.json"
     Write-Host "  $Name..."
-    & $bench ext-viewer --exe $exe @Arguments --json $json $File 2>&1 | Out-File (Join-Path $runDir "$Name.log")
+    & $bench ext-viewer --exe $exe @Arguments --json $json $Target 2>&1 | Out-File (Join-Path $runDir "$Name.log")
     Get-Content $json -Raw | ConvertFrom-Json
 }
 Write-Host "Benchmarking $(Split-Path $File -Leaf) (hands off the keyboard and mouse)"
 try {
     $cold = Invoke-Bench 'cold' @('--args', '--standalone --size 3377x1440 {file}', '--runs', $Runs)
     $warm = Invoke-Bench 'warm' @('--args', '--size 3377x1440 {file}', '--resident', '--runs', $Runs)
-    $paging = Invoke-Bench 'paging' @('--args', '--standalone --size 3377x1440 {file}', '--runs', 1, '--page', $Pages)
+    $paging = Invoke-Bench 'paging' @('--args', '--standalone --size 3377x1440 {file}', '--runs', 1, '--page', $Pages) $pagingFile
 } finally {
     Stop-Process -Id $keepAwake.Id -ErrorAction SilentlyContinue
 }
@@ -135,7 +167,7 @@ $rows = foreach ($name in $metrics.Keys) {
     $m = $metrics[$name]
     $now = [double]$m.Value
     $base = if ($baseline) { $baseline.metrics.$name } else { $null }
-    $prev = if ($previous -and $previous.$name -ne '') { [double]::Parse($previous.$name, $invariant) } else { $null }
+    $prev = if ($previous -and $previous.$name -ne '' -and $previous.$name -ne '-') { [double]::Parse($previous.$name, $invariant) } else { $null }
     $status = 'info'
     if ($null -ne $m.Abs -and $m.Abs -eq 0) {
         $status = if ($now -le 0) { 'ok' } else { 'FAIL' } # zero means zero, baseline or not
