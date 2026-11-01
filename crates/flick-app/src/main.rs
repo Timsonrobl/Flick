@@ -35,6 +35,7 @@ mod meta;
 mod osd;
 mod placement;
 mod pool;
+mod raw;
 mod session;
 mod settings;
 mod tiles;

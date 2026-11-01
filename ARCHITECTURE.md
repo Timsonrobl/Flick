@@ -307,7 +307,7 @@ Per-format strategy (what `decode` does for `Screen`):
 | HEIC | WIC (win) / `libheif` | embedded thumb, then full → scale | full | tiled 512² internally |
 | AVIF | WIC (win) / `dav1d` | full → scale | full | slowest path; thumb hides it |
 | TIFF | `tiff` | reduced-resolution page if present, else strips → scale | full/tiles | |
-| RAW | `rawloader` or WIC | embedded full-size JPEG preview | same | never demosaic in v1 |
+| RAW | `raw.rs` (own parser) + WIC | the embedded JPEG, DCT scaled | the JPEG if ≥ 90 % of the RAW's size, else WIC's RAW decode | Flick never demosaics itself (built 2026-10-29, §17) |
 | SVG | `resvg` | rasterise at target size | rasterise at zoom | vector: "Full" is per-zoom |
 | GIF/APNG/aWebP | `gif`, `png`, libwebp | decode on play, ring of ≤ 8 frames | n/a | never pre-decode all frames |
 
@@ -915,7 +915,7 @@ only starred / not starred):
 | 4 ✓ | `Full` level with dwell, mips, tiles for oversize | Zoom-in sharp within dwell; > 16k px images open. Part A (2026-10-25): zooming past `Screen` decodes the sharpest level the GPU holds (intermediate levels tried and dropped: barely faster, they popped in steps), fading in; optional dwell prefetch; mips dropped (Direct2D's high-quality cubic pre-shrinks). Part B (2026-10-25): full resolution in tiles for WIC pictures over 16 384 px, up to 1 GiB of GPU (§5) |
 | 5 ✓ | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path. Keymap: one bindings table (§13, 2026-10-27); no config file of tunables (decided, §13); a user keys file is optional backlog (§17) |
 | 6 ✓ | Tags/rating read + write, inline editor | Rating is done as stars (§11: Ctrl+F / Shift+F, kept in the library, files never modified). Tags: moved to the optional backlog (§17; user decision, 2026-10-27) |
-| 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. Done for all but RAW (skipped for now, by request): 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. *No `Decoder` trait yet: `formats::kind` dispatches |
+| 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. RAW added 2026-10-29 (§17): 12 cameras' samples, screen level 12–80 ms. *No `Decoder` trait yet: `formats::kind` dispatches |
 | 8 | Polish: file associations, installer, session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
 
 Milestones 0–3 are the thesis; if 3 doesn't beat Honeyview on cold start,
@@ -1040,8 +1040,24 @@ closed by a commit that says so; review this list at every milestone.
   a later one, and every loop decodes the file again. 1080p, 300 frames:
   GIF decodes at 6.8 ms per frame, animated WebP at 25.9 ms, both under
   their 40 ms per frame of playback.
-- [ ] **RAW** (milestone 7, skipped by request): the embedded full-size JPEG
-  preview, via WIC's Raw Image Extension (installed here) or `rawloader`.
+- [x] **RAW** (built 2026-10-29; milestone 7's last format). Cameras store
+  a JPEG inside each RAW; `raw.rs` finds them with a few small reads (under
+  1 ms): the TIFF IFDs and sub-IFDs (CR2, NEF, ARW, DNG, PEF, RW2's
+  JpgFromRaw, ORF's maker note), CR3's tracks and PRVW box, RAF's header.
+  Each candidate is checked by its frame header, so lossless-JPEG sensor
+  data is never taken; orientation comes from the RAW's IFD0. WIC's RAW
+  decoder (the Raw Image Extension) is only opened for the RAW's size,
+  2–5 ms. A JPEG at least 90 % of that size stands for the RAW at every
+  level; a smaller one (Sony before ~2021: 1616×1080; Panasonic, Olympus,
+  Fujifilm) gives the screen level where it covers the screen, else a
+  quick preview, and WIC decodes the RAW for zooming in. 12 public
+  samples (raw.pixls.us, `bench/samples/raw`): screen level 12–80 ms
+  where WIC's demosaic takes 0.6–2.5 s; full level 47–106 ms from a
+  full-size JPEG. The info panel's EXIF works through WIC unchanged.
+  Phone DNGs: Windows' DNG codec shows the DNG's own preview too (a
+  Pixel's is 1280×964), so nothing larger exists to zoom into. Not yet
+  verified: a portrait RAW through WIC (whether the Raw Image Extension
+  turns the pixels itself); RAW+JPEG pairs in a folder show both.
 - [x] **Colour management** (closed 2026-10-25, to sRGB). A scan of the
   user's 164 000 downloads: 90 % no profile, 6 % sRGB, ~2 % wide gamut
   (Display P3, Adobe RGB, a few others). WIC formats now read the frame's
@@ -1084,4 +1100,4 @@ build only if a real need shows up):
   runtime linked statically and the dependencies' licence notices. Needs
   first: a licence (§16) and a public place for releases. Code signing
   (to avoid SmartScreen's warning) and update checks only for a real
-  release. Build it after RAW, so it registers the RAW types too.
+  release. It registers the RAW types too, as `tools\register.ps1` now does.

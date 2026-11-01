@@ -11,7 +11,8 @@ left alone. If Flick was the default for a type, Windows falls back to asking.
 $ErrorActionPreference = 'Stop'
 $classes = 'HKCU:\Software\Classes'
 $extensions = '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.apng', '.bmp', '.dib', '.gif', '.tif', '.tiff', '.webp',
-    '.heic', '.heif', '.avif', '.jxl', '.jxr', '.wdp', '.ico', '.svg', '.svgz', '.exr', '.hdr'
+    '.heic', '.heif', '.avif', '.jxl', '.jxr', '.wdp', '.ico', '.svg', '.svgz', '.exr', '.hdr',
+    '.cr2', '.cr3', '.nef', '.nrw', '.arw', '.srf', '.sr2', '.dng', '.orf', '.pef', '.rw2', '.rwl', '.raf', '.srw', '.3fr', '.iiq', '.erf'
 
 foreach ($key in "$classes\Flick.Image", "$classes\Applications\flick.exe", 'HKCU:\Software\Flick') {
     if (Test-Path $key) { Remove-Item $key -Recurse }

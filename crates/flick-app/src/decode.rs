@@ -12,6 +12,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::formats::{self, Kind};
+use crate::raw;
 
 use windows::Win32::Foundation::GENERIC_READ;
 use windows::Win32::Graphics::Imaging::*;
@@ -56,6 +57,74 @@ struct Source {
     gif: bool,
     /// The frame's colour, when it needs converting to sRGB.
     profile: Option<IWICColorContext>,
+    /// A RAW file's orientation, read from the RAW (`raw`) rather than the
+    /// frame's metadata.
+    orientation: Option<u16>,
+    /// The frame is a RAW file's embedded JPEG, not a file of its own.
+    embedded: bool,
+}
+
+/// How a RAW file is shown.
+enum Raw {
+    /// By its embedded JPEG at every level: the JPEG is the RAW's full size
+    /// or near it (or Windows can't decode the RAW).
+    Jpeg(raw::Jpeg, Option<u16>),
+    /// The JPEG is smaller than the RAW (`(u32, u32)`, through WIC): it
+    /// gives the screen level where it covers the screen, else a quick
+    /// preview; WIC decodes the RAW for the rest.
+    Small(raw::Jpeg, Option<u16>, (u32, u32)),
+}
+
+/// A JPEG this much of the RAW's size (or more) stands for it at full size.
+const FULL_ENOUGH: f64 = 0.9;
+
+/// How `path` is shown, if it is a RAW file with an embedded JPEG; None:
+/// not a RAW file, or one without (WIC decodes it as any other).
+fn raw_plan(path: &Path) -> Option<Raw> {
+    if !raw::is_raw(path) {
+        return None;
+    }
+    let contents = raw::contents(path)?;
+    let jpeg = contents.largest()?;
+    // WIC's RAW decoder only opened, for the size: 2–5 ms.
+    let size = open(path).ok().map(|source| source.size);
+    let long = |(w, h): (u32, u32)| f64::from(w.max(h));
+    Some(match size {
+        Some(size) if long(jpeg.size) < long(size) * FULL_ENOUGH => Raw::Small(jpeg, contents.orientation, size),
+        _ => Raw::Jpeg(jpeg, contents.orientation),
+    })
+}
+
+/// Whether a RAW's JPEG (`jpeg`) shows it on `target` (displayed
+/// orientation) without enlarging: as large as the RAW (`size`) fitted to
+/// the target, within a percent.
+fn covers(jpeg: (u32, u32), size: (u32, u32), target: (u32, u32), orientation: u16) -> bool {
+    let target = if orientation >= 5 { (target.1, target.0) } else { target };
+    let shown = fit_size(size, target).unwrap_or(size);
+    jpeg.0 * 100 >= shown.0 * 99 && jpeg.1 * 100 >= shown.1 * 99
+}
+
+/// The source a picture's full resolution comes from: a RAW's embedded
+/// JPEG where that stands for it, else the file.
+fn open_full(path: &Path) -> windows::core::Result<Source> {
+    match raw_plan(path) {
+        Some(Raw::Jpeg(jpeg, orientation)) => open_embedded(path, jpeg, orientation),
+        Some(Raw::Small(_, orientation, _)) => open(path).map(|source| Source { orientation, ..source }),
+        None => open(path),
+    }
+}
+
+/// A RAW file's embedded JPEG, decoded from its place in the file.
+fn open_embedded(path: &Path, jpeg: raw::Jpeg, orientation: Option<u16>) -> windows::core::Result<Source> {
+    unsafe {
+        let factory = factory()?;
+        let file = factory.CreateStream()?;
+        file.InitializeFromFilename(&HSTRING::from(path.as_os_str()), GENERIC_READ.0)?;
+        let region = factory.CreateStream()?;
+        region.InitializeFromIStreamRegion(&file, jpeg.offset, jpeg.len)?;
+        let decoder = factory.CreateDecoderFromStream(&region, std::ptr::null(), WICDecodeMetadataCacheOnDemand)?;
+        Ok(Source { orientation, embedded: true, ..source(factory, decoder)? })
+    }
 }
 
 /// `image` (as stored) turned to how EXIF orientation `o` (1–8) displays it.
@@ -97,13 +166,26 @@ fn open(path: &Path) -> windows::core::Result<Source> {
     unsafe {
         let factory = factory()?;
         let decoder = factory.CreateDecoderFromFilename(&HSTRING::from(path.as_os_str()), None, GENERIC_READ, WICDecodeMetadataCacheOnDemand)?;
+        source(factory, decoder)
+    }
+}
+
+fn source(factory: IWICImagingFactory, decoder: IWICBitmapDecoder) -> windows::core::Result<Source> {
+    unsafe {
         let frame = decoder.GetFrame(0)?;
         let (mut w, mut h) = (0, 0);
         frame.GetSize(&mut w, &mut h)?;
         let frames = decoder.GetFrameCount().unwrap_or(1);
         let gif = decoder.GetContainerFormat().is_ok_and(|f| f == GUID_ContainerFormatGif);
         let profile = profile(&factory, &frame);
-        Ok(Source { factory, decoder, frame, size: (w, h), frames, gif, profile })
+        Ok(Source { factory, decoder, frame, size: (w, h), frames, gif, profile, orientation: None, embedded: false })
+    }
+}
+
+impl Source {
+    /// EXIF orientation, 1–8: a RAW's own, else the frame's.
+    fn orientation(&self) -> u16 {
+        self.orientation.unwrap_or_else(|| orientation(&self.frame))
     }
 }
 
@@ -238,8 +320,14 @@ fn fit_size((w, h): (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
 
 /// A progressive JPEG's first scans only, at 1/8 size: a soft stand-in in
 /// ~90 ms where the screen level takes ~1 s (24 MP at top quality), for
-/// paging fast. None for anything else (or should it fail).
+/// paging fast. A RAW whose embedded JPEG is smaller than it: that JPEG,
+/// while WIC decodes the RAW. None for anything else (or should it fail).
 pub fn decode_preview(path: &Path) -> Option<Picture> {
+    if raw::is_raw(path) {
+        let Some(Raw::Small(jpeg, orientation, size)) = raw_plan(path) else { return None };
+        let source = open_embedded(path, jpeg, orientation).ok()?;
+        return Some(Picture { screen: full(&source).ok()?, full_size: size, orientation: source.orientation(), frames: 1, preview: true });
+    }
     if formats::kind(path) != Kind::Wic {
         return None;
     }
@@ -253,7 +341,7 @@ pub fn decode_preview(path: &Path) -> Option<Picture> {
     // Level 0: the DC scan, an 1/8 picture in its own right.
     unsafe { source.frame.cast::<IWICProgressiveLevelControl>().ok()?.SetCurrentLevel(0) }.ok()?;
     let screen = scaled(&source, 8).ok()??;
-    Some(Picture { screen, full_size: source.size, orientation: orientation(&source.frame), frames: 1, preview: true })
+    Some(Picture { screen, full_size: source.size, orientation: source.orientation(), frames: 1, preview: true })
 }
 
 /// The Screen level: the picture as a window first shows it, no larger than
@@ -340,6 +428,9 @@ fn managed(source: &Source, image: Image) -> Option<Image> {
 /// zune-jpeg's decode, before colour management (`zune_full`).
 fn zune_raw(path: &Path, source: &Source) -> Option<Image> {
     use zune_jpeg::zune_core::{bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions};
+    if source.embedded {
+        return None; // `path` is the RAW around it
+    }
     let jpeg = source.frame.cast::<IWICJpegFrameDecode>().ok()?;
     let mut header = WICJpegFrameHeader::default();
     unsafe { jpeg.GetFrameHeader(&mut header) }.ok()?;
@@ -358,9 +449,21 @@ fn zune_raw(path: &Path, source: &Source) -> Option<Image> {
 
 /// WIC formats: the smallest DCT scale (1/2, 1/4, 1/8) whose output still
 /// covers `target`; else, for a picture larger than it, the Fant scaler. A
-/// progressive JPEG: zune-jpeg's full size, then the Fant scaler.
+/// progressive JPEG: zune-jpeg's full size, then the Fant scaler. A RAW
+/// file: its embedded JPEG, where it covers the screen (`raw_plan`).
 fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture> {
-    let source = open(path)?;
+    let (source, raw_size) = match raw_plan(path) {
+        Some(Raw::Jpeg(jpeg, orientation)) => (open_embedded(path, jpeg, orientation)?, None),
+        Some(Raw::Small(jpeg, orientation, size)) if covers(jpeg.size, size, target, orientation.unwrap_or(1)) => (open_embedded(path, jpeg, orientation)?, Some(size)),
+        Some(Raw::Small(_, orientation, _)) => (Source { orientation, ..open(path)? }, None),
+        None => (open(path)?, None),
+    };
+    let picture = screen(path, source, target)?;
+    // The JPEG stands in for the RAW: zooming in decodes the RAW itself.
+    Ok(Picture { full_size: raw_size.unwrap_or(picture.full_size), ..picture })
+}
+
+fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Result<Picture> {
     if source.gif {
         // Frame 0 composed on the GIF's logical screen, as `animate` shows it.
         let mut first = None;
@@ -372,7 +475,7 @@ fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture>
         let full_size = (screen.width, screen.height);
         return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames, preview: false });
     }
-    let orientation = orientation(&source.frame);
+    let orientation = source.orientation();
     let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
     // Shrunk first, then colour-managed: converting the whole picture took ~3× as long.
     if let Some(screen) = zune_raw(path, &source).and_then(|full| managed(&source, shrink(full, stored_target).ok()?)) {
@@ -788,6 +891,72 @@ mod tests {
         }
     }
 
+    /// Every RAW sample (`bench/samples/raw`; skipped where not present)
+    /// opens on a 1920 × 1080 screen from a picture at least 1000 px across,
+    /// and fast where its embedded JPEG is full size (no demosaic).
+    #[test]
+    fn raw_samples_open_by_their_jpegs() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/raw");
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for path in entries.flatten().map(|e| e.path()) {
+            let plan = raw_plan(&path);
+            assert!(plan.is_some(), "{}: an embedded JPEG", path.display());
+            let started = std::time::Instant::now();
+            let picture = decode_screen(&path, (1920, 1080)).unwrap();
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            assert!(picture.screen.width.max(picture.screen.height) >= 1000, "{}", path.display());
+            if matches!(plan, Some(Raw::Jpeg(..))) {
+                assert!(ms < 400.0, "{}: {ms:.0} ms", path.display());
+            }
+        }
+    }
+
+    /// The RAW samples (`bench/samples/raw`) as a window gets them: the
+    /// quick preview, the screen level (3377×1440), the full level, with
+    /// times and sizes. With `$env:FLICK_FORMATS_OUT`, each screen level
+    /// (oriented) as a PNG there, to look at.
+    /// `cargo test --release -p flick-app raw_decode_report -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn raw_decode_report() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/raw");
+        let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).collect();
+        files.sort();
+        let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1000.0;
+        for file in files {
+            let name = file.file_name().unwrap().to_string_lossy().into_owned();
+            let t = std::time::Instant::now();
+            let preview = decode_preview(&file).map(|p| format!("{}x{}", p.screen.width, p.screen.height));
+            let preview_ms = ms(t);
+            let t = std::time::Instant::now();
+            let screen = decode_screen(&file, (3377, 1440)).unwrap();
+            let screen_ms = ms(t);
+            let t = std::time::Instant::now();
+            let full = decode_full(&file).unwrap();
+            let full_ms = ms(t);
+            let info = crate::meta::read(&file);
+            println!("{name}: info \"{}\", {} EXIF lines: {}", info.format, info.exif.len(), info.exif.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; "));
+            let s = &screen.screen;
+            println!(
+                "{name:<48} preview {:<10} {preview_ms:>5.0} ms  screen {}x{} of {}x{}, o{} {screen_ms:>5.0} ms  full {}x{} {full_ms:>5.0} ms",
+                preview.unwrap_or("none".into()),
+                s.width,
+                s.height,
+                screen.full_size.0,
+                screen.full_size.1,
+                screen.orientation,
+                full.width,
+                full.height
+            );
+            if let Some(out) = std::env::var_os("FLICK_FORMATS_OUT") {
+                let s = oriented(screen.screen, screen.orientation);
+                let rgb = s.pixels.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+                std::fs::create_dir_all(&out).unwrap();
+                image::RgbImage::from_raw(s.width, s.height, rgb).unwrap().save(Path::new(&out).join(format!("{name}.png"))).unwrap();
+            }
+        }
+    }
+
     /// How fast the large animations decode, frame by frame (they stream
     /// during playback, so decoding must keep up with their frame rate).
     /// Needs `bench/gen-formats.ps1 -LargeAnimations`.
@@ -899,7 +1068,7 @@ fn fill(canvas: &mut [u8], stride: usize, (width, height): (u32, u32), (x, y, w,
 /// The Full level: native resolution (for an SVG, its `full_size`).
 pub fn decode_full(path: &Path) -> Result<Image, String> {
     let result = match formats::kind(path) {
-        Kind::Wic => open(path).and_then(|source| zune_full(path, &source).map_or_else(|| full(&source), Ok)).map_err(|e| e.to_string()),
+        Kind::Wic => open_full(path).and_then(|source| zune_full(path, &source).map_or_else(|| full(&source), Ok)).map_err(|e| e.to_string()),
         kind @ (Kind::Apng(_) | Kind::AnimatedWebp(_)) => first_frame(path, kind),
         Kind::Jxl => formats::jxl(path),
         Kind::Svg => formats::Svg::open(path).and_then(|svg| svg.render(svg.full_size())),
@@ -914,7 +1083,7 @@ pub fn decode_full(path: &Path) -> Result<Image, String> {
 /// full size. Returns it with the fraction it got.
 pub fn decode_level(path: &Path, denom: u32) -> Result<(Image, u32), String> {
     if denom > 1 && formats::kind(path) == Kind::Wic {
-        let level = open(path).and_then(|source| match scaled(&source, denom)? {
+        let level = open_full(path).and_then(|source| match scaled(&source, denom)? {
             Some(image) => Ok((image, denom)),
             None => full(&source).map(|image| (image, 1)),
         });
@@ -928,7 +1097,7 @@ pub fn decode_level(path: &Path, denom: u32) -> Result<(Image, u32), String> {
 /// too large to hold whole never is: `each(size, y, rows, pixels)`.
 pub fn bands(path: &Path, rows: u32, mut each: impl FnMut((u32, u32), u32, u32, &[u8]) -> Result<(), String>) -> Result<(), String> {
     let named = |e: windows::core::Error| format!("{}: {e}", path.display());
-    let source = open(path).map_err(named)?;
+    let source = open_full(path).map_err(named)?;
     let (w, h) = source.size;
     let converter = unsafe {
         let converter = source.factory.CreateFormatConverter().map_err(named)?;

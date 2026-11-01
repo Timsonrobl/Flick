@@ -24,10 +24,13 @@ $ErrorActionPreference = 'Stop'
 $Exe = [System.IO.Path]::GetFullPath($Exe)
 if (-not (Test-Path $Exe)) { throw "$Exe not found; build first (tools\build.ps1)" }
 
-# Every format Flick opens (folder.rs IMAGE_EXTENSIONS). HEIC/HEIF and AVIF
-# need Windows' HEIF + HEVC and AV1 extensions; the rest work without.
+# Every format Flick opens (folder.rs IMAGE_EXTENSIONS, raw.rs EXTENSIONS).
+# HEIC/HEIF and AVIF need Windows' HEIF + HEVC and AV1 extensions; camera
+# RAWs show their embedded JPEG without any, and need the Raw Image
+# Extension only to zoom past a small one. The rest work without.
 $extensions = '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.apng', '.bmp', '.dib', '.gif', '.tif', '.tiff', '.webp',
-    '.heic', '.heif', '.avif', '.jxl', '.jxr', '.wdp', '.ico', '.svg', '.svgz', '.exr', '.hdr'
+    '.heic', '.heif', '.avif', '.jxl', '.jxr', '.wdp', '.ico', '.svg', '.svgz', '.exr', '.hdr',
+    '.cr2', '.cr3', '.nef', '.nrw', '.arw', '.srf', '.sr2', '.dng', '.orf', '.pef', '.rw2', '.rwl', '.raf', '.srw', '.3fr', '.iiq', '.erf'
 $classes = 'HKCU:\Software\Classes'
 $progId = 'Flick.Image'
 $command = "`"$Exe`" `"%1`""

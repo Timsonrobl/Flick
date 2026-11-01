@@ -9,7 +9,8 @@ use std::time::UNIX_EPOCH;
 
 use crate::library::Stars;
 
-/// Extensions WIC can usually decode (some need Store codec extensions).
+/// Extensions WIC can usually decode (some need Store codec extensions);
+/// and camera RAWs (`raw::EXTENSIONS`).
 const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "jpe", "jfif", "png", "apng", "bmp", "dib", "gif", "tif", "tiff", "webp", "heic", "heif", "avif", "jxl", "jxr", "wdp", "ico",
     "svg", "svgz", "exr", "hdr",
@@ -113,6 +114,7 @@ fn is_image(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| IMAGE_EXTENSIONS.iter().any(|known| known.eq_ignore_ascii_case(e)))
+        || crate::raw::is_raw(path)
 }
 
 fn name(path: &Path) -> std::borrow::Cow<'_, str> {
