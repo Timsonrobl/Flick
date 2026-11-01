@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/demo.gif" alt="A photo opens straight into a frameless window, four page turns follow at key-repeat speed, then the hover bar and a second tab fade in when the mouse reaches the top edge and fade out when it leaves." width="100%">
+  <img src="assets/readme/race.gif" alt="Side by side, the same 15 MP JPEG opened in Flick and in Windows Photos, each on its second open, played at quarter speed with a real-time timer under each: Flick's picture is up at about 0.05 s, Photos' at about 0.33 s." width="100%">
 </p>
 
 Flick is an image viewer built around one idea: **the picture should be on
@@ -160,4 +160,7 @@ method and every measurement so far.
 Flick is free software under the [GNU General Public License, version 3 or
 later](LICENSE). The libraries it is built with are listed, with their
 licences, in `THIRD-PARTY-NOTICES.txt`, which ships with every installer.
-The benchmark photos are CC0 and public domain (`bench/images/CREDITS.md`).
+The benchmark photos are CC0 and public domain (`bench/images/CREDITS.md`);
+the photo in the race above is
+[*Rocky ride* by simon berger](https://commons.wikimedia.org/wiki/File:Rocky_ride._-_Flickr_-_simon_berger.jpg),
+CC0, cropped.
