@@ -3048,7 +3048,13 @@ impl Viewer {
                 Action::None
             }
             WindowEvent::Resized(size) => {
-                if let Some(surface) = &mut self.surface {
+                // A size the window has already left: showing it maximized
+                // passes through its restored size for a moment (winit
+                // rebuilding its style), and drawing that showed one frame
+                // of the picture fitted to the wrong size. The event with
+                // the size it has now follows.
+                let stale = self.window.as_ref().is_some_and(|w| w.inner_size() != size);
+                if let (Some(surface), false) = (&mut self.surface, stale) {
                     surface.resize((size.width, size.height))?;
                     for current in self.tab.current.iter_mut().chain(self.holdover.iter_mut()) {
                         current.view.resize((size.width.max(1), size.height.max(1)));
