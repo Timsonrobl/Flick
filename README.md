@@ -9,12 +9,20 @@
   <img alt="Rendering: Direct2D on Direct3D 11" src="https://img.shields.io/badge/render-Direct2D%20%2B%20DirectComposition-2b2b2b?style=flat-square">
 </p>
 
+<p align="center">
+  <img src="assets/readme/demo.gif" alt="A photo opens straight into a frameless window, four page turns follow at key-repeat speed, then the hover bar and a second tab fade in when the mouse reaches the top edge and fade out when it leaves." width="100%">
+</p>
+
 Flick is an image viewer built around one idea: **the picture should be on
 screen before you have finished double-clicking.** It opens a 17-megapixel
 JPEG in about a tenth of a second, pages through a folder of them as fast as
-you can press a key, and keeps twenty tabs open in less memory than many
-viewers spend on one. There is no title bar and nothing else on screen
-until you move the mouse: the window is the picture.
+you can press a key, and keeps twenty tabs open in under 100 MB. There is no
+title bar and nothing else on screen until you move the mouse: the window is
+the picture.
+
+Honeyview set the bar for a quiet, fast Windows viewer, and IrfanView and
+XnView are fine programs. Flick was written to beat them on the one metric
+that matters: how long you wait.
 
 Every number on this page is measured, per build, from outside the program,
 by a tool that watches the screen.
@@ -46,14 +54,17 @@ every window and tab and trimmed on every page turn, so paging through a
 thousand photos costs the same as paging through five. Idle windows cost
 0 % CPU: no timers, no redraws.
 
-**Measure the right counter.** `flick-bench` launches a viewer and times the
-moment the final picture appears on screen, with blank and flicker frames
-counted. `bench/quick.ps1` runs it before every milestone against a saved
-baseline, and flags any figure that got worse.
-
 <p align="center">
   <img src="assets/readme/numbers.svg" alt="Warm open 116 ms; page turn 16 ms median; 0 blank or flicker frames; 0 % CPU idle. Cold open: Flick 205 ms, Honeyview 303 ms. Working set after paging a folder: Flick 72 MB, Honeyview 396 MB." width="100%">
 </p>
+
+|                                   | Flick      | Honeyview |
+|-----------------------------------|-----------:|----------:|
+| Cold open, 17 MP JPEG             | 205 ms     | 303 ms    |
+| Warm open, same file              | 116 ms     | –         |
+| Page turn, median                 | 16 ms      | ~140 ms   |
+| Working set after paging a folder | 72 MB      | 396 MB    |
+| Blank or flicker frames; idle CPU | 0; 0 %     | –         |
 
 ## What it does
 
@@ -69,7 +80,9 @@ baseline, and flags any figure that got worse.
 - **Formats:** JPEG (with fast progressive decoding), PNG, APNG, GIF, WebP and
   animated WebP, JPEG XL, HEIC, AVIF, TIFF, BMP, ICO, SVG, OpenEXR and
   Radiance HDR, and camera RAW (CR2, CR3, NEF, ARW, DNG, ORF, RAF, RW2, PEF
-  and more), shown instantly through the JPEG every camera embeds.
+  and more), shown instantly through the JPEG every camera embeds. RAW
+  beyond the embedded preview, HEIC and AVIF use Microsoft's free *Raw
+  Image*, *HEIF* and *AV1* extensions from the Store.
 - **Zoom** to any level with the sharpest pixels decoded on demand; pictures
   too big for the GPU are tiled, up to ~268 MP at full resolution.
 - **Colour managed:** wide-gamut photos (Display P3, Adobe RGB) are converted
@@ -95,6 +108,11 @@ after the first present of the final picture, with the Windows open
 animation turned off. The resident process then makes every later open a
 warm one. The details, with the measurements behind each decision, are in
 [ARCHITECTURE.md](ARCHITECTURE.md).
+
+The numbers are measured, not estimated. `flick-bench` launches a viewer and
+times the moment the final picture appears on screen, with blank and flicker
+frames counted. `bench/quick.ps1` runs it before every milestone against a
+saved baseline, and flags any figure that got worse.
 
 ## What Flick is not
 
@@ -123,9 +141,6 @@ current user, without administrator rights, into
 
 The installer isn't code-signed, so Windows SmartScreen asks once whether
 to run it. Updates are downloaded by Flick itself and don't ask again.
-Camera RAW files beyond their embedded preview need Microsoft's *Raw Image
-Extension*; HEIC and AVIF need the *HEIF* and *AV1* extensions from the
-Microsoft Store.
 
 ## Build from source
 
@@ -133,14 +148,12 @@ You need Rust (stable, MSVC toolchain) on Windows 10 or 11.
 
 ```powershell
 .\tools\build.ps1 -p flick-app        # release build; works while Flick is running
-.\tools\register.ps1                  # register this build for Open with / Default apps
 cargo test --release -p flick-app     # unit tests
-.\bench\quick.ps1                     # cold, warm and paging benchmark (takes the screen ~1 min)
-.\tools\installer.ps1                 # the installer (needs Inno Setup 6)
 ```
 
-`bench/images` holds the openly licensed photos the benchmarks use by
-default; `bench/README.md` covers the method and every measurement so far.
+`tools/` also has scripts to register a build for *Open with*, run the
+benchmark and make the installer; `bench/README.md` covers the benchmark
+method and every measurement so far.
 
 ## Licence
 
