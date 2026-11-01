@@ -1,4 +1,4 @@
-//! The formats WIC doesn't cover here (milestone 7, ARCHITECTURE.md §7):
+//! The formats WIC doesn't cover here (ARCHITECTURE.md §7):
 //! JPEG XL (jxl-oxide), SVG (resvg), OpenEXR and Radiance HDR (the image
 //! crate, tone-mapped to 8 bits), and the animations WIC shows as stills,
 //! APNG and animated WebP (the image crate). Everything else goes to WIC.

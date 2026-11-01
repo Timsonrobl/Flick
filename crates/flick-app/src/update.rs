@@ -10,7 +10,7 @@
 //! signed (ECDSA P-256) by the key in `update.key`, the exe must match its
 //! size and SHA-256, and only a version newer than this build is taken.
 //! Flick's own download carries no Mark of the Web, so Windows never warns
-//! about it as it did about the browser-downloaded installer.
+//! about it as it does about a browser-downloaded installer.
 //!
 //! Only an installed copy updates (the uninstall entry's InstallLocation is
 //! the exe's folder): a dev build never replaces itself.

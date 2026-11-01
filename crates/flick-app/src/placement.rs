@@ -126,7 +126,7 @@ pub fn prepare(hwnd: HWND, placement: &Placement) -> (u32, u32) {
 
 /// `r` grown to the least window size (chrome::MIN_WIDTH × MIN_HEIGHT, at
 /// the DPI of the monitor it is on), keeping its top-left corner: a
-/// placement saved smaller (before there was a least size) opens usable.
+/// placement saved smaller opens usable.
 fn at_least_min(r: RECT) -> RECT {
     use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     let (mut dpi, mut unused) = (96, 96);

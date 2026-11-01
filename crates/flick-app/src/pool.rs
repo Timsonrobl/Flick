@@ -5,8 +5,8 @@
 //! A decode that has already started runs to completion; its result is
 //! simply not used if nobody wants it any more. The picture a window is
 //! headed for never waits behind those: `urgent` starts it at once on a
-//! thread of its own (preloads of pictures scrolled past held every worker
-//! for a heavy file's whole second). Preloads stop short of a RAW's own
+//! thread of its own (preloads of pictures scrolled past can hold every
+//! worker for a heavy file's whole second). Preloads stop short of a RAW's own
 //! decode (`decode::decode_preload`): only the urgent picture gets it.
 
 use std::collections::{HashSet, VecDeque};

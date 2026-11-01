@@ -1,4 +1,9 @@
-# Milestone 0 benchmarks
+# Benchmarks
+
+How Flick is measured, and what the measurements decided. The images the
+benchmarks need by default are committed in `bench/images` (CC0 and public
+domain, `bench/images/CREDITS.md`); larger sets are fetched
+(`fetch-mixed.ps1`) or generated (`gen-formats.ps1`).
 
 Two tools decide Flick's decoder choice and how much of the cold-start budget
 the window itself costs (ARCHITECTURE.md §15, milestone 0).
@@ -13,7 +18,7 @@ the window itself costs (ARCHITECTURE.md §15, milestone 0).
 ## Quick check for regressions: `bench/quick.ps1`
 
 One command, about 30 s of measuring (plus the build): 5 cold opens, 5 warm
-opens and 20 page turns on the first burst photo, compared with a saved
+opens and 20 page turns on `bench/images/pixel-7-2.jpg`, compared with a saved
 baseline. It closes any running Flick first and watches the screen, so
 keep off the keyboard and mouse while it runs.
 
@@ -188,7 +193,7 @@ DX12 alone costs twice Honeyview's total.
 
 ## Results: real "burst" set (2026-10-23)
 
-22 of the user's typical work images (`bench/photos/burst`, git-ignored):
+22 real camera JPEGs from one burst (`bench/photos/burst`, git-ignored):
 17.2 MP (4800×3584), 7.5–9.4 MB, baseline 4:2:0, **no EXIF thumbnail, no
 restart markers**. Raw data: `bench/results/burst.json`.
 
@@ -218,8 +223,8 @@ out, probably at the end of Honeyview's own folder order. Raw data:
 
 **Honeyview keeps about five full-resolution decodes.** Each page turn adds
 66 MB, exactly one 4800×3584 RGBA image, until it plateaus at 396 MB. With
-24 MP files the same cache would be about 550 MB, which is the "500 MB" seen
-in daily use. It never had the next image preloaded: each turn took about
+24 MP files the same cache would be about 550 MB, which matches the
+"500 MB" Honeyview is known to reach. It never had the next image preloaded: each turn took about
 140 ms even after the previous one had settled for 0.7 s.
 
 Flick still has no working viewer, so its column is projected from measured
@@ -234,7 +239,7 @@ renderer times, and screen-size levels of 17 MB each.
 | memory after open | 133 MB | ~340 MB (319 MB is the empty DX12 window) | renderer + 17 MB |
 | memory after 5 images | 396 MB | renderer + ~85 MB (5 screen levels) | renderer + ~85 MB |
 
-So for the user's real files the decode and cache design beats Honeyview on
+So for real camera files the decode and cache design beats Honeyview on
 every count. The renderer decides the rest: wgpu on DX12 would give away the
 cold-start lead and most of the memory win.
 
@@ -705,12 +710,9 @@ everything to the SSD, then read it back warm (OS file cache) and cold
 
 ## Not done yet
 
-- Run on real camera folders, with both `decode` and `ext-viewer`. The
-  synthetic numbers above are only a smoke test.
-- Reproduce Honeyview's 500 MB: memory after paging through a real folder, and
-  with several windows open.
-- Time first-frame paths without wgpu: GDI `StretchDIBits`, Direct2D, raw
-  D3D11 + DXGI swap chain. Find where wgpu's DX12 adapter time and commit go.
+(Real camera files, Honeyview's memory while paging and first-frame paths
+without wgpu are measured in the sections above.)
+
 - Install `cmake` and `nasm`, then measure turbojpeg (scaled decode is its
   strength).
-- Measure the SSD read itself (an uncached read with `FILE_FLAG_NO_BUFFERING`).
+- Disk reads after a reboot, with the drive's own cache cold too.

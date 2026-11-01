@@ -332,9 +332,9 @@ impl View {
     /// A right-drag zoom to `scale`, purely around the image point `anchor`
     /// held at `pressed` (window pixels): nothing keeps the picture's edges
     /// to the window's meanwhile, so the zoom never changes direction. (Kept
-    /// to them, an edge that met the window's held the zoom there, the
-    /// picture slid the other way, then the zoom moved back to the pressed
-    /// point once the picture outgrew the window: it jiggled.) `settle` puts
+    /// to them, an edge that meets the window's holds the zoom there, the
+    /// picture slides the other way, then the zoom moves back to the pressed
+    /// point once the picture outgrows the window: it jiggles.) `settle` puts
     /// the edges right when the drag ends.
     pub fn drag_zoom(&mut self, anchor: (f32, f32), pressed: (f32, f32), scale: f32) {
         self.scale = scale.clamp(MIN_SCALE.min(self.fit_scale()), MAX_SCALE);
@@ -577,9 +577,9 @@ mod tests {
     fn drag_zoom_never_turns_back() {
         // The jiggle: a 750 × 500 picture fit in 1000 × 500 (borders left and
         // right), drag-zoomed to 8× around a point on its left. Held to the
-        // window's edges, the right edge met the window's first and the
-        // picture slid left, then the zoom moved back once both sides were
-        // out. Now every point moves steadily away from the pressed one.
+        // window's edges, the right edge would meet the window's first and
+        // the picture slide left, then the zoom move back once both sides
+        // were out. Every point must move steadily away from the pressed one.
         let mut view = View::new((1500, 1000), WINDOW, mode(Fit::Window, false));
         let pressed = (300.0, 250.0);
         let anchor = view.to_image(pressed);

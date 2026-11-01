@@ -1,5 +1,5 @@
 //! Would a disk cache of decoded `Screen` levels beat decoding the JPEG again?
-//! (ARCHITECTURE.md §16, "Disk cache format".)
+//! (ARCHITECTURE.md §16, "Disk cache: shelved".)
 //!
 //! For each file: decode the screen level with WIC (the baseline), write it
 //! as raw BGRA and as LZ4, then read each back warm (still in the OS file

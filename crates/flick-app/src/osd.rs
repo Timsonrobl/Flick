@@ -24,7 +24,7 @@ const PADDING: f32 = 10.0;
 /// Below the hover bar's first row (chrome.rs BAR, 36 px) and a margin.
 const TOP: f32 = 36.0 + 8.0;
 /// The info panel's and the notes' text size (100 % scaling), about
-/// Honeyview's (17 px read as too big, 2026-10-25).
+/// Honeyview's (17 px reads as too big).
 const TEXT: f32 = 14.0;
 /// The info panel wraps at this width where the picture leaves no border
 /// wide enough to hold it (100 % scaling).

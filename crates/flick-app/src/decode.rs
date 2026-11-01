@@ -1,7 +1,7 @@
 //! Decoding. WIC does most formats; `formats` the ones it doesn't cover
 //! here (JPEG XL, SVG, EXR/HDR, APNG and animated WebP). The `Screen` level
 //! is decoded at the smallest DCT scale that still covers the target (the
-//! fastest final-quality picture, measured in milestone 0), or scaled down
+//! fastest final-quality picture, measured in bench/README.md), or scaled down
 //! to the target with WIC's Fant scaler; `Full` is the native resolution,
 //! for zooming in. Animations are composed frame by frame into whole
 //! pictures (`animate`). A picture with a colour profile other than sRGB
@@ -498,7 +498,7 @@ fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Res
     }
     let orientation = source.orientation();
     let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
-    // Shrunk first, then colour-managed: converting the whole picture took ~3× as long.
+    // Shrunk first, then colour-managed: converting the whole picture takes ~3× as long.
     if let Some(screen) = zune_raw(path, &source).and_then(|full| managed(&source, shrink(full, stored_target).ok()?)) {
         return Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false, heavy: false });
     }
@@ -507,7 +507,6 @@ fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Res
     let fit = f64::min(f64::from(target.0) / f64::from(dw), f64::from(target.1) / f64::from(dh));
     let denom = [8, 4, 2].into_iter().find(|&d| 1.0 / f64::from(d) >= fit).unwrap_or(1);
     let screen = if denom > 1 { scaled(&source, denom)? } else { None };
-    let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
     let screen = match (screen, fit_size(source.size, stored_target)) {
         (Some(image), _) => image,
         (None, Some(size)) => fitted(&source, size)?,
@@ -590,7 +589,7 @@ fn compose(source: &Source, mut each: impl FnMut(Frame) -> bool) -> windows::cor
 mod tests {
     use super::*;
 
-    /// Milestone 4 part B's test picture: a 30000 × 8000 JPEG (240 MP) of
+    /// A test picture for huge images: a 30000 × 8000 JPEG (240 MP) of
     /// colour gradients, a 500 px grid and fine diagonals (a tile seam would
     /// break them), written in strips. `cargo test --release -p flick-app
     /// huge_test_picture -- --ignored --nocapture`; then `bands` times it.
@@ -660,7 +659,7 @@ mod tests {
         assert!(picture.screen.pixels.chunks_exact(4).all(|p| p[3] == 255));
     }
 
-    /// Adobe CMYK JPEGs (the user's samples; skipped where not present) scale
+    /// Adobe CMYK JPEGs (local samples; skipped where not present) scale
     /// while decoding, with WIC's own colours: half size matches the whole
     /// picture averaged 2×2; and they get a preview.
     #[test]
@@ -869,7 +868,7 @@ mod tests {
         }
     }
 
-    /// Milestone 7: every sample from `bench/gen-formats.ps1`, decoded as a
+    /// Every sample from `bench/gen-formats.ps1`, decoded as a
     /// window would (screen level for a 3377×1440 target, then full), with
     /// times. `cargo test --release -p flick-app formats_report -- --ignored --nocapture`.
     #[test]
@@ -1203,8 +1202,8 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
         let mut format: GUID = GUID_WICPixelFormat32bppBGRA;
         transform.GetClosestPixelFormat(&mut format)?;
         // CMYK (Adobe's print JPEGs) too: scaled here, its colours converted
-        // after, on the small picture (before, the whole picture was
-        // converted, then shrunk: 3.0 s for an 18 MP one, and no preview).
+        // after, on the small picture (converting the whole picture, then
+        // shrinking it, takes 3.0 s for an 18 MP one and gives no preview).
         let cmyk = format == GUID_WICPixelFormat32bppCMYK;
         let bpp = match format {
             f if f == GUID_WICPixelFormat32bppBGRA => 4,
@@ -1236,8 +1235,8 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
 
 /// Scaled to exactly `size` with the Fant scaler, after conversion to
 /// premultiplied BGRA (so transparent edges don't fringe). A colour profile
-/// is converted after scaling, on the small picture (before it, on the whole
-/// one, took ~3× as long): on straight alpha, so a profiled picture with
+/// is converted after scaling, on the small picture (on the whole one it
+/// takes ~3× as long): on straight alpha, so a profiled picture with
 /// transparency may fringe slightly at its edges.
 fn fitted(source: &Source, (w, h): (u32, u32)) -> windows::core::Result<Image> {
     unsafe {

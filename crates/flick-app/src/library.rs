@@ -358,8 +358,8 @@ mod tests {
     use super::*;
 
     /// Stars, the starred folder and the records, on real files: the
-    /// temp folder (C:) for the photos and the starred folder, and the build folder
-    /// (H: here) for a photo from another drive.
+    /// temp folder for the photos and the starred folder, and the build folder
+    /// for a photo from another drive (where the two are on different drives).
     #[test]
     fn stars_link_copy_follow_and_unstar() {
         let root = std::env::temp_dir().join(format!("flick-library-{}", std::process::id()));

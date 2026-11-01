@@ -1135,7 +1135,7 @@ impl Viewer {
             RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut _),
             _ => return Err("not a Win32 window".into()),
         };
-        // DWM's open animation hides new content for ~170 ms (milestone 0).
+        // DWM's open animation hides new content for ~170 ms (bench/README.md).
         unsafe {
             use windows::Win32::Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute};
             let disable = windows::core::BOOL::from(true);
@@ -1211,7 +1211,7 @@ impl Viewer {
         }
         // Also after showing it ourselves: winit rebuilds the window style
         // from its own flags on every change (maximize, restore), and with
-        // VISIBLE unset there it hid the window again.
+        // VISIBLE unset there it would hide the window again.
         window.set_visible(true);
         // A warm open's launcher passed its foreground right on to us.
         window.focus_window();
@@ -1325,7 +1325,7 @@ impl Viewer {
     /// The pictures the walk will pass on its way to the target (not the
     /// target itself). Each is shown (no skipping), but in passing a quick
     /// preview will do (`decode_preview`): waiting for every heavy one's
-    /// full decode queued seconds behind a fast wheel.
+    /// full decode would queue seconds behind a fast wheel.
     pub fn passing_paths(&self) -> Vec<PathBuf> {
         let Some(folder) = &self.tab.folder else { return Vec::new() };
         let (i, t) = (folder.index as i64, self.tab.target as i64);
@@ -1853,7 +1853,7 @@ impl Viewer {
             image += &format!(", {} frames", current.screen.frames);
         }
         // A long name may break after every "-" and "_" (a zero-width space):
-        // Unicode's rules don't break "-" before a digit ("w-2025-02-16" held
+        // Unicode's rules don't break "-" before a digit ("img-2025-02-16" held
         // together, leaving a short line above it).
         let name = file_name(&current.path).replace('-', "-\u{200b}").replace('_', "_\u{200b}");
         let mut lines = vec![("File", format!("{name}{position}")), ("Image", image)];
@@ -2546,8 +2546,8 @@ impl Viewer {
     }
 
     /// The right button holds a press (a tab dragged along the strip, a
-    /// zoom, a menu click): the left one waits. One drag at a time; a left
-    /// press mid-drag took the drag's place and left its tab hanging.
+    /// zoom, a menu click): the left one waits. One drag at a time: a left
+    /// press mid-drag would take the drag's place and leave its tab hanging.
     fn right_held(&self) -> bool {
         matches!(self.pressed, Some(Press::Reorder { right: true, .. })) || self.right_press.is_some()
     }
@@ -2593,7 +2593,7 @@ impl Viewer {
             return Action::None;
         }
         // Double-click: the picture again in a tab beside this one, as Ctrl+T
-        // (100 % was redundant with middle click's cycle).
+        // (100 % is already in middle click's cycle).
         if double {
             return self.duplicate(false);
         }
@@ -3058,7 +3058,7 @@ impl Viewer {
             WindowEvent::Resized(size) => {
                 // A size the window has already left: showing it maximized
                 // passes through its restored size for a moment (winit
-                // rebuilding its style), and drawing that showed one frame
+                // rebuilding its style), and drawing that would show one frame
                 // of the picture fitted to the wrong size. The event with
                 // the size it has now follows.
                 let stale = self.window.as_ref().is_some_and(|w| w.inner_size() != size);

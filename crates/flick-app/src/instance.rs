@@ -126,7 +126,7 @@ pub fn claim() -> bool {
             MUTEX.store(handle.0 as usize, Ordering::SeqCst);
             true
         }
-        // An elevated resident (an older build) owns it; `send` explains.
+        // An elevated resident owns it; `send` explains.
         Err(e) if e.code() == ERROR_ACCESS_DENIED.to_hresult() => false,
         Err(_) => true,
     }
@@ -157,9 +157,9 @@ pub fn send(request: &Request) -> Result<Handoff, String> {
         }
         match opened {
             Ok(pipe) => break pipe,
-            // Only a resident running as administrator refuses us (older
-            // builds became resident elevated; see elevation.rs). Waiting
-            // won't change that.
+            // Only a resident running as administrator refuses us (one that
+            // couldn't start unelevated; see elevation.rs). Waiting won't
+            // change that.
             Err(e) if e.code() == ERROR_ACCESS_DENIED.to_hresult() => {
                 return Err("A Flick started as administrator is running; quit it from its tray icon.".into());
             }

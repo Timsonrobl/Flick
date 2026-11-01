@@ -1,5 +1,5 @@
-# Writes one sample per format into bench/samples/formats (git-ignored) for
-# milestone 7: ffmpeg for most formats, flick-bench gen-formats for JPEG XL
+# Writes one sample per format into bench/samples/formats (git-ignored):
+# ffmpeg for most formats, flick-bench gen-formats for JPEG XL
 # and HEIC. Needs ffmpeg on PATH, the synthetic JPEGs from
 # `flick-bench gen-sample bench/samples`, and a release build of flick-bench.
 param([string]$Out = "$PSScriptRoot\samples\formats", [switch]$LargeAnimations)

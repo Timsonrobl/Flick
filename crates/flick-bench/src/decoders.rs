@@ -2,8 +2,8 @@
 //!
 //! Every adapter produces 4-channel pixels (RGBA or BGRA), because that is what
 //! a GPU upload needs; any RGB-to-RGBA pass a decoder forces on us is part of
-//! its cost. These are bench-local on purpose: the winners move into
-//! `flick-codecs` behind the real `Decoder` trait (ARCHITECTURE.md §7).
+//! its cost. These are bench-local on purpose: only the winners go into the
+//! app's own decoding (flick-app's decode.rs, ARCHITECTURE.md §7).
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Flick: a fast, frameless image viewer for Windows">
+  <defs>
+    <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6EE7F9"/>
+      <stop offset="0.5" stop-color="#7C5CFF"/>
+      <stop offset="1" stop-color="#F472B6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.2" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#7C5CFF" stop-opacity="0.30"/>
+      <stop offset="0.6" stop-color="#7C5CFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#7C5CFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6EE7F9"/>
+      <stop offset="0.5" stop-color="#7C5CFF"/>
+      <stop offset="1" stop-color="#F472B6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="300" rx="20" fill="#121214"/>
+  <rect width="1200" height="300" rx="20" fill="url(#glow)"/>
+  <!-- The app icon (assets/icon/flick.svg), at 190 px. -->
+  <g transform="translate(70 55) scale(0.742)">
+    <g transform="translate(128 128) scale(1.2) translate(-128 -128)">
+      <circle cx="128" cy="128" r="100" fill="url(#sweep)"/>
+      <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round">
+        <path d="M146 159.2 L107.5 225.9"/>
+        <path d="M110 159.2 L33 159.2"/>
+        <path d="M92 128 L53.5 61.3"/>
+        <path d="M110 96.8 L148.5 30.1"/>
+        <path d="M146 96.8 L223 96.8"/>
+        <path d="M164 128 L202.5 194.7"/>
+      </g>
+      <path d="M164 128 L146 159.2 L110 159.2 L92 128 L110 96.8 L146 96.8 Z" fill="#241A44" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/>
+      <circle cx="138" cy="116" r="6" fill="#FFFFFF" fill-opacity="0.8"/>
+      <circle cx="128" cy="128" r="100" fill="none" stroke="#241A44" stroke-width="10"/>
+    </g>
+  </g>
+  <g font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+    <text x="320" y="138" font-size="88" font-weight="700" fill="#F5F4F1" letter-spacing="-2">Flick</text>
+    <rect x="324" y="160" width="120" height="4" rx="2" fill="url(#rule)"/>
+    <text x="322" y="206" font-size="28" fill="#E4E2DC">A fast, frameless image viewer for Windows</text>
+    <text x="322" y="246" font-size="18" fill="#A9A79F">Final picture in 0.1 s · page turns in 16 ms · twenty tabs in under 100 MB</text>
+  </g>
+</svg>

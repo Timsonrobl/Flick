@@ -1,4 +1,4 @@
-//! Format samples ffmpeg can't write (milestone 7): JPEG XL (zune-jpegxl's
+//! Format samples ffmpeg can't write: JPEG XL (zune-jpegxl's
 //! lossless encoder) and HEIC (WIC's HEIF encoder, from the HEIF and HEVC
 //! extensions). `bench/gen-formats.ps1` makes the rest with ffmpeg.
 

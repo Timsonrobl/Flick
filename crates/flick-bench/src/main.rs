@@ -1,6 +1,6 @@
-//! Milestone 0 benchmarks (ARCHITECTURE.md §15): which JPEG decoders to build
-//! around, and how much of the cold-start budget an empty winit + wgpu window
-//! already spends.
+//! Flick's benchmarks (bench/README.md): which JPEG decoders to build around,
+//! and how much of the cold-start budget an empty winit + wgpu window already
+//! spends.
 
 mod decoders;
 #[cfg(windows)]
@@ -29,7 +29,7 @@ use report::Measurement;
 const DEFAULT_SCREEN: (u32, u32) = (2560, 1440);
 
 #[derive(Parser)]
-#[command(about = "Decoder and startup benchmarks for Flick (milestone 0)")]
+#[command(about = "Decoder and startup benchmarks for Flick")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,

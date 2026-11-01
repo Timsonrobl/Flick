@@ -41,12 +41,10 @@ $stamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
 $runDir = Join-Path $PSScriptRoot "quick-runs\$stamp"
 
 if (-not $File) {
-    $File = Get-ChildItem (Join-Path $PSScriptRoot 'photos\burst') -File -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -First 1 -ExpandProperty FullName
+    # Committed (CC0, bench\images\CREDITS.md), so every checkout measures the same photo.
+    $File = Join-Path $PSScriptRoot 'images\pixel-7-2.jpg'
 }
-if (-not $File) {
-    $File = Join-Path $PSScriptRoot 'samples\synthetic-4032x3024-q90.jpg'
-}
-if (-not (Test-Path $File)) { throw "no benchmark photo: pass -File (default: the first of bench\photos\burst)" }
+if (-not (Test-Path $File)) { throw "no benchmark photo: pass -File (default: bench\images\pixel-7-2.jpg)" }
 
 if (-not $NoBuild) {
     & (Join-Path $root 'tools\build.ps1') -p flick-app | Out-Null

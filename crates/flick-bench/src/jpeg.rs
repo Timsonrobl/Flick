@@ -1,6 +1,6 @@
 //! Minimal JPEG marker walking: dimensions and the embedded EXIF thumbnail,
-//! without decoding anything. This is the "header probe" step of the loading
-//! pipeline (ARCHITECTURE.md §6), so it must stay cheap.
+//! without decoding anything, so it must stay cheap: what a header probe
+//! before decoding would cost (ARCHITECTURE.md §6; not built into Flick).
 
 /// Marker segments before start-of-scan, as `(marker, payload)`.
 fn segments(data: &[u8]) -> impl Iterator<Item = (u8, &[u8])> {

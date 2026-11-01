@@ -1,5 +1,5 @@
-//! Flick: a frameless image viewer (ARCHITECTURE.md). Milestone 3: one
-//! resident process with many windows.
+//! Flick: a frameless image viewer (ARCHITECTURE.md): one resident process
+//! with many windows.
 //!
 //! Open path (§3a): the screen-scale decode and the GPU device start on their
 //! own threads at `main`. Each window is created hidden, placed, and shown

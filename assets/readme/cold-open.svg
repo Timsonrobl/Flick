@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" width="1200" height="330" role="img" aria-label="Cold open timeline. From process start, three threads run in parallel: the UI thread makes the hidden window by 30 ms, the decode thread has the screen-sized picture at 110 ms, the GPU thread has the graphics devices at 205 ms; the picture is drawn, presented and shown at about 210 ms.">
+  <rect width="1200" height="330" rx="20" fill="#161616"/>
+  <g font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+    <text x="40" y="58" font-size="24" font-weight="600" fill="#F0EFEC">A cold open: the two slow things run at once</text>
+    <text x="40" y="86" font-size="15" fill="#A9A79F">Nothing reaches the screen before the final picture; everything else waits until it is there</text>
+
+    <!-- Axis: 0–250 ms over x 230–1130 (3.6 px/ms) -->
+    <g stroke="#2E2E2C" stroke-width="1">
+      <line x1="230" y1="112" x2="230" y2="262"/>
+      <line x1="410" y1="112" x2="410" y2="262"/>
+      <line x1="590" y1="112" x2="590" y2="262"/>
+      <line x1="770" y1="112" x2="770" y2="262"/>
+      <line x1="950" y1="112" x2="950" y2="262"/>
+      <line x1="1130" y1="112" x2="1130" y2="262"/>
+    </g>
+    <g font-size="13" fill="#8F8D86" text-anchor="middle">
+      <text x="230" y="286">0 ms</text>
+      <text x="410" y="286">50</text>
+      <text x="590" y="286">100</text>
+      <text x="770" y="286">150</text>
+      <text x="950" y="286">200</text>
+      <text x="1130" y="286">250</text>
+    </g>
+
+    <!-- Lanes -->
+    <g font-size="15" fill="#C3C2B7" text-anchor="end">
+      <text x="210" y="142">UI thread</text>
+      <text x="210" y="192">Decode thread</text>
+      <text x="210" y="242">GPU thread</text>
+    </g>
+    <path d="M230 124 h104 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-104 z" fill="#6EE7F9"/>
+    <text x="350" y="142" font-size="14" fill="#E4E2DC">event loop, window made hidden</text>
+    <path d="M230 174 h392 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-392 z" fill="#7C5CFF"/>
+    <text x="638" y="192" font-size="14" fill="#E4E2DC">screen-sized decode of the JPEG · 110 ms</text>
+    <path d="M230 224 h734 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-734 z" fill="#8A8983"/>
+    <text x="240" y="241" font-size="14" fill="#141414">Direct3D 11 + Direct2D + DirectComposition: the driver starts · 205 ms</text>
+
+    <!-- The picture -->
+    <line x1="986" y1="106" x2="986" y2="262" stroke="#F472B6" stroke-width="2" stroke-dasharray="4 4"/>
+    <path d="M970 124 h28 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-28 z" fill="#F472B6"/>
+    <text x="1010" y="142" font-size="14" font-weight="600" fill="#F0EFEC">picture on screen</text>
+    <text x="1010" y="162" font-size="14" fill="#C3C2B7">draw, present, show</text>
+    <text x="1010" y="182" font-size="14" fill="#C3C2B7">≈ 210 ms</text>
+
+    <text x="40" y="314" font-size="13" fill="#8F8D86">A warm open skips the process start and the driver: the file goes over a pipe to the resident Flick, which only decodes and presents (≈ 95–120 ms).</text>
+  </g>
+</svg>

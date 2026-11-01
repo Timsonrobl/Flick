@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="1200" height="520" role="img" aria-label="Flick by the numbers. Warm open 116 ms, page turn 16 ms median, 0 blank or flicker frames, 0 % CPU idle. Cold open: Flick 205 ms, Honeyview 303 ms. Working set after paging a folder: Flick 72 MB, Honeyview 396 MB.">
+  <rect width="1200" height="520" rx="20" fill="#161616"/>
+  <g font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+    <text x="40" y="58" font-size="24" font-weight="600" fill="#F0EFEC">Measured, not promised</text>
+    <text x="40" y="86" font-size="15" fill="#A9A79F">Windows 11 · RTX 4080 · 3440×1440 at 144 Hz · 12–17 MP camera JPEGs · timed from outside by watching the screen</text>
+
+    <!-- Stat tiles -->
+    <g>
+      <rect x="40" y="114" width="260" height="128" rx="14" fill="#202020"/>
+      <text x="64" y="176" font-size="46" font-weight="700" fill="#F0EFEC">116<tspan font-size="24" font-weight="600" fill="#C3C2B7"> ms</tspan></text>
+      <text x="64" y="210" font-size="15" fill="#C3C2B7">Warm open: double-click</text>
+      <text x="64" y="230" font-size="15" fill="#C3C2B7">to the final picture</text>
+      <rect x="40" y="114" width="4" height="128" rx="2" fill="#7C5CFF"/>
+    </g>
+    <g>
+      <rect x="320" y="114" width="260" height="128" rx="14" fill="#202020"/>
+      <text x="344" y="176" font-size="46" font-weight="700" fill="#F0EFEC">16<tspan font-size="24" font-weight="600" fill="#C3C2B7"> ms</tspan></text>
+      <text x="344" y="210" font-size="15" fill="#C3C2B7">Page turn, key to screen</text>
+      <text x="344" y="230" font-size="15" fill="#C3C2B7">(median, preloaded)</text>
+      <rect x="320" y="114" width="4" height="128" rx="2" fill="#7C5CFF"/>
+    </g>
+    <g>
+      <rect x="600" y="114" width="260" height="128" rx="14" fill="#202020"/>
+      <text x="624" y="176" font-size="46" font-weight="700" fill="#F0EFEC">0</text>
+      <text x="624" y="210" font-size="15" fill="#C3C2B7">Blank or flicker frames</text>
+      <text x="624" y="230" font-size="15" fill="#C3C2B7">on open and while paging</text>
+      <rect x="600" y="114" width="4" height="128" rx="2" fill="#7C5CFF"/>
+    </g>
+    <g>
+      <rect x="880" y="114" width="280" height="128" rx="14" fill="#202020"/>
+      <text x="904" y="176" font-size="46" font-weight="700" fill="#F0EFEC">0<tspan font-size="24" font-weight="600" fill="#C3C2B7"> %</tspan></text>
+      <text x="904" y="210" font-size="15" fill="#C3C2B7">CPU while idle, however</text>
+      <text x="904" y="230" font-size="15" fill="#C3C2B7">many windows and tabs</text>
+      <rect x="880" y="114" width="4" height="128" rx="2" fill="#7C5CFF"/>
+    </g>
+
+    <!-- Comparison: cold open (ms), scale 0–350 over 400 px -->
+    <g transform="translate(40 280)">
+      <rect width="550" height="200" rx="14" fill="#1C1C1C"/>
+      <text x="24" y="40" font-size="17" font-weight="600" fill="#F0EFEC">Cold open, first launch</text>
+      <text x="24" y="62" font-size="14" fill="#A9A79F">ms to the final picture · lower is better</text>
+      <line x1="120" y1="84" x2="120" y2="176" stroke="#3A3A38" stroke-width="1"/>
+      <text x="108" y="113" font-size="15" fill="#F0EFEC" text-anchor="end">Flick</text>
+      <path d="M120 96 h230.3 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-230.3 z" fill="#7C5CFF"/>
+      <text x="364" y="113" font-size="15" font-weight="600" fill="#F0EFEC">205</text>
+      <text x="108" y="157" font-size="15" fill="#C3C2B7" text-anchor="end">Honeyview</text>
+      <path d="M120 140 h342.3 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-342.3 z" fill="#8A8983"/>
+      <text x="476" y="157" font-size="15" font-weight="600" fill="#F0EFEC">303</text>
+    </g>
+
+    <!-- Comparison: working set after paging (MB), scale 0–420 over 340 px -->
+    <g transform="translate(610 280)">
+      <rect width="550" height="200" rx="14" fill="#1C1C1C"/>
+      <text x="24" y="40" font-size="17" font-weight="600" fill="#F0EFEC">Memory after paging a folder</text>
+      <text x="24" y="62" font-size="14" fill="#A9A79F">MB working set · Flick stays flat, Honeyview grows per turn</text>
+      <line x1="120" y1="84" x2="120" y2="176" stroke="#3A3A38" stroke-width="1"/>
+      <text x="108" y="113" font-size="15" fill="#F0EFEC" text-anchor="end">Flick</text>
+      <path d="M120 96 h54.3 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-54.3 z" fill="#7C5CFF"/>
+      <text x="188" y="113" font-size="15" font-weight="600" fill="#F0EFEC">72</text>
+      <text x="108" y="157" font-size="15" fill="#C3C2B7" text-anchor="end">Honeyview</text>
+      <path d="M120 140 h316.6 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-316.6 z" fill="#8A8983"/>
+      <text x="450" y="157" font-size="15" font-weight="600" fill="#F0EFEC">396</text>
+    </g>
+  </g>
+</svg>

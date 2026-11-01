@@ -1,5 +1,6 @@
-//! The renderer chosen in milestone 0: Direct2D on a Direct3D 11 device,
-//! presented through a DirectComposition swap chain (ARCHITECTURE.md §9).
+//! The renderer, chosen by measurement (bench/README.md): Direct2D on a
+//! Direct3D 11 device, presented through a DirectComposition swap chain
+//! (ARCHITECTURE.md §9).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -231,7 +232,7 @@ impl Surface {
             // Premultiplied alpha, though every frame is opaque: it keeps the
             // compositor drawing the window. An opaque swap chain may be put on
             // a hardware overlay plane instead, and on an NVIDIA RTX 4080 that
-            // went black on screen (not in captures) while resizing, and made
+            // goes black on screen (not in captures) while resizing, and makes
             // page turns ~35 ms slower to reach the screen (bench/README.md).
             let desc = DXGI_SWAP_CHAIN_DESC1 {
                 Width: size.0.max(1),

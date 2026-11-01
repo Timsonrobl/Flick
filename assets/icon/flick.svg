@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- Flick app icon: aperture, original sweep (chosen 2026-10-24). Sizes 32 px and up. -->
+  <!-- Flick app icon: an aperture over a colour sweep. Sizes 32 px and up. -->
   <defs>
     <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#6EE7F9"/>

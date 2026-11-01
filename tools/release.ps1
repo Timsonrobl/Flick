@@ -16,7 +16,7 @@ Builds with tools\installer.ps1, then writes update.txt (update.rs reads it):
 
 signed with the key from tools\update-key.ps1. Installed copies fetch
 .../releases/latest/download/update.txt, so the newest release is what they
-see. Upload (creates the tag and release, public once the repository is):
+see. Upload (creates the tag and release):
 
   gh release create v<version> target\release-upload\* --title "Flick <version>"
 
