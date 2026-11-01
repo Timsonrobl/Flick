@@ -40,6 +40,10 @@ pub struct Picture {
     pub frames: u32,
     /// A quick soft stand-in (`decode_preview`): the real screen level follows.
     pub preview: bool,
+    /// A preview whose real level is a RAW's own decode (~0.6 s of CPU, a
+    /// few hundred MB at its peak): preloading stops at the preview; only a
+    /// picture a window shows decodes further.
+    pub heavy: bool,
 }
 
 /// One composed frame of an animation and how long it shows.
@@ -325,8 +329,7 @@ fn fit_size((w, h): (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
 pub fn decode_preview(path: &Path) -> Option<Picture> {
     if raw::is_raw(path) {
         let Some(Raw::Small(jpeg, orientation, size)) = raw_plan(path) else { return None };
-        let source = open_embedded(path, jpeg, orientation).ok()?;
-        return Some(Picture { screen: full(&source).ok()?, full_size: size, orientation: source.orientation(), frames: 1, preview: true });
+        return raw_preview(path, jpeg, orientation, size).ok();
     }
     if formats::kind(path) != Kind::Wic {
         return None;
@@ -341,21 +344,37 @@ pub fn decode_preview(path: &Path) -> Option<Picture> {
     // Level 0: the DC scan, an 1/8 picture in its own right.
     unsafe { source.frame.cast::<IWICProgressiveLevelControl>().ok()?.SetCurrentLevel(0) }.ok()?;
     let screen = scaled(&source, 8).ok()??;
-    Some(Picture { screen, full_size: source.size, orientation: source.orientation(), frames: 1, preview: true })
+    Some(Picture { screen, full_size: source.size, orientation: source.orientation(), frames: 1, preview: true, heavy: false })
+}
+
+/// A RAW's embedded JPEG (smaller than the RAW, `size`) as its preview.
+fn raw_preview(path: &Path, jpeg: raw::Jpeg, orientation: Option<u16>, size: (u32, u32)) -> windows::core::Result<Picture> {
+    let source = open_embedded(path, jpeg, orientation)?;
+    Ok(Picture { screen: full(&source)?, full_size: size, orientation: source.orientation(), frames: 1, preview: true, heavy: true })
 }
 
 /// The Screen level: the picture as a window first shows it, no larger than
 /// `target` (in displayed orientation) where the format allows.
 pub fn decode_screen(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
+    screen_level(path, target, false)
+}
+
+/// The Screen level as the preload ring wants it: a RAW whose embedded JPEG
+/// falls short of the screen stops at that JPEG (`Picture::heavy`).
+pub fn decode_preload(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
+    screen_level(path, target, true)
+}
+
+fn screen_level(path: &Path, target: (u32, u32), preload: bool) -> Result<Picture, String> {
     let named = |e: String| format!("{}: {e}", path.display());
-    let still = |screen: Image, full_size| Picture { screen, full_size, orientation: 1, frames: 1, preview: false };
+    let still = |screen: Image, full_size| Picture { screen, full_size, orientation: 1, frames: 1, preview: false, heavy: false };
     match formats::kind(path) {
-        Kind::Wic => wic_screen(path, target).map_err(|e| named(e.to_string())),
+        Kind::Wic => wic_screen(path, target, preload).map_err(|e| named(e.to_string())),
         kind @ (Kind::Apng(frames) | Kind::AnimatedWebp(frames)) => {
             // Animations are shown at full size, as GIFs are.
             let screen = first_frame(path, kind).map_err(named)?;
             let full_size = (screen.width, screen.height);
-            Ok(Picture { screen, full_size, orientation: 1, frames, preview: false })
+            Ok(Picture { screen, full_size, orientation: 1, frames, preview: false, heavy: false })
         }
         Kind::Jxl => {
             let full = formats::jxl(path).map_err(named)?;
@@ -450,11 +469,13 @@ fn zune_raw(path: &Path, source: &Source) -> Option<Image> {
 /// WIC formats: the smallest DCT scale (1/2, 1/4, 1/8) whose output still
 /// covers `target`; else, for a picture larger than it, the Fant scaler. A
 /// progressive JPEG: zune-jpeg's full size, then the Fant scaler. A RAW
-/// file: its embedded JPEG, where it covers the screen (`raw_plan`).
-fn wic_screen(path: &Path, target: (u32, u32)) -> windows::core::Result<Picture> {
+/// file: its embedded JPEG, where it covers the screen (`raw_plan`), or
+/// for a `preload` anyway.
+fn wic_screen(path: &Path, target: (u32, u32), preload: bool) -> windows::core::Result<Picture> {
     let (source, raw_size) = match raw_plan(path) {
         Some(Raw::Jpeg(jpeg, orientation)) => (open_embedded(path, jpeg, orientation)?, None),
         Some(Raw::Small(jpeg, orientation, size)) if covers(jpeg.size, size, target, orientation.unwrap_or(1)) => (open_embedded(path, jpeg, orientation)?, Some(size)),
+        Some(Raw::Small(jpeg, orientation, size)) if preload => return raw_preview(path, jpeg, orientation, size),
         Some(Raw::Small(_, orientation, _)) => (Source { orientation, ..open(path)? }, None),
         None => (open(path)?, None),
     };
@@ -473,13 +494,13 @@ fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Res
         })?;
         let screen = first.ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?;
         let full_size = (screen.width, screen.height);
-        return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames, preview: false });
+        return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames, preview: false, heavy: false });
     }
     let orientation = source.orientation();
     let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
     // Shrunk first, then colour-managed: converting the whole picture took ~3× as long.
     if let Some(screen) = zune_raw(path, &source).and_then(|full| managed(&source, shrink(full, stored_target).ok()?)) {
-        return Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false });
+        return Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false, heavy: false });
     }
     let (w, h) = source.size;
     let (dw, dh) = if orientation >= 5 { (h, w) } else { (w, h) };
@@ -492,7 +513,7 @@ fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Res
         (None, Some(size)) => fitted(&source, size)?,
         (None, None) => full(&source)?,
     };
-    Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false })
+    Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false, heavy: false })
 }
 
 /// Decodes an animation (GIF, APNG, animated WebP) frame by frame, each
@@ -908,12 +929,17 @@ mod tests {
             if matches!(plan, Some(Raw::Jpeg(..))) {
                 assert!(ms < 400.0, "{}: {ms:.0} ms", path.display());
             }
+            // Preloading stops at a JPEG that falls short of the screen (a
+            // wide one: 1920 × 1080 is covered by them all).
+            let short = matches!(&plan, Some(Raw::Small(jpeg, o, size)) if !covers(jpeg.size, *size, (3377, 1440), o.unwrap_or(1)));
+            let preload = decode_preload(&path, (3377, 1440)).unwrap();
+            assert_eq!((preload.preview, preload.heavy), (short, short), "{}", path.display());
         }
     }
 
     /// What each RAW sample's steps cost in memory: peak private bytes of
-    /// this process after the plan (WIC opened for the size) and after the
-    /// screen level. `cargo test --release -p flick-app raw_memory -- --ignored --nocapture --test-threads 1`.
+    /// this process after the plan (WIC opened for the size), after the
+    /// preload level and after the screen level. `cargo test --release -p flick-app raw_memory -- --ignored --nocapture --test-threads 1`.
     #[test]
     #[ignore]
     fn raw_memory() {
@@ -941,13 +967,18 @@ mod tests {
             let after_plan = mb();
             drop(plan);
             let t = std::time::Instant::now();
+            let preload = decode_preload(&file, (3377, 1440)).unwrap();
+            let preload_ms = t.elapsed().as_secs_f64() * 1000.0;
+            let after_preload = mb();
+            drop(preload);
+            let t = std::time::Instant::now();
             let screen = decode_screen(&file, (3377, 1440)).unwrap();
             let screen_ms = t.elapsed().as_secs_f64() * 1000.0;
             let after_screen = mb();
             drop(screen);
             println!(
-                "{name:<48} private {:.0} MB; plan {plan_ms:.0} ms, peak {:.0} MB; screen {screen_ms:.0} ms, peak {:.0} MB",
-                before.0, after_plan.1, after_screen.1
+                "{name:<48} private {:.0} MB; plan {plan_ms:.0} ms, peak {:.0} MB; preload {preload_ms:.0} ms, peak {:.0} MB; screen {screen_ms:.0} ms, peak {:.0} MB",
+                before.0, after_plan.1, after_preload.1, after_screen.1
             );
         }
     }

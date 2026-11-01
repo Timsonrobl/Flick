@@ -6,7 +6,8 @@
 //! simply not used if nobody wants it any more. The picture a window is
 //! headed for never waits behind those: `urgent` starts it at once on a
 //! thread of its own (preloads of pictures scrolled past held every worker
-//! for a heavy file's whole second).
+//! for a heavy file's whole second). Preloads stop short of a RAW's own
+//! decode (`decode::decode_preload`): only the urgent picture gets it.
 
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
@@ -104,7 +105,7 @@ impl Pool {
                 }
             }
             if full {
-                decode_one(&shared, path, target, &*done);
+                decode_one(&shared, path, target, false, &*done);
             }
         });
     }
@@ -140,13 +141,14 @@ fn worker(shared: &Shared, target: (u32, u32), done: &Done) {
                 queue = shared.wake.wait(queue).unwrap_or_else(|e| e.into_inner());
             }
         };
-        decode_one(shared, path, target, done);
+        decode_one(shared, path, target, true, done);
     }
 }
 
-fn decode_one(shared: &Shared, path: PathBuf, target: (u32, u32), done: &Done) {
+/// `preload`: for the ring, not a picture a window heads for (`decode::decode_preload`).
+fn decode_one(shared: &Shared, path: PathBuf, target: (u32, u32), preload: bool, done: &Done) {
     let started = Instant::now();
-    let picture = decode::decode_screen(&path, target);
+    let picture = if preload { decode::decode_preload(&path, target) } else { decode::decode_screen(&path, target) };
     let ms = started.elapsed().as_secs_f64() * 1000.0;
     shared.queue.lock().unwrap_or_else(|e| e.into_inner()).in_flight.remove(&path);
     done(path, picture, ms);

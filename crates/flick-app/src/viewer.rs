@@ -124,6 +124,8 @@ pub struct Screen {
     frames: u32,
     /// A quick soft stand-in; the real screen level replaces it.
     pub preview: bool,
+    /// A preview preloading stops at (`Picture::heavy`).
+    pub heavy: bool,
 }
 
 impl Screen {
@@ -135,6 +137,7 @@ impl Screen {
             orientation: picture.orientation,
             frames: picture.frames,
             preview: picture.preview,
+            heavy: picture.heavy,
         })
     }
 

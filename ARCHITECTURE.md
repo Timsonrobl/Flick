@@ -1050,7 +1050,10 @@ closed by a commit that says so; review this list at every milestone.
   2–5 ms. A JPEG at least 90 % of that size stands for the RAW at every
   level; a smaller one (Sony before ~2021: 1616×1080; Panasonic, Olympus,
   Fujifilm) gives the screen level where it covers the screen, else a
-  quick preview, and WIC decodes the RAW for zooming in. 12 public
+  quick preview, and WIC decodes the RAW for zooming in. Preloading
+  (2026-11-01) stops at that preview: WIC decodes the RAW only for the
+  picture a window heads for (an A6000 ARW preloaded: 13 ms and 10 MB at
+  its peak, where WIC's decode was 0.6 s and 347 MB). 12 public
   samples (raw.pixls.us, `bench/samples/raw`): screen level 12–80 ms
   where WIC's demosaic takes 0.6–2.5 s; full level 47–106 ms from a
   full-size JPEG. The info panel's EXIF works through WIC unchanged.

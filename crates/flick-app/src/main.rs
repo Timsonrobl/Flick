@@ -448,8 +448,10 @@ impl App {
         for id in &self.focus_order {
             let Some(viewer) = self.viewers.get(id) else { continue };
             for path in viewer.ring_paths() {
-                // A preview still wants its real level, unless it is only passed.
-                let decoded = self.shared.cache.get(&path).is_some_and(|s| !s.preview || passing.contains(&path));
+                // A preview still wants its real level, unless it is only
+                // passed, or that level is too heavy to preload (a RAW's
+                // own decode: the picture a window heads for gets it, `urgent`).
+                let decoded = self.shared.cache.get(&path).is_some_and(|s| !s.preview || s.heavy || passing.contains(&path));
                 if !decoded && !self.shared.failed.contains_key(&path) && !queue.contains(&path) {
                     queue.push(path);
                 }
