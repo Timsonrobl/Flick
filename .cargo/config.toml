@@ -1,0 +1,4 @@
+# The C runtime linked into flick.exe, so it runs on a PC without the Visual
+# C++ Redistributable (the installer ships flick.exe alone).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

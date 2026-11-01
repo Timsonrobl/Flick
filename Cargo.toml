@@ -4,7 +4,7 @@ members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 publish = false
 
 # Decoders are unusably slow unoptimised; keep dependencies fast even in dev.

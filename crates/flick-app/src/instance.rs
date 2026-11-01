@@ -36,11 +36,16 @@ pub struct Request {
     pub timeline_out: Option<PathBuf>,
     /// The launcher's build, see [`build_id`].
     pub build: u64,
+    /// Not a file to open: quit (`flick --quit`, see [`quit`]).
+    pub quit: bool,
 }
 
 impl Request {
     fn encode(&self) -> String {
         let mut text = format!("file\t{}\nbuild\t{}\n", self.file.display(), self.build);
+        if self.quit {
+            text += "quit\t1\n";
+        }
         if let Some((w, h)) = self.size {
             text += &format!("size\t{w}x{h}\n");
         }
@@ -58,10 +63,11 @@ impl Request {
                 ("build", v) => request.build = v.parse().unwrap_or(0),
                 ("size", v) => request.size = v.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))),
                 ("timeline", v) => request.timeline_out = Some(PathBuf::from(v)),
+                ("quit", _) => request.quit = true,
                 _ => {}
             }
         }
-        (!request.file.as_os_str().is_empty()).then_some(request)
+        (request.quit || !request.file.as_os_str().is_empty()).then_some(request)
     }
 }
 
@@ -191,6 +197,32 @@ pub fn send(request: &Request) -> Result<Handoff, String> {
     }
 }
 
+/// Asks the resident Flick to quit (`flick --quit`: the installer, before it
+/// replaces or removes flick.exe) and waits up to `wait` for its process to
+/// end. True once no resident Flick runs (or none did).
+pub fn quit(wait: Duration) -> bool {
+    let gone = || {
+        let free = claim();
+        release();
+        free
+    };
+    if gone() {
+        return true;
+    }
+    if let Err(e) = send(&Request { quit: true, build: build_id(), ..Request::default() }) {
+        trace(format_args!("quit: {e}"));
+        return false;
+    }
+    let deadline = Instant::now() + wait;
+    while Instant::now() < deadline {
+        if gone() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
 /// Listens for requests on a background thread. Stops, after calling
 /// `on_superseded`, when a newer build asks: that launch takes over.
 pub fn serve(on_request: impl Fn(Request) + Send + 'static, on_superseded: impl FnOnce() + Send + 'static) {
@@ -211,7 +243,8 @@ pub fn serve(on_request: impl Fn(Request) + Send + 'static, on_superseded: impl 
             }
             let connected = unsafe { ConnectNamedPipe(pipe, None) }.is_ok() || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
             let request = if connected { read_message(pipe).as_deref().and_then(Request::decode) } else { None };
-            let newer = request.as_ref().is_some_and(|r| r.build > build_id());
+            // A quit is obeyed by any build: the installer's may be newer.
+            let newer = request.as_ref().is_some_and(|r| !r.quit && r.build > build_id());
             trace(format_args!("serve: connected {connected}, request build {:?} (mine {}), newer {newer}", request.as_ref().map(|r| r.build), build_id()));
             if newer {
                 // Release first, so the launcher can claim as soon as it reads the reply.

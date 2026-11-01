@@ -11,7 +11,7 @@ use crate::library::Stars;
 
 /// Extensions WIC can usually decode (some need Store codec extensions);
 /// and camera RAWs (`raw::EXTENSIONS`).
-const IMAGE_EXTENSIONS: &[&str] = &[
+pub const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "jpe", "jfif", "png", "apng", "bmp", "dib", "gif", "tif", "tiff", "webp", "heic", "heif", "avif", "jxl", "jxr", "wdp", "ico",
     "svg", "svgz", "exr", "hdr",
 ];

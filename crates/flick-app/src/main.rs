@@ -13,6 +13,10 @@
 //! Usage: flick <image> [--size WxH] [--timeline-out file.json] [--standalone]
 //! `--standalone` neither joins nor becomes the resident instance and exits
 //! when its window closes (cold-open benchmarks).
+//! For the installer, each exiting with 0 (done) or 1 (not):
+//! `flick --quit` quits the resident Flick, as its tray menu's Quit does, and
+//! waits until it is gone; `flick --register` / `--unregister` add or remove
+//! Flick's file associations for this exe (register.rs).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -36,6 +40,7 @@ mod osd;
 mod placement;
 mod pool;
 mod raw;
+mod register;
 mod session;
 mod settings;
 mod tiles;
@@ -877,6 +882,7 @@ impl ApplicationHandler<Event> for App {
                 pending.extend(changes);
                 *due = Instant::now() + FOLDER_SETTLE;
             }
+            Event::Open(request) if request.quit => self.quit(event_loop),
             Event::Open(request) => self.open(event_loop, request),
             Event::Superseded => {
                 // Keep open windows; exit when the last one closes.
@@ -1021,11 +1027,19 @@ struct Flags {
     standalone: bool,
     /// Started by [`elevation::relaunch_unelevated`].
     relaunched: bool,
+    /// Not a picture to open: something for the installer to run.
+    command: Option<Command>,
+}
+
+enum Command {
+    Quit,
+    Register,
+    Unregister,
 }
 
 fn parse_args() -> Result<(Request, Flags), String> {
     let mut request = Request::default();
-    let mut flags = Flags { standalone: false, relaunched: false };
+    let mut flags = Flags { standalone: false, relaunched: false, command: None };
     let mut it = std::env::args_os().skip(1);
     while let Some(arg) = it.next() {
         match arg.to_str() {
@@ -1039,11 +1053,14 @@ fn parse_args() -> Result<(Request, Flags), String> {
                 request.timeline_out = Some(std::path::absolute(&path).unwrap_or(path));
             }
             Some("--standalone") => flags.standalone = true,
+            Some("--quit") => flags.command = Some(Command::Quit),
+            Some("--register") => flags.command = Some(Command::Register),
+            Some("--unregister") => flags.command = Some(Command::Unregister),
             Some(elevation::RELAUNCHED) => flags.relaunched = true,
             _ => request.file = std::path::absolute(&arg).unwrap_or_else(|_| PathBuf::from(&arg)),
         }
     }
-    if request.file.as_os_str().is_empty() {
+    if request.file.as_os_str().is_empty() && flags.command.is_none() {
         return Err("usage: flick <image> [--size WxH] [--timeline-out file] [--standalone]".into());
     }
     Ok((request, flags))
@@ -1077,6 +1094,14 @@ fn main() {
         Ok(parsed) => parsed,
         Err(e) => return report(&e),
     };
+    if let Some(command) = flags.command {
+        let done = match command {
+            Command::Quit => instance::quit(Duration::from_secs(10)),
+            Command::Register => std::env::current_exe().is_ok_and(|exe| register::register(&exe).is_ok()),
+            Command::Unregister => register::unregister().is_ok(),
+        };
+        std::process::exit(if done { 0 } else { 1 });
+    }
     let standalone = flags.standalone;
     request.build = instance::build_id();
 

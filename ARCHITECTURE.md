@@ -916,7 +916,7 @@ only starred / not starred):
 | 5 ✓ | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path. Keymap: one bindings table (§13, 2026-10-27); no config file of tunables (decided, §13); a user keys file is optional backlog (§17) |
 | 6 ✓ | Tags/rating read + write, inline editor | Rating is done as stars (§11: Ctrl+F / Shift+F, kept in the library, files never modified). Tags: moved to the optional backlog (§17; user decision, 2026-10-27) |
 | 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. RAW added 2026-10-29 (§17): 12 cameras' samples, screen level 12–80 ms. *No `Decoder` trait yet: `formats::kind` dispatches |
-| 8 | Polish: file associations, installer, session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
+| 8 | Polish: file associations, installer (built 2026-11-01; updates designed, §17), session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
 
 Milestones 0–3 are the thesis; if 3 doesn't beat Honeyview on cold start,
 paging and memory, stop and rethink before building chrome. Every milestone
@@ -997,10 +997,12 @@ lose by accident.
   sRGB on decode (WIC colour transform; §17); the display's own profile is
   not applied (sRGB output assumed). The shader path is designed so a 3D
   LUT can be added for that.
-- **License.** Decided by the dependencies you accept: all-permissive is
-  possible (turbojpeg, png, webp, jxl-oxide, resvg are MIT/BSD/Apache);
-  libheif (LGPL) and dav1d (BSD) only affect bundling. GPL code from
-  lightning-image-viewer or oculante is not copied.
+- **License: GPL-3.0-or-later** (user decision, 2026-11-01: nobody ships a
+  closed fork). `LICENSE` is the FSF's text. Every crate built in is
+  MIT/Apache/BSD/Zlib/Unicode/Unlicense, all compatible; their notices
+  ship as `THIRD-PARTY-NOTICES.txt` (`tools\notices.ps1`). Giving anyone a
+  copy obliges offering the source: the repository goes public (or the
+  source ships beside the release) before the first copy leaves.
 
 ## 17. Open gaps (backlog)
 
@@ -1105,11 +1107,47 @@ build only if a real need shows up):
 - [ ] **A keys file.** Remapping hotkeys without a rebuild: a file read
   over `keys.rs`'s table (and reloaded on change, with the folder watcher),
   menu labels following it. Worth it for a public release.
-- [ ] **An installer** (for other people; the daily copy stays the latest
-  dev build, registered by `tools\register.ps1`). Cheapest form: an
-  unsigned per-user Inno Setup package (no admin; Start menu, uninstaller,
-  file types, then Settings ▸ Default apps opened at Flick), with the C
-  runtime linked statically and the dependencies' licence notices. Needs
-  first: a licence (§16) and a public place for releases. Code signing
-  (to avoid SmartScreen's warning) and update checks only for a real
-  release. It registers the RAW types too, as `tools\register.ps1` now does.
+- [x] **An installer** (built 2026-11-01; for other people, the daily copy
+  stays the latest dev build, registered by `tools\register.ps1`).
+  `tools\installer.ps1` builds `target\installer\Flick-<version>-setup.exe`
+  (5.3 MB) with Inno Setup 6 (`installer\flick.iss`): per user, no admin,
+  into `%LOCALAPPDATA%\Programs\Flick`, with an uninstall entry; it ends
+  offering Settings ▸ Default apps at Flick. `flick.exe` does the rest
+  itself, so updates can too: `--register` / `--unregister` (`register.rs`,
+  the extensions straight from `folder.rs` and `raw.rs`; the `.ps1` scripts
+  only call them) and `--quit` (the resident quits as from the tray, its
+  windows to the close history; 158 ms). The C runtime is linked in
+  (`.cargo\config.toml`, +0.2 MB). Tested: silent install, files and
+  registration, uninstall (everything gone but `%LOCALAPPDATA%\Flick`).
+  Not yet: installing over a running installed copy (its `--quit` before
+  the files are replaced), a PC without the Visual C++ runtime. Unsigned:
+  the browser-downloaded setup.exe meets SmartScreen once, see updates.
+- [ ] **No Start menu entry yet**: Flick started without a file shows its
+  usage as an error. Wants a meaning first (the close history's last
+  windows? an Open dialog?), then the installer adds the shortcut.
+- [ ] **Updates, Chrome-style** (user's wish, 2026-11-01). Design:
+  - *Check*: at start (off the open path) and daily, if updates are on
+    (a setting), fetch a small signed manifest from the releases page
+    (`…/releases/latest/download/update.json`: version, exe URL, size,
+    SHA-256) through WinHTTP (the system proxy; no new crate). The
+    manifest's ed25519 signature is checked against a key built into
+    Flick, so a hijacked release page can't push an exe; the private key
+    stays offline with the user.
+  - *Stage*: download the new `flick.exe` in the background to
+    `{app}\update\`, check size, hash and signature; a newer release
+    replaces one waiting.
+  - *Apply*: a "Relaunch to update" prompt. Relaunch renames the running
+    exe aside (as `tools\build.ps1` does), moves the staged one into
+    place and starts it with `--updated`: it registers again, sets the
+    uninstall entry's version, takes over through the build hand-off
+    (§3a) and reopens the windows. Dismissed: the swap happens when Flick
+    quits. Renamed copies are deleted at the next start.
+  - *One warning per machine*: SmartScreen judges files a browser marked
+    as downloaded (Mark of the Web); Flick's own download carries no
+    mark, and a per-user folder needs no admin, so only the first
+    setup.exe is ever warned about. Exception: Smart App Control
+    (Windows 11, on some clean installs) blocks unsigned programs
+    outright; only code signing passes it.
+  - Needs: a public releases page (the GPL wants the source public
+    anyway), a signing key pair, and a release script that builds,
+    signs the manifest and uploads.
