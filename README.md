@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/readme/hero.svg" alt="Flick: a fast, frameless image viewer for Windows" width="100%">
+  <img src="assets/readme/hero.svg" alt="Flick: a fast, light, frameless image viewer for Windows" width="100%">
 </p>
 
 <p align="center">
@@ -10,19 +10,20 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/race.gif" alt="Side by side, the same 15 MP JPEG opened in Flick and in Windows Photos, each on its second open, played at quarter speed with a real-time timer under each: Flick's picture is up at about 0.05 s, Photos' at about 0.33 s." width="100%">
+  <img src="assets/readme/race.gif" alt="Side by side, the same 15 MP JPEG opened in Flick and in Windows Photos, each on its second open, played at quarter speed with a real-time timer under each: Flick's picture is up at about 0.05 s, Photos' at about 0.35 s; under each timer, the working set once the picture is up: Flick 64 MB, Photos 182 MB." width="100%">
 </p>
 
-Flick is an image viewer built around one idea: **the picture should be on
-screen before you have finished double-clicking.** It opens a 17-megapixel
-JPEG in about a tenth of a second, pages through a folder of them as fast as
-you can press a key, and keeps twenty tabs open in under 100 MB. There is no
-title bar and nothing else on screen until you move the mouse: the window is
-the picture.
+Flick is an image viewer built around one idea: **the picture, and nothing
+else.** On screen before you have finished double-clicking, and never more of
+it in memory than the screen can show. It opens a 17-megapixel JPEG in about
+a tenth of a second, pages through a folder of them as fast as you can press
+a key, and keeps twenty tabs open in under 100 MB, where other viewers pass
+400 MB in four page turns. There is no title bar and nothing else on screen
+until you move the mouse: the window is the picture.
 
 Honeyview set the bar for a quiet, fast Windows viewer, and IrfanView and
-XnView are fine programs. Flick was written to beat them on the one metric
-that matters: how long you wait.
+XnView are fine programs. Flick was written to beat them on the two numbers
+that matter: how long you wait, and how much of your RAM it keeps.
 
 Every number on this page is measured, per build, from outside the program,
 by a tool that watches the screen.
@@ -34,6 +35,14 @@ is a critical path. Folder listing, menus, fonts, metadata, the tray icon and
 the update check all wait until the final picture has been presented. No
 splash, no placeholder, no blurry thumbnail that gets swapped out: the first
 frame you see is the real one.
+
+**Memory is a feature.** The cache holds screen-sized pictures, about 17 MB
+each for a 17 MP JPEG, five of them around the one you are looking at, shared
+by every window and tab and trimmed on every page turn. Full resolution
+exists only for the picture you are zoomed into. So paging through a thousand
+photos costs the same as paging through five, twenty tabs fit in under
+100 MB, and viewers that cache full-resolution decodes pass 400 MB in four
+page turns. Idle windows cost 0 % CPU: no timers, no redraws.
 
 **The screen is the unit of work.** A 45 MP photo on a 1440p monitor needs
 about 4 MP of pixels, so that is what gets decoded, using the JPEG decoder's
@@ -48,11 +57,6 @@ takes a GPU driver to wake up.
 **Never a blank or frozen frame.** Paging keeps the current picture up until
 the next one is ready; zooming shows the screen-sized picture until the
 sharp one fades in over it. Decoding never happens on the UI thread.
-
-**Memory is a feature.** One cache of screen-sized pictures is shared by
-every window and tab and trimmed on every page turn, so paging through a
-thousand photos costs the same as paging through five. Idle windows cost
-0 % CPU: no timers, no redraws.
 
 <p align="center">
   <img src="assets/readme/numbers.svg" alt="Warm open 116 ms; page turn 16 ms median; 0 blank or flicker frames; 0 % CPU idle. Cold open: Flick 205 ms, Honeyview 303 ms. Working set after paging a folder: Flick 72 MB, Honeyview 396 MB." width="100%">

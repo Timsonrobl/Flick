@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Flick: a fast, frameless image viewer for Windows">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Flick: a fast, light, frameless image viewer for Windows">
   <defs>
     <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#6EE7F9"/>
@@ -38,7 +38,7 @@
   <g font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
     <text x="320" y="138" font-size="88" font-weight="700" fill="#F5F4F1" letter-spacing="-2">Flick</text>
     <rect x="324" y="160" width="120" height="4" rx="2" fill="url(#rule)"/>
-    <text x="322" y="206" font-size="28" fill="#E4E2DC">A fast, frameless image viewer for Windows</text>
+    <text x="322" y="206" font-size="28" fill="#E4E2DC">A fast, light, frameless image viewer for Windows</text>
     <text x="322" y="246" font-size="18" fill="#A9A79F">Final picture in 0.1 s · page turns in 16 ms · twenty tabs in under 100 MB</text>
   </g>
 </svg>
