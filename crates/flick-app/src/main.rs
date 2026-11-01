@@ -17,6 +17,9 @@
 //! `flick --quit` quits the resident Flick, as its tray menu's Quit does, and
 //! waits until it is gone; `flick --register` / `--unregister` add or remove
 //! Flick's file associations for this exe (register.rs).
+//! After an update (update.rs): `flick --reopen` starts resident without a
+//! picture and reopens the last close, `--tray` only starts resident;
+//! `--after <pid>` first waits for that process (the old build) to end.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -45,13 +48,15 @@ mod session;
 mod settings;
 mod tiles;
 mod tray;
+mod update;
 mod view;
 mod viewer;
 mod watch;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
@@ -106,6 +111,21 @@ pub enum Event {
     /// A newer build took over as the resident instance.
     Superseded,
     Tray(tray::Command),
+    /// An update is downloaded and ready to relaunch into (update.rs).
+    UpdateReady(String),
+}
+
+/// How the event loop ended, for `main` to follow up.
+#[derive(Clone, Copy, PartialEq)]
+enum Ending {
+    /// Anything else: the last window of a standalone or stepped-down
+    /// Flick closed, a failure.
+    Other,
+    /// Quit (the tray, `flick --quit`): an update waiting goes in place.
+    Quit,
+    /// Relaunch to Update: the update goes in place and starts, reopening
+    /// the windows if there were any.
+    Relaunch { windows: bool },
 }
 
 struct App {
@@ -147,6 +167,12 @@ struct App {
     /// (`save_session`), and what was saved last.
     session_due: Option<Instant>,
     session_saved: Vec<session::SavedWindow>,
+    /// Preferences ▸ Update Automatically, for the update thread.
+    updates: Arc<AtomicBool>,
+    ending: Ending,
+    /// Started without a picture (`--reopen`: true, `--tray`: false): once
+    /// the GPU is up, resident, and the last close reopened if true.
+    windowless: Option<bool>,
 }
 
 /// A folder's changes wait this long for the next one before they're applied.
@@ -352,7 +378,12 @@ impl App {
                 let _ = proxy.send_event(Event::Listed { viewer: id, tab, folder: folder::list(&file, sort) });
             });
         }
-        // Off the open path: listen for later launches, show the tray icon.
+        self.start_serving();
+    }
+
+    /// Off the open path, once: listen for later launches, show the tray
+    /// icon, watch for updates.
+    fn start_serving(&mut self) {
         if self.resident && !self.serving {
             self.serving = true;
             let (proxy, superseded) = (Mutex::new(self.shared.proxy.clone()), self.shared.proxy.clone());
@@ -369,6 +400,12 @@ impl App {
                 let _ = proxy.lock().unwrap_or_else(|e| e.into_inner()).send_event(Event::Tray(command));
             })
             .ok();
+            if self.recording {
+                let proxy = self.shared.proxy.clone();
+                update::start(self.updates.clone(), move |version| {
+                    let _ = proxy.send_event(Event::UpdateReady(version));
+                });
+            }
         }
     }
 
@@ -704,12 +741,23 @@ impl App {
             self.recording = false;
             self.session_due = None;
         }
+        self.ending = Ending::Quit;
+        instance::closing();
         event_loop.exit();
+    }
+
+    /// Relaunch to Update: quit, then `main` puts the update in place and
+    /// starts it, which reopens these windows.
+    fn relaunch(&mut self, event_loop: &ActiveEventLoop) {
+        let windows = !self.viewers.is_empty();
+        self.quit(event_loop);
+        self.ending = Ending::Relaunch { windows };
     }
 
     fn on_tray(&mut self, event_loop: &ActiveEventLoop, command: tray::Command) {
         match command {
             tray::Command::Quit => self.quit(event_loop),
+            tray::Command::Relaunch => self.relaunch(event_loop),
             tray::Command::Activate => match self.focus_order.first().and_then(|id| self.viewers.get(id)) {
                 Some(viewer) => {
                     if let Some(window) = &viewer.window {
@@ -831,9 +879,24 @@ impl ApplicationHandler<Event> for App {
                         for id in ids {
                             self.try_show(id);
                         }
+                        // Started without a picture (after an update): resident
+                        // at once, the windows from before reopened.
+                        if let Some(reopen) = self.windowless.take() {
+                            self.start_serving();
+                            if !(reopen && self.reopen(event_loop)) {
+                                self.idle_since = Some(Instant::now());
+                            }
+                        }
                     }
                     Err(e) => self.error = Some(e),
                 }
+            }
+            Event::UpdateReady(version) => {
+                let notify = self.shared.update.as_deref() != Some(&version);
+                if let Some(tray) = &mut self.tray {
+                    tray.update_ready(&version, notify);
+                }
+                self.shared.update = Some(version);
             }
             Event::GpuLost(generation) => {
                 if generation == self.gpu_generation && self.shared.gpu.as_ref().is_some_and(Gpu::lost) {
@@ -954,8 +1017,10 @@ impl App {
                 }
                 self.act(event_loop, target, Ok(Action::Menu));
             }
+            Ok(Action::Relaunch) => self.relaunch(event_loop),
             Ok(Action::GlobalChanged(global)) => {
                 self.global = global;
+                self.updates.store(global.updates, Ordering::Relaxed);
                 settings::save(self.prefs, global);
                 for viewer in self.viewers.values_mut() {
                     viewer.set_global(global);
@@ -1029,6 +1094,10 @@ struct Flags {
     relaunched: bool,
     /// Not a picture to open: something for the installer to run.
     command: Option<Command>,
+    /// `--reopen` (true) or `--tray` (false): no picture to open.
+    windowless: Option<bool>,
+    /// `--after`: the process to wait for first.
+    after: Option<u32>,
 }
 
 enum Command {
@@ -1039,7 +1108,7 @@ enum Command {
 
 fn parse_args() -> Result<(Request, Flags), String> {
     let mut request = Request::default();
-    let mut flags = Flags { standalone: false, relaunched: false, command: None };
+    let mut flags = Flags { standalone: false, relaunched: false, command: None, windowless: None, after: None };
     let mut it = std::env::args_os().skip(1);
     while let Some(arg) = it.next() {
         match arg.to_str() {
@@ -1056,11 +1125,14 @@ fn parse_args() -> Result<(Request, Flags), String> {
             Some("--quit") => flags.command = Some(Command::Quit),
             Some("--register") => flags.command = Some(Command::Register),
             Some("--unregister") => flags.command = Some(Command::Unregister),
+            Some("--reopen") => flags.windowless = Some(true),
+            Some("--tray") => flags.windowless = Some(false),
+            Some("--after") => flags.after = Some(it.next().and_then(|v| v.into_string().ok()?.parse().ok()).ok_or("--after needs a process id")?),
             Some(elevation::RELAUNCHED) => flags.relaunched = true,
             _ => request.file = std::path::absolute(&arg).unwrap_or_else(|_| PathBuf::from(&arg)),
         }
     }
-    if request.file.as_os_str().is_empty() && flags.command.is_none() {
+    if request.file.as_os_str().is_empty() && flags.command.is_none() && flags.windowless.is_none() {
         return Err("usage: flick <image> [--size WxH] [--timeline-out file] [--standalone]".into());
     }
     Ok((request, flags))
@@ -1102,14 +1174,33 @@ fn main() {
         };
         std::process::exit(if done { 0 } else { 1 });
     }
-    let standalone = flags.standalone;
+    if let Some(pid) = flags.after {
+        wait_for_exit(pid, Duration::from_secs(15));
+    }
+    let (standalone, windowless) = (flags.standalone, flags.windowless);
     request.build = instance::build_id();
 
     // A warm open: Flick is already resident, so hand the file over and go
     // (unless the resident one is an older build: then this launch takes over).
     // An elevated launch never stays as the resident one (elevation.rs).
-    let elevated = !standalone && !flags.relaunched && elevation::is_elevated();
+    let elevated = windowless.is_none() && !standalone && !flags.relaunched && elevation::is_elevated();
     let mut resident = !standalone && instance::claim();
+    // An update left waiting (Relaunch dismissed, then Flick ended without
+    // quitting): in place before anything else, and this launch starts over
+    // as the new build.
+    if resident
+        && request.size.is_none()
+        && let Some(exe) = update::apply()
+    {
+        instance::release();
+        if std::process::Command::new(exe).args(std::env::args_os().skip(1)).spawn().is_ok() {
+            return;
+        }
+        resident = instance::claim();
+    }
+    if windowless.is_some() && !resident {
+        return; // a Flick is resident already
+    }
     if resident && elevated && hand_to_unelevated(&request) {
         return;
     }
@@ -1132,11 +1223,13 @@ fn main() {
 
     // The two long poles, in parallel from the start.
     let (first, first_tab): (ViewerId, TabId) = (1, 2);
-    let (path, decode_proxy) = (request.file.clone(), proxy.clone());
-    std::thread::spawn(move || {
-        let picture = decode::decode_screen(&path, target);
-        let _ = decode_proxy.send_event(Event::Decoded { viewer: first, tab: first_tab, picture, at: ms_since_start() });
-    });
+    if windowless.is_none() {
+        let (path, decode_proxy) = (request.file.clone(), proxy.clone());
+        std::thread::spawn(move || {
+            let picture = decode::decode_screen(&path, target);
+            let _ = decode_proxy.send_event(Event::Decoded { viewer: first, tab: first_tab, picture, at: ms_since_start() });
+        });
+    }
     let gpu_proxy = proxy.clone();
     std::thread::spawn(move || {
         let mut stages = Vec::new();
@@ -1147,18 +1240,23 @@ fn main() {
     let placement = if request.size.is_none() { placement::load() } else { None };
     // `--size` benchmark runs keep the defaults, as they keep the default placement.
     let (prefs, global) = if request.size.is_none() { settings::load() } else { Default::default() };
-    let last_file = Some(request.file.clone());
+    let opening = windowless.is_none();
+    let last_file = opening.then(|| request.file.clone());
     let recording = resident && request.size.is_none();
     if recording {
         // Off the open path: what a crash or a shutdown left open.
         std::thread::spawn(session::recover);
     }
+    let mut viewers = HashMap::new();
+    if opening {
+        viewers.insert(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs, global, 0));
+    }
     let mut app = App {
-        shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target },
-        viewers: HashMap::from([(first, Viewer::new(first, Tab::new(first_tab, request, timeline), placement, prefs, global, 0))]),
+        shared: Shared { proxy, gpu: None, pool: None, cache: HashMap::new(), failed: HashMap::new(), target, update: None },
+        viewers,
         windows: HashMap::new(),
         next_id: first_tab + 1,
-        focus_order: vec![first],
+        focus_order: if opening { vec![first] } else { Vec::new() },
         placement,
         prefs,
         global,
@@ -1168,8 +1266,8 @@ fn main() {
         last_file,
         // A cold start can be the first of a burst too: the other launches
         // wait for the pipe, then arrive together.
-        last_open: Some(Instant::now()),
-        burst: Some((first, 0)),
+        last_open: opening.then(Instant::now),
+        burst: opening.then_some((first, 0)),
         idle_since: None,
         error: None,
         watchers: HashMap::new(),
@@ -1179,6 +1277,9 @@ fn main() {
         // Saved once the first window is up (a crash before then has nothing to reopen).
         session_due: recording.then(|| Instant::now() + SESSION_SETTLE),
         session_saved: Vec::new(),
+        updates: Arc::new(AtomicBool::new(global.updates)),
+        ending: Ending::Other,
+        windowless,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         app.error.get_or_insert(e.to_string());
@@ -1190,7 +1291,32 @@ fn main() {
         saved.save_placement();
     }
     drop(app.tray.take());
+    match app.ending {
+        Ending::Quit => {
+            update::apply();
+        }
+        Ending::Relaunch { windows } => {
+            // The new build waits for this process to end before it takes over.
+            if let Some(exe) = update::apply().or_else(|| std::env::current_exe().ok()) {
+                let start = if windows { "--reopen" } else { "--tray" };
+                let _ = std::process::Command::new(exe).args([start, "--after", &std::process::id().to_string()]).spawn();
+            }
+        }
+        Ending::Other => {}
+    }
     if let Some(e) = &app.error {
         report(e);
+    }
+}
+
+/// Waits up to `limit` for process `pid` to end (at once if it has).
+fn wait_for_exit(pid: u32, limit: Duration) {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject};
+    unsafe {
+        if let Ok(process) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
+            WaitForSingleObject(process, limit.as_millis() as u32);
+            let _ = CloseHandle(process);
+        }
     }
 }

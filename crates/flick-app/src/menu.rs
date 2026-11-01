@@ -127,6 +127,8 @@ pub enum Choice {
     SlideInterval(u32),
     /// What a hotkey does, chosen from the menu instead.
     Command(Command),
+    /// Relaunch to Update: an update is ready (update.rs).
+    Relaunch,
 }
 
 /// The menu's items that do what a hotkey does (keys.rs): every key is in
@@ -189,6 +191,8 @@ const OPEN_IN_TABS: usize = 902;
 const MULTIROW: usize = 903;
 const STARRED_FOLDER: usize = 904;
 const PREFETCH: usize = 905;
+const UPDATES: usize = 906;
+const RELAUNCH: usize = 907;
 /// Rotate ▸ 910 + quarter turns, flips, persist.
 const TURN: usize = 910;
 const FLIP_H: usize = 914;
@@ -253,7 +257,8 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 /// new window (not when it is the window's only tab, nor with tabs off);
 /// `lock` this window's Tab Lock (None: one tab, greyed); `starred` the
 /// starred folder, if chosen; `turn` this tab's Rotate ▸ choice;
-/// `slideshow` whether one is running.
+/// `slideshow` whether one is running; `update` the version of an update
+/// ready to relaunch into, first in the menu.
 #[allow(clippy::too_many_arguments)]
 pub fn show(
     hwnd: HWND,
@@ -265,6 +270,7 @@ pub fn show(
     starred: Option<&Path>,
     turn: Turn,
     slideshow: bool,
+    update: Option<&str>,
 ) -> Option<Choice> {
     let (main, sort, filter, info) = (main_items(), sort_items(), filter_items(), info_items());
     let mut swatches = Vec::new();
@@ -274,6 +280,10 @@ pub fn show(
         let filter_menu = CreatePopupMenu().ok()?;
         let move_menu = CreatePopupMenu().ok()?;
         let prefs_menu = CreatePopupMenu().ok()?;
+        if let Some(version) = update {
+            let _ = AppendMenuW(menu, MF_STRING, RELAUNCH, &HSTRING::from(format!("Relaunch to Update Flick ({version})")));
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
+        }
         // Settings items take ids from 1 in this order: main, sort, filter, info.
         let after_main = append(menu, &main, &prefs, 1);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
@@ -390,6 +400,7 @@ pub fn show(
         let _ = AppendMenuW(prefs_menu, checked(global.tabs), OPEN_IN_TABS, w!("Open Files in Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.multirow), MULTIROW, w!("Multi-row Tabs"));
         let _ = AppendMenuW(prefs_menu, checked(global.prefetch), PREFETCH, w!("Load Full Resolution Ahead"));
+        let _ = AppendMenuW(prefs_menu, checked(global.updates), UPDATES, w!("Update Automatically"));
         let _ = AppendMenuW(prefs_menu, MF_SEPARATOR, 0, None);
         let folder = match starred {
             Some(folder) => HSTRING::from(format!("Starred Folder: {}…", folder.display())),
@@ -423,6 +434,8 @@ pub fn show(
             OPEN_IN_TABS => Some(Choice::Global(Global { tabs: !global.tabs, ..global })),
             MULTIROW => Some(Choice::Global(Global { multirow: !global.multirow, ..global })),
             PREFETCH => Some(Choice::Global(Global { prefetch: !global.prefetch, ..global })),
+            UPDATES => Some(Choice::Global(Global { updates: !global.updates, ..global })),
+            RELAUNCH => Some(Choice::Relaunch),
             STARRED_FOLDER => Some(Choice::ChooseStarredFolder),
             id if (TURN..TURN + 4).contains(&id) => Some(Choice::Turn(Turn { quarter: (id - TURN) as u8, ..turn })),
             FLIP_H => Some(Choice::Turn(Turn { flip_h: !turn.flip_h, ..turn })),

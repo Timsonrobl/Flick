@@ -17,7 +17,8 @@ use std::iter::once;
 use std::path::Path;
 
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegDeleteKeyValueW, RegDeleteTreeW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_SZ, RegCloseKey, RegCreateKeyExW, RegDeleteKeyValueW, RegDeleteTreeW,
+    RegGetValueW, RegSetValueExW,
 };
 use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
 use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
@@ -67,6 +68,20 @@ pub fn unregister() -> Result<()> {
     delete_value(REGISTERED, "Flick")?;
     changed();
     Ok(())
+}
+
+/// A string value under HKEY_CURRENT_USER, if there is one.
+pub fn read(key: &str, name: &str) -> Option<String> {
+    let mut buffer = vec![0u16; 1024];
+    let mut size = (buffer.len() * 2) as u32;
+    unsafe { RegGetValueW(HKEY_CURRENT_USER, &HSTRING::from(key), &HSTRING::from(name), RRF_RT_REG_SZ, None, Some(buffer.as_mut_ptr().cast()), Some(&mut size)) }.ok().ok()?;
+    let chars = (size as usize / 2).saturating_sub(1); // without the terminating zero
+    Some(String::from_utf16_lossy(&buffer[..chars]))
+}
+
+/// A string value under HKEY_CURRENT_USER (the key made if missing).
+pub fn write(key: &str, name: &str, value: &str) -> Result<()> {
+    set(key, Some(name), value)
 }
 
 /// A string value (`None`: the key's default), creating the key if missing

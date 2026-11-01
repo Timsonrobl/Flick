@@ -1,4 +1,0 @@
-// Resources linked into flick.exe (build.rs). The first icon group is what
-// Explorer, the taskbar and "DefaultIcon = flick.exe,0" show; icon.rs loads
-// it by this ordinal for windows and the tray.
-1 ICON "../../assets/icon/flick.ico"

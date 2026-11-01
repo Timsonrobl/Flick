@@ -72,11 +72,14 @@ pub struct Global {
     /// so a first zoom is sharp at once (GPU memory and CPU for every
     /// picture paused on, zoomed or not).
     pub prefetch: bool,
+    /// An installed Flick looks for updates daily and gets them ready
+    /// (update.rs).
+    pub updates: bool,
 }
 
 impl Default for Global {
     fn default() -> Global {
-        Global { tabs: true, multirow: true, prefetch: false }
+        Global { tabs: true, multirow: true, prefetch: false, updates: true }
     }
 }
 
@@ -114,6 +117,7 @@ pub fn parse(text: &str, prefs: Prefs) -> (Prefs, Global) {
             "tabs" => global.tabs = value != "0",
             "multirow" => global.multirow = value != "0",
             "prefetch_full" => global.prefetch = value == "1",
+            "updates" => global.updates = value != "0",
             _ => {}
         }
     }
@@ -130,7 +134,7 @@ pub fn save(prefs: Prefs, global: Global) {
 
 fn text(prefs: Prefs, global: Global) -> String {
     format!(
-        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\npersist_turn={}\nturn={},{},{}\nslideshow_ms={}\ntabs={}\nmultirow={}\nprefetch_full={}\n",
+        "fit={}\nstretch_small={}\nfilter={}\nsort={}\ndescending={}\ninfo={}\npersist_turn={}\nturn={},{},{}\nslideshow_ms={}\ntabs={}\nmultirow={}\nprefetch_full={}\nupdates={}\n",
         name(&FITS, prefs.mode.fit),
         u8::from(prefs.mode.stretch_small),
         name(&FILTERS, prefs.filter),
@@ -146,6 +150,7 @@ fn text(prefs: Prefs, global: Global) -> String {
         u8::from(global.tabs),
         u8::from(global.multirow),
         u8::from(global.prefetch),
+        u8::from(global.updates),
     )
 }
 

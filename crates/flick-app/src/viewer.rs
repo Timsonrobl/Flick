@@ -77,6 +77,8 @@ pub struct Shared {
     pub failed: HashMap<PathBuf, String>,
     /// What screen levels are decoded to cover (the monitor, or `--size`).
     pub target: (u32, u32),
+    /// The version of an update ready to relaunch into (update.rs).
+    pub update: Option<String>,
 }
 
 /// What the app must do after a viewer handled an event.
@@ -110,6 +112,8 @@ pub enum Action {
     /// Ctrl+T (a background tab beside this one) or Ctrl+N (a new window):
     /// the same file again.
     Duplicate { file: PathBuf, new_window: bool },
+    /// Relaunch to Update (the menu).
+    Relaunch,
 }
 
 /// A `Screen` level on the GPU. Cloning shares the texture.
@@ -2802,7 +2806,7 @@ impl Viewer {
         let lock = (self.tab_count() > 1).then_some(self.locked);
         let starred = library::starred_folder();
         let turn = self.turn_of(&self.tab);
-        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, starred.as_deref(), turn, self.slideshow.is_some());
+        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, starred.as_deref(), turn, self.slideshow.is_some(), shared.update.as_deref());
         // Whatever the clicks that closed the menu left half-done (a press
         // without its release) is dropped, and presses queued while it was
         // open are ignored when they arrive just after (`fresh_press`).
@@ -2828,6 +2832,7 @@ impl Viewer {
             Some(menu::Choice::Slideshow) => self.toggle_slideshow(),
             Some(menu::Choice::SlideInterval(ms)) => self.set_slide_interval(ms),
             Some(menu::Choice::Command(command)) => self.run(command, shared),
+            Some(menu::Choice::Relaunch) => Action::Relaunch,
             None => Action::None,
         }
     }

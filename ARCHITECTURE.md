@@ -200,7 +200,7 @@ Rules that keep this honest:
 | `flick-platform` | winit | Frameless hit-testing, snap, DPI, single-instance IPC, file associations, shell "open with". |
 | `flick-app` | all of the above + `windows` (D3D11, Direct2D, DirectComposition, DirectWrite) | Event loop, windows, rendering, overlay UI, tray icon, keymap. |
 | `flick-bench` | codecs, meta | CLI: decode timings and peak RSS per decoder per file; memory counters. Used in CI and by hand. |
-| `flick-icon` | resvg, ico | Dev tool: renders `assets/icon/flick.svg` (32 px and up) and `flick-small.svg` (16–24 px, heavier lines for the tray) into the committed `assets/icon/flick.ico`, which `flick-app` links in via `flick.rc`. Building Flick never needs it. |
+| `flick-icon` | resvg, ico | Dev tool: renders `assets/icon/flick.svg` (32 px and up) and `flick-small.svg` (16–24 px, heavier lines for the tray) into the committed `assets/icon/flick.ico`, which `flick-app`'s build.rs links in, with the version details. Building Flick never needs it. |
 
 Rule: dependency arrows only point down the table. `flick-core` must build
 with no C dependencies so tests run anywhere.
@@ -916,7 +916,7 @@ only starred / not starred):
 | 5 ✓ | Tab strip in the hover bar, keymap, config (hover bar itself: done in milestone 1) | Chrome appears on hover, fades, never redraws idle; not on the open path. Keymap: one bindings table (§13, 2026-10-27); no config file of tunables (decided, §13); a user keys file is optional backlog (§17) |
 | 6 ✓ | Tags/rating read + write, inline editor | Rating is done as stars (§11: Ctrl+F / Shift+F, kept in the library, files never modified). Tags: moved to the optional backlog (§17; user decision, 2026-10-27) |
 | 7 ✓* | Format long tail (PNG/WebP/JXL/HEIC/AVIF/TIFF/RAW/SVG/animated/HDR) | Each via the trait; bench results recorded; none loaded at startup. 19 samples open with 0 blank/flicker, cold JPEG unchanged (212 ms); `bench/README.md`. RAW added 2026-10-29 (§17): 12 cameras' samples, screen level 12–80 ms. *No `Decoder` trait yet: `formats::kind` dispatches |
-| 8 | Polish: file associations, installer (built 2026-11-01; updates designed, §17), session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
+| 8 | Polish: file associations, installer and updates (built 2026-11-01, §17), session restore (done: the close history, §10a), Linux/macOS build (tab drag-out: optional backlog, §17) | — |
 
 Milestones 0–3 are the thesis; if 3 doesn't beat Honeyview on cold start,
 paging and memory, stop and rethink before building chrome. Every milestone
@@ -1121,33 +1121,50 @@ build only if a real need shows up):
   registration, uninstall (everything gone but `%LOCALAPPDATA%\Flick`).
   Not yet: installing over a running installed copy (its `--quit` before
   the files are replaced), a PC without the Visual C++ runtime. Unsigned:
-  the browser-downloaded setup.exe meets SmartScreen once, see updates.
+  the browser-downloaded setup.exe meets SmartScreen once; updates
+  don't (below).
 - [ ] **No Start menu entry yet**: Flick started without a file shows its
   usage as an error. Wants a meaning first (the close history's last
   windows? an Open dialog?), then the installer adds the shortcut.
-- [ ] **Updates, Chrome-style** (user's wish, 2026-11-01). Design:
-  - *Check*: at start (off the open path) and daily, if updates are on
-    (a setting), fetch a small signed manifest from the releases page
-    (`…/releases/latest/download/update.json`: version, exe URL, size,
-    SHA-256) through WinHTTP (the system proxy; no new crate). The
-    manifest's ed25519 signature is checked against a key built into
-    Flick, so a hijacked release page can't push an exe; the private key
-    stays offline with the user.
-  - *Stage*: download the new `flick.exe` in the background to
-    `{app}\update\`, check size, hash and signature; a newer release
-    replaces one waiting.
-  - *Apply*: a "Relaunch to update" prompt. Relaunch renames the running
-    exe aside (as `tools\build.ps1` does), moves the staged one into
-    place and starts it with `--updated`: it registers again, sets the
-    uninstall entry's version, takes over through the build hand-off
-    (§3a) and reopens the windows. Dismissed: the swap happens when Flick
-    quits. Renamed copies are deleted at the next start.
+- [x] **Updates, Chrome-style** (built 2026-11-01, `update.rs`; on by
+  default, Preferences ▸ Update Automatically).
+  - *Look*: an installed copy (the uninstall entry's InstallLocation is
+    its folder; a dev build never updates), at start off the open path
+    and then daily, fetches `…/Flick/releases/latest/download/update.txt`
+    through WinHTTP (system proxy; no new crate). The manifest (version,
+    exe URL, size, SHA-256) is signed ECDSA P-256; the public key is built
+    in (`src/update.key`), the private one is DPAPI-encrypted in
+    `%USERPROFILE%\.flick` (`tools\update-key.ps1`; **back it up with
+    `-Backup`**: without it no installed Flick takes another update).
+    Verification is Windows' CNG (BCrypt), also no crate.
+  - *Stage*: the exe downloads in the background to `{app}\update\`,
+    checked for size and hash; a newer release replaces one waiting.
+  - *Offer*: the tray icon gets a yellow dot, its menu and the right-click
+    menu "Relaunch to Update Flick (x.y.z)", and a Windows notification
+    says so once; clicking it relaunches. The exe's version details
+    (`build.rs`) name it "Flick" there.
+  - *Apply*: Relaunch quits (windows to the close history), renames the
+    running exe aside, moves the new one in and starts it with
+    `--reopen --after <pid>`: it waits for the old process, then starts
+    resident without a picture and reopens the windows. Otherwise the
+    swap happens at Quit, or at the next start (a launch that finds one
+    waiting swaps, starts the new build with its arguments and exits:
+    ~0.7 s, once). The new build's first start registers its file types
+    again, sets the uninstall entry's version and deletes renamed copies.
+    A resident that has begun quitting sends any later launch on to take
+    over (instead of taking its file and losing it).
   - *One warning per machine*: SmartScreen judges files a browser marked
     as downloaded (Mark of the Web); Flick's own download carries no
     mark, and a per-user folder needs no admin, so only the first
     setup.exe is ever warned about. Exception: Smart App Control
     (Windows 11, on some clean installs) blocks unsigned programs
     outright; only code signing passes it.
-  - Needs: a public releases page (the GPL wants the source public
-    anyway), a signing key pair, and a release script that builds,
-    signs the manifest and uploads.
+  - *Releasing*: bump `crates/flick-app/Cargo.toml`'s version, run
+    `tools\release.ps1` (installer, exe and signed manifest in
+    `target\release-upload`), then `gh release create v<version> …`.
+    Updates reach people once the repository is public.
+  - Tested 2026-11-01 against a local server with signed 0.1.1 and 0.1.2
+    builds: 0.1.0 staged 0.1.1 within a second of starting; Relaunch put
+    it in place (uninstall entry 0.1.1, window back); a staged update went
+    in at Quit and at a cold start. Forged or edited manifests are refused
+    (unit test).

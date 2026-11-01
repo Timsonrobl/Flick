@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use windows::Win32::Foundation::{
@@ -84,6 +84,8 @@ const OK: &[u8] = b"ok";
 const OUTDATED: &[u8] = b"outdated";
 
 static BUILD: OnceLock<u64> = OnceLock::new();
+/// This resident has begun quitting (`closing`).
+static CLOSING: AtomicBool = AtomicBool::new(false);
 /// The instance mutex's handle (0: none), held while this process is the
 /// resident one.
 static MUTEX: AtomicUsize = AtomicUsize::new(0);
@@ -197,6 +199,13 @@ pub fn send(request: &Request) -> Result<Handoff, String> {
     }
 }
 
+/// This resident is quitting: a file asked for from now on is opened by
+/// its launcher, which takes over (as from an older build), not taken here
+/// and lost when the process ends.
+pub fn closing() {
+    CLOSING.store(true, Ordering::SeqCst);
+}
+
 /// Asks the resident Flick to quit (`flick --quit`: the installer, before it
 /// replaces or removes flick.exe) and waits up to `wait` for its process to
 /// end. True once no resident Flick runs (or none did).
@@ -244,7 +253,8 @@ pub fn serve(on_request: impl Fn(Request) + Send + 'static, on_superseded: impl 
             let connected = unsafe { ConnectNamedPipe(pipe, None) }.is_ok() || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
             let request = if connected { read_message(pipe).as_deref().and_then(Request::decode) } else { None };
             // A quit is obeyed by any build: the installer's may be newer.
-            let newer = request.as_ref().is_some_and(|r| !r.quit && r.build > build_id());
+            // Quitting already, any launcher takes over.
+            let newer = request.as_ref().is_some_and(|r| !r.quit && (r.build > build_id() || CLOSING.load(Ordering::SeqCst)));
             trace(format_args!("serve: connected {connected}, request build {:?} (mine {}), newer {newer}", request.as_ref().map(|r| r.build), build_id()));
             if newer {
                 // Release first, so the launcher can claim as soon as it reads the reply.
