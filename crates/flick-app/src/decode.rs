@@ -911,6 +911,47 @@ mod tests {
         }
     }
 
+    /// What each RAW sample's steps cost in memory: peak private bytes of
+    /// this process after the plan (WIC opened for the size) and after the
+    /// screen level. `cargo test --release -p flick-app raw_memory -- --ignored --nocapture --test-threads 1`.
+    #[test]
+    #[ignore]
+    fn raw_memory() {
+        use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX};
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        let mb = || unsafe {
+            let mut c = PROCESS_MEMORY_COUNTERS_EX::default();
+            GetProcessMemoryInfo(GetCurrentProcess(), &mut c as *mut _ as *mut _, std::mem::size_of_val(&c) as u32).unwrap();
+            (c.PrivateUsage as f64 / 1048576.0, c.PeakPagefileUsage as f64 / 1048576.0)
+        };
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/samples/raw");
+        let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).collect();
+        files.sort();
+        // The peak only rises: `$env:FLICK_ONLY` picks one file per run.
+        let only = std::env::var("FLICK_ONLY").unwrap_or_default();
+        for file in files {
+            let name = file.file_name().unwrap().to_string_lossy().into_owned();
+            if !name.contains(&only) {
+                continue;
+            }
+            let before = mb();
+            let t = std::time::Instant::now();
+            let plan = raw_plan(&file);
+            let plan_ms = t.elapsed().as_secs_f64() * 1000.0;
+            let after_plan = mb();
+            drop(plan);
+            let t = std::time::Instant::now();
+            let screen = decode_screen(&file, (3377, 1440)).unwrap();
+            let screen_ms = t.elapsed().as_secs_f64() * 1000.0;
+            let after_screen = mb();
+            drop(screen);
+            println!(
+                "{name:<48} private {:.0} MB; plan {plan_ms:.0} ms, peak {:.0} MB; screen {screen_ms:.0} ms, peak {:.0} MB",
+                before.0, after_plan.1, after_screen.1
+            );
+        }
+    }
+
     /// The RAW samples (`bench/samples/raw`) as a window gets them: the
     /// quick preview, the screen level (3377×1440), the full level, with
     /// times and sizes. With `$env:FLICK_FORMATS_OUT`, each screen level
