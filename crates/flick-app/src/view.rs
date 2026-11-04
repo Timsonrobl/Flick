@@ -232,7 +232,15 @@ impl View {
     pub fn scale_for(&self, fit: Fit) -> f32 {
         let (across, down) = (self.window.0 / self.image.0, self.window.1 / self.image.1);
         let scale = match fit {
-            Fit::Window => across.min(down),
+            Fit::Window => {
+                let fit = across.min(down);
+                // A border under a pixel each side is no border but a grey
+                // hairline along the picture (a window just off its shape, as
+                // a whole-pixel window rarely matches a picture's exactly):
+                // fill instead, cutting off a pixel or so.
+                let gap = (self.window.0 - self.image.0 * fit) + (self.window.1 - self.image.1 * fit);
+                if gap < 2.0 { across.max(down) } else { fit }
+            }
             Fit::Fill => across.max(down),
             Fit::Width => across,
             Fit::Height => down,
@@ -428,6 +436,18 @@ mod tests {
         assert_eq!(View::new((4000, 1000), WINDOW, mode(Fit::Window, false)).scale, 0.25);
         assert_eq!(View::new((100, 50), WINDOW, mode(Fit::Window, false)).scale, 1.0);
         assert_eq!(View::new((100, 50), WINDOW, mode(Fit::Window, true)).scale, 10.0);
+    }
+
+    #[test]
+    fn fit_window_leaves_no_hairline() {
+        // 8256 x 5504 (3:2) in 902 x 601: fitted it is 901.5 wide, a quarter
+        // pixel of background each side. It fills instead: no bar shows.
+        let view = View::new((8256, 5504), (902, 601), mode(Fit::Window, false));
+        assert!(view.picture_left() <= 0.0 && view.top() <= 0.0, "covers the window");
+        assert!(8256.0 * view.scale - 902.0 < 2.0, "cutting off under two pixels");
+        // A real border stays: 905 wide leaves 3.5 px.
+        let view = View::new((8256, 5504), (905, 601), mode(Fit::Window, false));
+        assert!(view.picture_left() > 1.0);
     }
 
     #[test]

@@ -1,4 +1,6 @@
 /target
+# Kept builds of recent commits (tools/keep-build.ps1).
+/builds
 /bench/samples
 # Personal photos for benchmarking; never committed.
 /bench/photos

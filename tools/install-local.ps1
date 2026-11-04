@@ -18,22 +18,41 @@ sorts 1.1.0-dev below 1.1.0). -AllowRelease installs a release version
 anyway (the release build itself, before publishing it).
 
 -NoBuild installs what is built already; -NoStart leaves Flick closed.
+
+A build of a clean tree (the code committed as it is) is kept as that
+commit's (tools\keep-build.ps1, the newest three in builds\). -Commit <hash>
+installs a kept build instead of building, to see whether something was
+there before.
 #>
-param([switch]$NoBuild, [switch]$NoStart, [switch]$AllowRelease)
+param([switch]$NoBuild, [switch]$NoStart, [switch]$AllowRelease, [string]$Commit)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 
-$manifest = Get-Content (Join-Path $root 'crates\flick-app\Cargo.toml') -Raw
-if ($manifest -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'no version in crates\flick-app\Cargo.toml' }
-$version = $Matches[1]
-if ($version -notmatch '-' -and -not $AllowRelease) {
-    throw "$version is a release version: a local build should be the next version's pre-release (e.g. 1.2.0-dev). -AllowRelease to install it anyway."
-}
+if ($Commit) {
+    $hash = (git -C $root rev-parse --short $Commit).Trim()
+    $kept = Join-Path $root "builds\$hash"
+    $setup = Get-ChildItem $kept -Filter 'Flick-*-setup.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+    if (-not $setup) { throw "no kept build of $hash (builds\: $((Get-ChildItem (Join-Path $root 'builds') -Directory -ErrorAction SilentlyContinue).Name -join ', '))" }
+    $built = Join-Path $kept 'flick.exe'
+    $version = (Get-Item $built).VersionInfo.ProductVersion
+} else {
+    $manifest = Get-Content (Join-Path $root 'crates\flick-app\Cargo.toml') -Raw
+    if ($manifest -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'no version in crates\flick-app\Cargo.toml' }
+    $version = $Matches[1]
+    if ($version -notmatch '-' -and -not $AllowRelease) {
+        throw "$version is a release version: a local build should be the next version's pre-release (e.g. 1.2.0-dev). -AllowRelease to install it anyway."
+    }
 
-& (Join-Path $PSScriptRoot 'installer.ps1') -NoBuild:$NoBuild
-if ($LASTEXITCODE) { throw 'installer build failed' }
-$setup = Join-Path $root "target\installer\Flick-$version-setup.exe"
+    & (Join-Path $PSScriptRoot 'installer.ps1') -NoBuild:$NoBuild
+    if ($LASTEXITCODE) { throw 'installer build failed' }
+    $setup = Join-Path $root "target\installer\Flick-$version-setup.exe"
+    $built = Join-Path $root 'target\release\flick.exe'
+    # The committed code as it is: keep it as the commit's build.
+    if (-not (git -C $root status --porcelain -- crates installer Cargo.toml Cargo.lock)) {
+        & (Join-Path $PSScriptRoot 'keep-build.ps1')
+    }
+}
 
 # Windows open before (the installer's --quit sends them to the close history)?
 $hadWindows = [bool](Get-Process flick -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 })
@@ -42,7 +61,6 @@ $run = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/
 if ($run.ExitCode) { throw "setup failed (exit $($run.ExitCode))" }
 
 $installed = Join-Path $env:LOCALAPPDATA 'Programs\Flick\flick.exe'
-$built = Join-Path $root 'target\release\flick.exe'
 if ((Get-FileHash $installed).Hash -ne (Get-FileHash $built).Hash) { throw "the installed flick.exe isn't the one just built ($installed)" }
 $shown = (Get-Item $installed).VersionInfo.ProductVersion
 if ($shown -ne $version) { throw "the installed flick.exe says $shown, not $version" }
@@ -50,4 +68,4 @@ if ($shown -ne $version) { throw "the installed flick.exe says $shown, not $vers
 if (-not $NoStart) {
     Start-Process $installed -ArgumentList $(if ($hadWindows) { '--reopen' } else { '--tray' })
 }
-Write-Host "Installed Flick $version ($installed)$(if ($NoStart) { '' } elseif ($hadWindows) { ', its windows reopened' } else { ', resident in the tray' })."
+Write-Host "Installed Flick $version$(if ($Commit) { " as built at $hash" }) ($installed)$(if ($NoStart) { '' } elseif ($hadWindows) { ', its windows reopened' } else { ', resident in the tray' })."

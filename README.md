@@ -72,7 +72,8 @@ sharp one fades in over it. Decoding never happens on the UI thread.
 
 ## What it does
 
-- **Frameless windows** that still move, resize and snap like any other. A
+- **Frameless windows** that still move, resize and snap like any other;
+  resizing pauses where the window takes the picture's shape. A
   hover bar and a tab strip fade in over the picture when the mouse needs
   them, then get out of the way. **Full screen** with F11 or Enter: black
   around the picture, the cursor hidden while still, Esc to leave.
@@ -160,6 +161,7 @@ You need Rust (stable, MSVC toolchain) on Windows 10 or 11.
 .\tools\build.ps1 -p flick-app        # release build; works while Flick is running
 cargo test --release -p flick-app     # unit tests
 .\tools\install-local.ps1             # install this build over your installed Flick
+.\tools\install-local.ps1 -Commit <hash>  # or a kept build of a recent commit
 ```
 
 Between releases the version is the next one's pre-release (`1.1.0-dev`),

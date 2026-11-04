@@ -246,6 +246,7 @@ Rules that keep this honest:
 | `folder.rs`, `watch.rs`, `history.rs` | Folder listing, sorting and shuffling; folder change watching; a tab's Back/Forward history |
 | `chrome.rs`, `osd.rs`, `debug.rs`, `menu.rs` | Hover bar and tab strip; info panel and notes; F12 overlay; the right-click menu |
 | `keys.rs`, `settings.rs`, `placement.rs`, `session.rs` | Hotkey table; saved settings; window placement; the close history |
+| `sizing.rs` | Resizing stops at the picture's shape (§10) |
 | `library.rs`, `meta.rs`, `clipboard.rs` | Stars (SQLite); EXIF for the info panel; Ctrl+C |
 | `instance.rs`, `elevation.rs`, `tray.rs`, `icon.rs` | Single instance; elevated launches; tray icon; the app icon |
 | `register.rs`, `update.rs`, `build.rs` | File associations; updates; the resource script (icon, version details) written at build time |
@@ -595,6 +596,26 @@ argument quoting.
   starts only once the cursor passes the system drag threshold, so a click
   never enters Windows' move loop; buttons act on release over the same
   button, like native ones.
+- **Resizing stops at the picture's shape** (`sizing.rs`): where the window
+  takes the picture's aspect, leaving no border, an edge holds while the
+  cursor travels 12 px (DPI-scaled) either side, then follows again, as
+  zooming stops at 100 %. Each dimension has its own stop: a side's is the
+  dimension it moves; on a corner drag the width stops where the side bars
+  go and the height where the top and bottom ones go, whichever the cursor
+  is moving along as it reaches it (choosing the dimension needing less
+  change instead made a horizontal drag of a landscape picture move the
+  height). A window a pixel off the picture's shape (most whole-pixel
+  sizes are) would show a hairline of background along the picture, so
+  Fit to Window fills when the border would be under a pixel each side,
+  cutting off a pixel or so. A subclass of the window edits the rectangle
+  in WM_SIZING, which Windows' resize loop sends before applying each move,
+  so nothing is drawn at the wrong size (winit uses WM_SIZING only for
+  resize increments). The viewer sets the shape whenever it draws: only
+  while the picture follows a fit (not zoomed or panned by hand, not 100 %),
+  and, for a small picture not enlarged, only up to its own size, past which
+  it has a border whatever the shape. Measured with a scripted drag at
+  125 %: the width jumps to the match 15 px early and holds for 30 px of
+  travel.
 - **Hover bar** (`chrome.rs`), as in Honeyview: a single top bar, drawn
   over the picture (never shrinking it), fades in (100 ms) when the cursor
   is within **2× the bar height** of the window's top edge, and fades out
@@ -1135,6 +1156,16 @@ Open:
   Flick closed. A dev build run from `target\release` instead (with
   `tools\register.ps1`) doesn't update itself and isn't the installed
   layout; benchmarks use that one (`bench\quick.ps1` builds it).
+- **Kept builds:** the installer and `flick.exe` of the newest three
+  commits stay in `builds\<commit>\` (git-ignored), so a regression of any
+  kind (speed, memory, a look) can be traced without rebuilding:
+  `tools\install-local.ps1 -Commit <hash>` installs one, and its
+  `flick.exe` runs standalone or under the bench. `tools\keep-build.ps1`
+  keeps the build in `target\` as HEAD's when it is HEAD's code: no
+  uncommitted changes in `crates\`, `installer\` or the Cargo files, and
+  built after they last changed. install-local runs it after building a
+  clean tree; after committing a build tested from the working tree, run
+  it by hand.
 - **Releasing:** set `crates/flick-app/Cargo.toml`'s version to the
   release (drop `-dev`), run
   `tools\release.ps1` (installer, exe and signed manifest in

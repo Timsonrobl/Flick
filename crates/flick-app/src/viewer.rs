@@ -42,7 +42,8 @@ use crate::session::{SavedTab, SavedWindow};
 use crate::settings::{self, Global, Prefs};
 use crate::history::History;
 use crate::tiles::{self, Tile};
-use crate::view::{self, Affine, Filter, Mode, Stop, Turn, View};
+use crate::sizing;
+use crate::view::{self, Affine, Filter, Fit, Mode, Stop, Turn, View};
 
 pub type ViewerId = u64;
 
@@ -724,6 +725,8 @@ pub struct Viewer {
     /// In full screen, the cursor hides once still for CURSOR_HIDE (`cursor_due`).
     cursor_moved: Option<Instant>,
     cursor_hidden: bool,
+    /// The picture's shape, where resizing the window stops (`sizing`).
+    shape: sizing::Shape,
 }
 
 /// A running slideshow. Each picture stays `Prefs::slide_ms` from when it
@@ -818,6 +821,7 @@ impl Viewer {
             fullscreen_from: None,
             cursor_moved: None,
             cursor_hidden: false,
+            shape: sizing::Shape::default(),
         }
     }
 
@@ -1166,6 +1170,7 @@ impl Viewer {
             let disable = windows::core::BOOL::from(true);
             let _ = DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, (&raw const disable).cast(), size_of_val(&disable) as u32);
         }
+        sizing::install(hwnd, &self.shape);
         self.chrome.set_scale(window.scale_factor() as f32);
         self.window = Some(window);
         self.hwnd = Some(hwnd);
@@ -2420,6 +2425,7 @@ impl Viewer {
         }
         let mut paths: Vec<PathBuf> = self.others.iter().map(|t| t.file().to_path_buf()).collect();
         paths.insert(self.active_at, self.tab.file().to_path_buf());
+        self.publish_shape();
         let fullscreen = self.is_fullscreen();
         // In full screen the maximize button shows "restore" and leaves it.
         let maximized = fullscreen || self.window.as_ref().is_some_and(|w| w.is_maximized());
@@ -2614,6 +2620,21 @@ impl Viewer {
         let (private, working) = clock::memory_mb();
         text += &format!("memory  private {private:.0} MB, working set {working:.0} MB (process)");
         text
+    }
+
+    /// Where resizing the window stops: the picture's shape, while it
+    /// follows a fit (not zoomed or panned by hand, not at 100 %).
+    fn publish_shape(&self) {
+        let fitted = self.tab.current.as_ref().filter(|c| self.tab.notice.is_none() && c.view.follows_mode && c.view.mode.fit != Fit::Original);
+        match fitted {
+            Some(current) => {
+                let (width, height) = current.view.image;
+                // Not enlarged: past its own size the picture has a border anyway.
+                let cap = if current.view.mode.stretch_small { 0 } else { width.round() as u32 };
+                self.shape.set(width / height, cap);
+            }
+            None => self.shape.clear(),
+        }
     }
 
     pub fn redraw(&self) {

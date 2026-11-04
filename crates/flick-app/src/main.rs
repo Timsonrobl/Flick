@@ -47,6 +47,7 @@ mod raw;
 mod register;
 mod session;
 mod settings;
+mod sizing;
 mod tiles;
 mod tray;
 mod update;
