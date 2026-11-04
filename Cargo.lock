@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "flick-app"
-version = "1.1.0-dev"
+version = "1.1.0"
 dependencies = [
  "embed-resource",
  "flate2",
