@@ -40,16 +40,45 @@ pub fn is_elevated() -> bool {
     }
 }
 
+/// `arg` as one command-line argument, as the C runtime splits them
+/// (CommandLineToArgvW's rules): quoted, quotes and the backslashes before
+/// them escaped, so a name can't end the argument early (a trailing `\`
+/// would otherwise escape the closing quote).
+fn quoted(arg: &str) -> String {
+    let mut out = String::from('"');
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                out.push('"');
+                backslashes = 0;
+                continue;
+            }
+            _ => {}
+        }
+        if c != '\\' {
+            out.extend(std::iter::repeat_n('\\', backslashes));
+            backslashes = 0;
+            out.push(c);
+        }
+    }
+    out.extend(std::iter::repeat_n('\\', backslashes * 2));
+    out.push('"');
+    out
+}
+
 /// Starts this executable for `request` as a child of Explorer (the shell's
 /// own ShellExecute, reached through the desktop window), so at its level.
 pub fn relaunch_unelevated(request: &Request) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut args = format!("\"{}\"", request.file.display());
+    let mut args = quoted(&request.file.display().to_string());
     if let Some((w, h)) = request.size {
         args += &format!(" --size {w}x{h}");
     }
     if let Some(path) = &request.timeline_out {
-        args += &format!(" --timeline-out \"{}\"", path.display());
+        args += &format!(" --timeline-out {}", quoted(&path.display().to_string()));
     }
     args += &format!(" {RELAUNCHED}");
     let err = |e: windows::core::Error| format!("could not start Flick unelevated: {e}");
@@ -68,5 +97,18 @@ pub fn relaunch_unelevated(request: &Request) -> Result<(), String> {
         shell
             .ShellExecute(&BSTR::from(exe.to_string_lossy().as_ref()), &VARIANT::from(args.as_str()), &VARIANT::from(""), &VARIANT::from("open"), &VARIANT::from(SW_SHOWNORMAL.0))
             .map_err(err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quotes_arguments_as_the_runtime_splits_them() {
+        assert_eq!(quoted(r"C:\Pictures\a b.jpg"), r#""C:\Pictures\a b.jpg""#);
+        assert_eq!(quoted(r"C:\odd\"), r#""C:\odd\\""#, "a trailing backslash doesn't escape the quote");
+        assert_eq!(quoted(r#"a"b"#), r#""a\"b""#);
+        assert_eq!(quoted(r#"a\"b"#), r#""a\\\"b""#);
     }
 }

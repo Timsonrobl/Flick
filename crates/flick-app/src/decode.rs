@@ -7,10 +7,15 @@
 //! pictures (`animate`). A picture with a colour profile other than sRGB
 //! (Display P3, Adobe RGB...) is converted to sRGB as it decodes
 //! (`to_srgb`); the rest, nearly all, are taken as sRGB at no cost.
+//!
+//! Every public decode runs inside `failure::guarded` (a decoder's panic is
+//! that file's error) and checks sizes before allocating (`failure`). A JPEG
+//! or PNG WIC can't decode is shown as far as it can be read (`salvage`).
 
 use std::path::Path;
 use std::time::Duration;
 
+use crate::failure::{self, Error, check, pixels};
 use crate::formats::{self, Kind};
 use crate::raw;
 
@@ -44,6 +49,14 @@ pub struct Picture {
     /// few hundred MB at its peak): preloading stops at the preview; only a
     /// picture a window shows decodes further.
     pub heavy: bool,
+    /// Damaged: shown as far as it could be read (`salvage`).
+    pub damaged: bool,
+}
+
+impl Picture {
+    fn still(screen: Image, full_size: (u32, u32), orientation: u16) -> Picture {
+        Picture { screen, full_size, orientation, frames: 1, preview: false, heavy: false, damaged: false }
+    }
 }
 
 /// One composed frame of an animation and how long it shows.
@@ -132,13 +145,13 @@ fn open_embedded(path: &Path, jpeg: raw::Jpeg, orientation: Option<u16>) -> wind
 }
 
 /// `image` (as stored) turned to how EXIF orientation `o` (1–8) displays it.
-pub fn oriented(image: Image, o: u16) -> Image {
+pub fn oriented(image: Image, o: u16) -> Result<Image, String> {
     if !(2..=8).contains(&o) {
-        return image;
+        return Ok(image);
     }
     let (w, h) = (image.width as usize, image.height as usize);
     let (ow, oh) = if o >= 5 { (h, w) } else { (w, h) };
-    let mut pixels = vec![0u8; image.pixels.len()];
+    let mut pixels = failure::zeroed(image.pixels.len()).map_err(|_| "There isn't enough memory to copy the picture.".to_string())?;
     for y in 0..h {
         for x in 0..w {
             // Where stored pixel (x, y) lands, as view::orientation maps it.
@@ -155,7 +168,7 @@ pub fn oriented(image: Image, o: u16) -> Image {
             pixels[d..d + 4].copy_from_slice(&image.pixels[s..s + 4]);
         }
     }
-    Image { width: ow as u32, height: oh as u32, pixels }
+    Ok(Image { width: ow as u32, height: oh as u32, pixels })
 }
 
 /// A WIC factory for this (worker) thread.
@@ -237,7 +250,7 @@ fn profile_bytes(context: &IWICColorContext) -> Option<Vec<u8>> {
         // Asked with no buffer, it gives the size (and a "too small" error).
         let mut size = 0;
         let _ = context.GetProfileBytes(&mut [], &mut size);
-        let mut bytes = vec![0u8; size as usize];
+        let mut bytes = failure::zeroed(size as usize).ok()?;
         context.GetProfileBytes(&mut bytes, &mut size).ok()?;
         Some(bytes)
     }
@@ -327,6 +340,10 @@ fn fit_size((w, h): (u32, u32), target: (u32, u32)) -> Option<(u32, u32)> {
 /// paging fast. A RAW whose embedded JPEG is smaller than it: that JPEG,
 /// while WIC decodes the RAW. None for anything else (or should it fail).
 pub fn decode_preview(path: &Path) -> Option<Picture> {
+    failure::guarded(path, || Ok(preview(path))).ok().flatten()
+}
+
+fn preview(path: &Path) -> Option<Picture> {
     if raw::is_raw(path) {
         let Some(Raw::Small(jpeg, orientation, size)) = raw_plan(path) else { return None };
         return raw_preview(path, jpeg, orientation, size).ok();
@@ -344,78 +361,155 @@ pub fn decode_preview(path: &Path) -> Option<Picture> {
     // Level 0: the DC scan, an 1/8 picture in its own right.
     unsafe { source.frame.cast::<IWICProgressiveLevelControl>().ok()?.SetCurrentLevel(0) }.ok()?;
     let screen = scaled(&source, 8).ok()??;
-    Some(Picture { screen, full_size: source.size, orientation: source.orientation(), frames: 1, preview: true, heavy: false })
+    Some(Picture { preview: true, ..Picture::still(screen, source.size, source.orientation()) })
 }
 
 /// A RAW's embedded JPEG (smaller than the RAW, `size`) as its preview.
-fn raw_preview(path: &Path, jpeg: raw::Jpeg, orientation: Option<u16>, size: (u32, u32)) -> windows::core::Result<Picture> {
+fn raw_preview(path: &Path, jpeg: raw::Jpeg, orientation: Option<u16>, size: (u32, u32)) -> failure::Result<Picture> {
     let source = open_embedded(path, jpeg, orientation)?;
-    Ok(Picture { screen: full(&source)?, full_size: size, orientation: source.orientation(), frames: 1, preview: true, heavy: true })
+    Ok(Picture { preview: true, heavy: true, ..Picture::still(full(&source)?, size, source.orientation()) })
 }
 
 /// The Screen level: the picture as a window first shows it, no larger than
-/// `target` (in displayed orientation) where the format allows.
+/// `target` (in displayed orientation) where the format allows. The error is
+/// a `failure::message`.
 pub fn decode_screen(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
-    screen_level(path, target, false)
+    failure::guarded(path, || screen_level(path, target, false))
 }
 
 /// The Screen level as the preload ring wants it: a RAW whose embedded JPEG
 /// falls short of the screen stops at that JPEG (`Picture::heavy`).
 pub fn decode_preload(path: &Path, target: (u32, u32)) -> Result<Picture, String> {
-    screen_level(path, target, true)
+    failure::guarded(path, || screen_level(path, target, true))
 }
 
-fn screen_level(path: &Path, target: (u32, u32), preload: bool) -> Result<Picture, String> {
-    let named = |e: String| format!("{}: {e}", path.display());
-    let still = |screen: Image, full_size| Picture { screen, full_size, orientation: 1, frames: 1, preview: false, heavy: false };
+fn screen_level(path: &Path, target: (u32, u32), preload: bool) -> failure::Result<Picture> {
     match formats::kind(path) {
-        Kind::Wic => wic_screen(path, target, preload).map_err(|e| named(e.to_string())),
+        // WIC shows a PNG or GIF cut short as far as it goes, without an error.
+        Kind::Wic => wic_screen(path, target, preload).map(|picture| Picture { damaged: picture.damaged || cut_short(path), ..picture }).or_else(|error| {
+            // WIC gave up: a JPEG or PNG is shown as far as it can be read.
+            let image = salvageable(&error).then(|| salvage(path)).flatten().ok_or(error)?;
+            let full_size = (image.width, image.height);
+            let orientation = open(path).map_or(1, |source| source.orientation());
+            let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
+            Ok(Picture { damaged: true, ..Picture::still(shrink(image, stored_target)?, full_size, orientation) })
+        }),
         kind @ (Kind::Apng(frames) | Kind::AnimatedWebp(frames)) => {
             // Animations are shown at full size, as GIFs are.
-            let screen = first_frame(path, kind).map_err(named)?;
+            let screen = first_frame(path, kind)?;
             let full_size = (screen.width, screen.height);
-            Ok(Picture { screen, full_size, orientation: 1, frames, preview: false, heavy: false })
+            Ok(Picture { frames, ..Picture::still(screen, full_size, 1) })
         }
         Kind::Jxl => {
-            let full = formats::jxl(path).map_err(named)?;
+            let full = formats::jxl(path)?;
             let full_size = (full.width, full.height);
-            Ok(still(shrink(full, target).map_err(|e| named(e.to_string()))?, full_size))
+            Ok(Picture::still(shrink(full, target)?, full_size, 1))
         }
         Kind::Svg => {
-            let svg = formats::Svg::open(path).map_err(named)?;
+            let svg = formats::Svg::open(path)?;
             let full_size = svg.full_size();
-            Ok(still(svg.render(fit_size(full_size, target).unwrap_or(full_size)).map_err(named)?, full_size))
+            Ok(Picture::still(svg.render(fit_size(full_size, target).unwrap_or(full_size))?, full_size, 1))
         }
         Kind::Float => {
-            let full = formats::float(path).map_err(named)?;
+            let full = formats::float(path)?;
             let full_size = (full.width, full.height);
-            Ok(still(shrink(full, target).map_err(|e| named(e.to_string()))?, full_size))
+            Ok(Picture::still(shrink(full, target)?, full_size, 1))
         }
     }
 }
 
-fn first_frame(path: &Path, kind: Kind) -> Result<Image, String> {
+fn first_frame(path: &Path, kind: Kind) -> failure::Result<Image> {
     let mut first = None;
     formats::frames(path, kind, |frame| {
         first = Some(frame.image);
         false
     })?;
-    first.ok_or_else(|| "no frames".into())
+    first.ok_or_else(|| failure::damaged("no frames"))
 }
 
 /// A decoded picture scaled down to fit `target` (Fant, through WIC), if
 /// it is larger.
-fn shrink(image: Image, target: (u32, u32)) -> windows::core::Result<Image> {
+fn shrink(image: Image, target: (u32, u32)) -> failure::Result<Image> {
     let Some((w, h)) = fit_size((image.width, image.height), target) else { return Ok(image) };
     unsafe {
         let factory = factory()?;
         let bitmap = factory.CreateBitmapFromMemory(image.width, image.height, &GUID_WICPixelFormat32bppPBGRA, image.width * 4, &image.pixels)?;
         let scaler = factory.CreateBitmapScaler()?;
         scaler.Initialize(&bitmap, w, h, WICBitmapInterpolationModeFant)?;
-        let mut pixels = vec![0u8; w as usize * h as usize * 4];
+        let mut pixels = pixels(w, h, 4)?;
         scaler.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
         Ok(Image { width: w, height: h, pixels })
     }
+}
+
+/// A JPEG or PNG that WIC refuses (cut short by a broken download or copy,
+/// or damaged), as far as it decodes: zune-jpeg goes on past bad or missing
+/// data (the rest grey), a PNG keeps the rows read before the damage (the
+/// rest transparent). Full size, premultiplied BGRA; None for other formats
+/// or when nothing could be read.
+fn salvage(path: &Path) -> Option<Image> {
+    use std::io::Read;
+    if raw::is_raw(path) {
+        return None; // a RAW is a TIFF, not the JPEG inside it
+    }
+    let mut head = [0u8; 8];
+    std::fs::File::open(path).ok()?.read_exact(&mut head).ok()?;
+    if head.starts_with(&[0xFF, 0xD8]) {
+        salvage_jpeg(path)
+    } else if head == *b"\x89PNG\r\n\x1a\n" {
+        formats::salvage_png(path)
+    } else {
+        None
+    }
+}
+
+/// A PNG with no IEND chunk near its end: cut short (a broken download or
+/// copy). Only PNGs: a JPEG often carries data after its end marker (a
+/// phone's motion photo, maker trailers), a GIF sometimes after its trailer.
+fn cut_short(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else { return false };
+    let mut head = [0u8; 8];
+    if file.read_exact(&mut head).is_err() || head != *b"\x89PNG\r\n\x1a\n" {
+        return false;
+    }
+    let mut tail = Vec::new();
+    let len = file.seek(SeekFrom::End(0)).unwrap_or(0);
+    if file.seek(SeekFrom::Start(len.saturating_sub(4096))).is_err() || file.read_to_end(&mut tail).is_err() {
+        return false;
+    }
+    !tail.windows(4).any(|w| w == b"IEND")
+}
+
+/// Whether zune-jpeg may decode a JPEG this size: it holds ~12 bytes a
+/// pixel while it runs (coefficients, file, output), all allocated as it
+/// goes, so it stops at 134 MP (~1.6 GB) and WIC, whose failures are
+/// errors, takes larger ones.
+fn zune_fits((w, h): (u32, u32)) -> bool {
+    w > 0 && h > 0 && u64::from(w) * u64::from(h) <= failure::MAX_PIXELS / 2
+}
+
+/// Whether a WIC failure is worth a salvage attempt: not when memory ran
+/// out or the picture is too large (a second decoder would only try again).
+fn salvageable(error: &Error) -> bool {
+    match error {
+        Error::Memory | Error::TooLarge(..) => false,
+        Error::Wic(e) => e.code().0 as u32 != 0x8007_000E,
+        _ => true,
+    }
+}
+
+fn salvage_jpeg(path: &Path) -> Option<Image> {
+    use zune_jpeg::zune_core::{bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions};
+    let data = std::fs::read(path).ok()?;
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::BGRA).set_max_width(1 << 16).set_max_height(1 << 16).set_strict_mode(false);
+    let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&data), options);
+    decoder.decode_headers().ok()?;
+    let info = decoder.info()?;
+    let (width, height) = (u32::from(info.width), u32::from(info.height));
+    zune_fits((width, height)).then_some(())?;
+    let pixels = decoder.decode().ok()?;
+    (pixels.len() == width as usize * height as usize * 4).then_some(Image { width, height, pixels })
 }
 
 /// A progressive JPEG decoded by zune-jpeg, colour-managed as the rest: WIC's
@@ -438,7 +532,7 @@ fn managed(source: &Source, image: Image) -> Option<Image> {
     let (width, height) = (image.width, image.height);
     unsafe {
         let bitmap = source.factory.CreateBitmapFromMemory(width, height, &GUID_WICPixelFormat32bppBGRA, width * 4, &image.pixels).ok()?;
-        let mut pixels = vec![0u8; image.pixels.len()];
+        let mut pixels = failure::zeroed(image.pixels.len()).ok()?;
         to_srgb(source, bitmap.cast().ok()?).ok()?.CopyPixels(std::ptr::null(), width * 4, &mut pixels).ok()?;
         Some(Image { width, height, pixels })
     }
@@ -457,8 +551,12 @@ fn zune_raw(path: &Path, source: &Source) -> Option<Image> {
     if header.ScanType != WICJpegScanTypeProgressive || !(format == GUID_WICPixelFormat24bppBGR || format == GUID_WICPixelFormat8bppGray) {
         return None;
     }
+    // Too large for zune's buffers (an allocation failure there aborts):
+    // WIC's scaled paths take it.
+    zune_fits(source.size).then_some(())?;
     let data = std::fs::read(path).ok()?;
-    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::BGRA).set_max_width(1 << 16).set_max_height(1 << 16);
+    // No larger than WIC found it: a file read twice may not say the same twice.
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::BGRA).set_max_width(source.size.0 as usize).set_max_height(source.size.1 as usize);
     let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(&data), options);
     let pixels = decoder.decode().ok()?;
     let info = decoder.info()?;
@@ -471,7 +569,7 @@ fn zune_raw(path: &Path, source: &Source) -> Option<Image> {
 /// progressive JPEG: zune-jpeg's full size, then the Fant scaler. A RAW
 /// file: its embedded JPEG, where it covers the screen (`raw_plan`), or
 /// for a `preload` anyway.
-fn wic_screen(path: &Path, target: (u32, u32), preload: bool) -> windows::core::Result<Picture> {
+fn wic_screen(path: &Path, target: (u32, u32), preload: bool) -> failure::Result<Picture> {
     let (source, raw_size) = match raw_plan(path) {
         Some(Raw::Jpeg(jpeg, orientation)) => (open_embedded(path, jpeg, orientation)?, None),
         Some(Raw::Small(jpeg, orientation, size)) if covers(jpeg.size, size, target, orientation.unwrap_or(1)) => (open_embedded(path, jpeg, orientation)?, Some(size)),
@@ -484,7 +582,12 @@ fn wic_screen(path: &Path, target: (u32, u32), preload: bool) -> windows::core::
     Ok(Picture { full_size: raw_size.unwrap_or(picture.full_size), ..picture })
 }
 
-fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Result<Picture> {
+/// A DCT-scaled screen level larger than this (64 MP) is taken from the
+/// Fant scaler instead, which streams: a 65 535 px JPEG at 1/8 is still
+/// 8192 px square, 256 MB for a picture shown at screen size.
+const SCALED_MAX: u64 = 1 << 26;
+
+fn screen(path: &Path, source: Source, target: (u32, u32)) -> failure::Result<Picture> {
     if source.gif {
         // Frame 0 composed on the GIF's logical screen, as `animate` shows it.
         let mut first = None;
@@ -492,46 +595,50 @@ fn screen(path: &Path, source: Source, target: (u32, u32)) -> windows::core::Res
             first = Some(frame.image);
             false
         })?;
-        let screen = first.ok_or_else(|| windows::core::Error::from(windows::Win32::Foundation::E_FAIL))?;
+        let screen = first.ok_or_else(|| failure::damaged("no frames"))?;
         let full_size = (screen.width, screen.height);
-        return Ok(Picture { screen, full_size, orientation: 1, frames: source.frames, preview: false, heavy: false });
+        return Ok(Picture { frames: source.frames, ..Picture::still(screen, full_size, 1) });
+    }
+    let (w, h) = source.size;
+    if w == 0 || h == 0 {
+        return Err(failure::damaged(format!("{w} × {h} pixels")));
     }
     let orientation = source.orientation();
     let stored_target = if orientation >= 5 { (target.1, target.0) } else { target };
     // Shrunk first, then colour-managed: converting the whole picture takes ~3× as long.
     if let Some(screen) = zune_raw(path, &source).and_then(|full| managed(&source, shrink(full, stored_target).ok()?)) {
-        return Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false, heavy: false });
+        return Ok(Picture::still(screen, source.size, orientation));
     }
-    let (w, h) = source.size;
     let (dw, dh) = if orientation >= 5 { (h, w) } else { (w, h) };
     let fit = f64::min(f64::from(target.0) / f64::from(dw), f64::from(target.1) / f64::from(dh));
     let denom = [8, 4, 2].into_iter().find(|&d| 1.0 / f64::from(d) >= fit).unwrap_or(1);
-    let screen = if denom > 1 { scaled(&source, denom)? } else { None };
+    let small_enough = u64::from(w.div_ceil(denom)) * u64::from(h.div_ceil(denom)) <= SCALED_MAX;
+    let screen = if denom > 1 && small_enough { scaled(&source, denom)? } else { None };
     let screen = match (screen, fit_size(source.size, stored_target)) {
         (Some(image), _) => image,
         (None, Some(size)) => fitted(&source, size)?,
         (None, None) => full(&source)?,
     };
-    Ok(Picture { screen, full_size: source.size, orientation, frames: 1, preview: false, heavy: false })
+    Ok(Picture::still(screen, source.size, orientation))
 }
 
 /// Decodes an animation (GIF, APNG, animated WebP) frame by frame, each
 /// composed into a whole picture, handing them to `each` in order until it
 /// returns false or the frames run out (one pass; the caller loops the
-/// playback).
+/// playback). An animation damaged part way plays the frames before.
 pub fn animate(path: &Path, each: impl FnMut(Frame) -> bool) -> Result<(), String> {
-    let result = match formats::kind(path) {
+    failure::guarded(path, || match formats::kind(path) {
         kind @ (Kind::Apng(_) | Kind::AnimatedWebp(_)) => formats::frames(path, kind, each),
-        _ => open(path).and_then(|source| compose(&source, each)).map_err(|e| e.to_string()),
-    };
-    result.map_err(|e| format!("{}: {e}", path.display()))
+        _ => compose(&open(path)?, each),
+    })
 }
 
 /// GIF composition: every frame is a rectangle drawn onto the logical
 /// screen, with transparent pixels left as they were; afterwards its
 /// disposal leaves it (0, 1), clears its rectangle to transparent (2) or puts
 /// back what was there before (3). Browsers treat delays under 20 ms as 100.
-fn compose(source: &Source, mut each: impl FnMut(Frame) -> bool) -> windows::core::Result<()> {
+/// A frame that fails to decode after the first ends the animation there.
+fn compose(source: &Source, mut each: impl FnMut(Frame) -> bool) -> failure::Result<()> {
     unsafe {
         let screen = source.decoder.GetMetadataQueryReader().ok();
         let logical = |name| screen.as_ref().and_then(|r| meta(r, name)).filter(|&v| v > 0);
@@ -539,16 +646,31 @@ fn compose(source: &Source, mut each: impl FnMut(Frame) -> bool) -> windows::cor
             (Some(w), Some(h)) => (w, h),
             _ => source.size,
         };
+        // The logical screen is up to 65 535 px square from a few header bytes.
+        check(width.into(), height.into())?;
         let stride = width as usize * 4;
-        let mut canvas = vec![0u8; stride * height as usize];
+        let mut canvas = pixels(width, height, 4)?;
         // What the previous frame's disposal undoes before the next is drawn.
         let mut undo: Option<(u32, (u32, u32, u32, u32), Option<Vec<u8>>)> = None;
         for index in 0..source.frames {
-            let frame = source.decoder.GetFrame(index)?;
+            let decoded = (|| -> failure::Result<_> {
+                let frame = source.decoder.GetFrame(index)?;
+                let (mut fw, mut fh) = (0, 0);
+                frame.GetSize(&mut fw, &mut fh)?;
+                check(fw.into(), fh.into())?;
+                let converter = source.factory.CreateFormatConverter()?;
+                converter.Initialize(&frame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+                let mut pixels = pixels(fw, fh, 4)?;
+                converter.CopyPixels(std::ptr::null(), fw * 4, &mut pixels)?;
+                Ok((frame, fw, fh, pixels))
+            })();
+            let (frame, fw, fh, pixels) = match decoded {
+                Ok(decoded) => decoded,
+                Err(e) if index == 0 => return Err(e),
+                Err(_) => break, // damaged from here on: the frames so far play
+            };
             let reader = frame.GetMetadataQueryReader().ok();
             let get = |name| reader.as_ref().and_then(|r| meta(r, name)).unwrap_or(0);
-            let (mut fw, mut fh) = (0, 0);
-            frame.GetSize(&mut fw, &mut fh)?;
             let rect = (get(w!("/imgdesc/Left")), get(w!("/imgdesc/Top")), fw, fh);
             let disposal = get(w!("/grctlext/Disposal"));
             let delay_cs = get(w!("/grctlext/Delay"));
@@ -560,10 +682,6 @@ fn compose(source: &Source, mut each: impl FnMut(Frame) -> bool) -> windows::cor
             }
             undo = Some((disposal, rect, (disposal == 3).then(|| canvas.clone())));
 
-            let converter = source.factory.CreateFormatConverter()?;
-            converter.Initialize(&frame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
-            let mut pixels = vec![0u8; fw as usize * fh as usize * 4];
-            converter.CopyPixels(std::ptr::null(), fw * 4, &mut pixels)?;
             let (x, y) = (rect.0, rect.1);
             let rows = if x < width { fh.min(height.saturating_sub(y)) } else { 0 };
             for row in 0..rows {
@@ -634,13 +752,95 @@ mod tests {
         println!("wrote {} in {:.1} s", path.display(), started.elapsed().as_secs_f64());
         let started = std::time::Instant::now();
         let mut count = 0;
-        bands(&path, 256, |size, _, rows, pixels| {
+        bands(&path, 256, u64::MAX, |size, _, rows, pixels| {
             assert_eq!(pixels.len(), (size.0 * rows * 4) as usize);
             count += 1;
             Ok(())
         })
         .unwrap();
         println!("decoded in {count} bands in {:.2} s", started.elapsed().as_secs_f64());
+    }
+
+    fn crafted(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("flick-decode-{}-{name}", std::process::id()));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    /// The committed sample photo, cut short as a broken download leaves
+    /// it: shown (damaged, its top as it was) rather than refused.
+    #[test]
+    fn a_truncated_jpeg_shows_what_it_has() {
+        let sample = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/images/nikon-d850-1.jpg");
+        let data = std::fs::read(&sample).unwrap();
+        let path = crafted("cut.jpg", &data[..data.len() / 2]);
+        let picture = decode_screen(&path, (1920, 1080));
+        let full = decode_full(&path);
+        let _ = std::fs::remove_file(&path);
+        let picture = picture.expect("the top half of the picture");
+        assert!(picture.screen.width >= 1000, "{}", picture.screen.width);
+        let whole = decode_screen(&sample, (1920, 1080)).unwrap();
+        assert_eq!(picture.full_size, whole.full_size);
+        // The first rows decode as in the whole file.
+        let row = picture.screen.width as usize * 4;
+        let diff = picture.screen.pixels[..row * 8].iter().zip(&whole.screen.pixels[..row * 8]).map(|(a, b)| u32::from(a.abs_diff(*b))).sum::<u32>() as f64 / (row * 8) as f64;
+        assert!(diff < 4.0, "top rows differ by {diff:.1} on average");
+        println!("truncated JPEG: damaged flag {}, full size {:?}", picture.damaged, full.map(|i| (i.width, i.height)));
+    }
+
+    /// Garbage, an empty file and a missing one: errors in words, no panic.
+    #[test]
+    fn bad_files_are_errors_in_words() {
+        let garbage = crafted("garbage.jpg", &(0..4096u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8).collect::<Vec<_>>());
+        let headed = crafted("headed.jpg", &[&[0xFF, 0xD8, 0xFF, 0xE0][..], &[0x55; 2000]].concat());
+        let empty = crafted("empty.png", b"");
+        let gone = std::env::temp_dir().join("flick-decode-gone.jpg");
+        for (path, expect) in [(&garbage, "contents don't match"), (&headed, "damaged"), (&empty, "empty"), (&gone, "can't be found")] {
+            let message = decode_screen(path, (1920, 1080)).err().expect("an error");
+            assert!(failure::parts(&message).0.contains(expect), "{}: {message}", path.display());
+            assert!(decode_full(path).is_err());
+            assert!(decode_preview(path).is_none());
+        }
+        for path in [garbage, headed, empty] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    /// A GIF whose header claims a 65 535 px square screen (17 GB of
+    /// canvas) is refused before anything is allocated.
+    #[test]
+    fn a_gif_claiming_a_huge_screen_is_refused() {
+        let mut gif = b"GIF89a".to_vec();
+        gif.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0, 0]); // 65535 × 65535, no colour table
+        gif.extend_from_slice(&[0x2C, 0, 0, 0, 0, 1, 0, 1, 0, 0x80, 0, 0, 0, 0xFF, 0xFF, 0xFF]); // 1 × 1 frame, 2-colour table
+        gif.extend_from_slice(&[0x02, 0x02, 0x44, 0x01, 0x00, 0x3B]);
+        let path = crafted("huge.gif", &gif);
+        let result = decode_screen(&path, (1920, 1080));
+        let _ = std::fs::remove_file(&path);
+        let message = result.err().expect("refused");
+        assert!(message.contains("too large") || message.contains("damaged"), "{message}");
+    }
+
+    /// A JPEG header claiming 65 000 × 65 000 pixels with no picture data
+    /// behind it: no 17 GB buffer, just an error.
+    #[test]
+    fn a_jpeg_claiming_a_huge_size_is_refused() {
+        let mut jpeg = vec![0xFF, 0xD8];
+        jpeg.extend_from_slice(&[0xFF, 0xDB, 0, 67, 0]);
+        jpeg.extend_from_slice(&[1; 64]);
+        for progressive in [false, true] {
+            let mut file = jpeg.clone();
+            file.extend_from_slice(&[0xFF, if progressive { 0xC2 } else { 0xC0 }, 0, 11, 8, 0xFD, 0xE8, 0xFD, 0xE8, 1, 1, 0x11, 0]);
+            file.extend_from_slice(&[0xFF, 0xC4, 0, 20, 0x00, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            file.extend_from_slice(&[0xFF, 0xDA, 0, 8, 1, 1, 0x00, 0, 63, 0, 0x00, 0xFF, 0xD9]);
+            let path = crafted(if progressive { "huge-progressive.jpg" } else { "huge.jpg" }, &file);
+            let started = std::time::Instant::now();
+            let screen = decode_screen(&path, (1920, 1080));
+            let full = decode_full(&path);
+            let _ = std::fs::remove_file(&path);
+            println!("65000² JPEG (progressive {progressive}): screen {:?} in {:.0} ms", screen.as_ref().map(|p| (p.screen.width, p.screen.height)).map_err(|e| failure::parts(e).0.to_string()), started.elapsed().as_secs_f64() * 1000.0);
+            assert!(full.is_err(), "no full decode of 4 billion pixels");
+        }
     }
 
     const RED: [u8; 4] = [0, 0, 255, 255];
@@ -848,7 +1048,7 @@ mod tests {
         let Ok(mut source) = open(&file) else { return };
         assert!(source.profile.is_some(), "a Display P3 profile, to convert from");
         let spread = |image: &Image| image.pixels.chunks_exact(4).map(|p| f64::from(p[0].max(p[1]).max(p[2]) - p[0].min(p[1]).min(p[2]))).sum::<f64>() / f64::from(image.width * image.height);
-        let paths: [(&str, fn(&Source) -> windows::core::Result<Image>); 3] = [
+        let paths: [(&str, fn(&Source) -> failure::Result<Image>); 3] = [
             ("DCT-scaled", |s| scaled(s, 4).map(|i| i.unwrap())),
             ("Fant-scaled", |s| fitted(s, (1000, 667))),
             ("full", full),
@@ -1020,7 +1220,7 @@ mod tests {
                 full.height
             );
             if let Some(out) = std::env::var_os("FLICK_FORMATS_OUT") {
-                let s = oriented(screen.screen, screen.orientation);
+                let s = oriented(screen.screen, screen.orientation).unwrap();
                 let rgb = s.pixels.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
                 std::fs::create_dir_all(&out).unwrap();
                 image::RgbImage::from_raw(s.width, s.height, rgb).unwrap().save(Path::new(&out).join(format!("{name}.png"))).unwrap();
@@ -1054,14 +1254,14 @@ mod tests {
     fn orients_pixels_as_drawn() {
         // 2 × 1: red then green.
         let image = || Image { width: 2, height: 1, pixels: [RED, GREEN].concat() };
-        let turned = oriented(image(), 6); // 90° clockwise: 1 × 2, red on top
+        let turned = oriented(image(), 6).unwrap(); // 90° clockwise: 1 × 2, red on top
         assert_eq!((turned.width, turned.height), (1, 2));
         assert_eq!((pixel(&turned, 0, 0), pixel(&turned, 0, 1)), (RED, GREEN));
-        let turned = oriented(image(), 8); // 90° anticlockwise: green on top
+        let turned = oriented(image(), 8).unwrap(); // 90° anticlockwise: green on top
         assert_eq!((pixel(&turned, 0, 0), pixel(&turned, 0, 1)), (GREEN, RED));
-        let turned = oriented(image(), 2); // mirrored
+        let turned = oriented(image(), 2).unwrap(); // mirrored
         assert_eq!((pixel(&turned, 0, 0), pixel(&turned, 1, 0)), (GREEN, RED));
-        assert_eq!(oriented(image(), 1).pixels, image().pixels);
+        assert_eq!(oriented(image(), 1).unwrap().pixels, image().pixels);
     }
 
     fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
@@ -1138,14 +1338,23 @@ fn fill(canvas: &mut [u8], stride: usize, (width, height): (u32, u32), (x, y, w,
 
 /// The Full level: native resolution (for an SVG, its `full_size`).
 pub fn decode_full(path: &Path) -> Result<Image, String> {
-    let result = match formats::kind(path) {
-        Kind::Wic => open_full(path).and_then(|source| zune_full(path, &source).map_or_else(|| full(&source), Ok)).map_err(|e| e.to_string()),
+    failure::guarded(path, || full_level(path))
+}
+
+fn full_level(path: &Path) -> failure::Result<Image> {
+    match formats::kind(path) {
+        Kind::Wic => wic_full(path),
         kind @ (Kind::Apng(_) | Kind::AnimatedWebp(_)) => first_frame(path, kind),
         Kind::Jxl => formats::jxl(path),
         Kind::Svg => formats::Svg::open(path).and_then(|svg| svg.render(svg.full_size())),
         Kind::Float => formats::float(path),
-    };
-    result.map_err(|e| format!("{}: {e}", path.display()))
+    }
+}
+
+/// A WIC picture at full size, or as far as a damaged one reads (`salvage`).
+fn wic_full(path: &Path) -> failure::Result<Image> {
+    let decoded = open_full(path).map_err(Error::from).and_then(|source| zune_full(path, &source).map_or_else(|| full(&source), Ok));
+    decoded.or_else(|error| salvageable(&error).then(|| salvage(path)).flatten().ok_or(error))
 }
 
 /// A zoom's detail level: 1/`denom` of native size where the codec scales
@@ -1153,43 +1362,49 @@ pub fn decode_full(path: &Path) -> Result<Image, String> {
 /// full size: scaling saves little time, Huffman decoding dominates), else
 /// full size. Returns it with the fraction it got.
 pub fn decode_level(path: &Path, denom: u32) -> Result<(Image, u32), String> {
-    if denom > 1 && formats::kind(path) == Kind::Wic {
-        let level = open_full(path).and_then(|source| match scaled(&source, denom)? {
-            Some(image) => Ok((image, denom)),
-            None => full(&source).map(|image| (image, 1)),
-        });
-        return level.map_err(|e| format!("{}: {e}", path.display()));
-    }
-    decode_full(path).map(|image| (image, 1))
+    failure::guarded(path, || {
+        if denom > 1 && formats::kind(path) == Kind::Wic {
+            let source = open_full(path)?;
+            return match scaled(&source, denom)? {
+                Some(image) => Ok((image, denom)),
+                None => full(&source).map(|image| (image, 1)),
+            };
+        }
+        full_level(path).map(|image| (image, 1))
+    })
 }
 
 /// A WIC picture at full resolution, top to bottom in bands of `rows` rows
 /// (premultiplied BGRA, colour-managed, stored orientation), so a picture
-/// too large to hold whole never is: `each(size, y, rows, pixels)`.
-pub fn bands(path: &Path, rows: u32, mut each: impl FnMut((u32, u32), u32, u32, &[u8]) -> Result<(), String>) -> Result<(), String> {
-    let named = |e: windows::core::Error| format!("{}: {e}", path.display());
-    let source = open_full(path).map_err(named)?;
-    let (w, h) = source.size;
-    let converter = unsafe {
-        let converter = source.factory.CreateFormatConverter().map_err(named)?;
-        converter
-            .Initialize(&to_srgb(&source, source.frame.cast().map_err(named)?).map_err(named)?, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)
-            .map_err(named)?;
-        converter
-    };
-    let mut band = vec![0u8; w as usize * rows as usize * 4];
-    for y in (0..h).step_by(rows as usize) {
-        let n = rows.min(h - y);
-        let rect = WICRect { X: 0, Y: y as i32, Width: w as i32, Height: n as i32 };
-        let pixels = &mut band[..w as usize * n as usize * 4];
-        unsafe { converter.CopyPixels(&rect, w * 4, pixels) }.map_err(named)?;
-        each((w, h), y, n, pixels)?;
-    }
-    Ok(())
+/// too large to hold whole never is: `each(size, y, rows, pixels)`. At most
+/// `max_bytes` in all (the size is read afresh here: the file may have
+/// changed since the screen level).
+pub fn bands(path: &Path, rows: u32, max_bytes: u64, mut each: impl FnMut((u32, u32), u32, u32, &[u8]) -> Result<(), String>) -> Result<(), String> {
+    failure::guarded(path, || {
+        let source = open_full(path)?;
+        let (w, h) = source.size;
+        if w == 0 || h == 0 || u64::from(w) * u64::from(h) * 4 > max_bytes {
+            return Err(Error::TooLarge(w.into(), h.into()));
+        }
+        let converter = unsafe {
+            let converter = source.factory.CreateFormatConverter()?;
+            converter.Initialize(&to_srgb(&source, source.frame.cast()?)?, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
+            converter
+        };
+        let mut band = pixels(w, rows.min(h), 4)?;
+        for y in (0..h).step_by(rows as usize) {
+            let n = rows.min(h - y);
+            let rect = WICRect { X: 0, Y: y as i32, Width: w as i32, Height: n as i32 };
+            let pixels = &mut band[..w as usize * n as usize * 4];
+            unsafe { converter.CopyPixels(&rect, w * 4, pixels) }?;
+            each((w, h), y, n, pixels).map_err(Error::Damaged)?;
+        }
+        Ok(())
+    })
 }
 
 /// DCT-scaled decode through the codec's own transform, if it has one.
-fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
+fn scaled(source: &Source, denom: u32) -> failure::Result<Option<Image>> {
     unsafe {
         let Ok(transform) = source.frame.cast::<IWICBitmapSourceTransform>() else { return Ok(None) };
         let (want_w, want_h) = (source.size.0.div_ceil(denom), source.size.1.div_ceil(denom));
@@ -1211,7 +1426,8 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
             _ if cmyk => 4,
             _ => return Ok(None),
         };
-        let mut raw = vec![0u8; w as usize * h as usize * bpp];
+        check(w.into(), h.into())?;
+        let mut raw = pixels(w, h, bpp)?;
         transform.CopyPixels(std::ptr::null(), w, h, &format, WICBitmapTransformRotate0, w * bpp as u32, &mut raw)?;
         if source.profile.is_some() || cmyk {
             let bitmap: IWICBitmapSource = source.factory.CreateBitmapFromMemory(w, h, &format, w * bpp as u32, &raw)?.cast()?;
@@ -1224,7 +1440,7 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
                 converter.Initialize(&bitmap, &GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
                 converter.cast()?
             };
-            let mut pixels = vec![0u8; w as usize * h as usize * 4];
+            let mut pixels = pixels(w, h, 4)?;
             colour.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
             return Ok(Some(Image { width: w, height: h, pixels }));
         }
@@ -1238,7 +1454,7 @@ fn scaled(source: &Source, denom: u32) -> windows::core::Result<Option<Image>> {
 /// is converted after scaling, on the small picture (on the whole one it
 /// takes ~3× as long): on straight alpha, so a profiled picture with
 /// transparency may fringe slightly at its edges.
-fn fitted(source: &Source, (w, h): (u32, u32)) -> windows::core::Result<Image> {
+fn fitted(source: &Source, (w, h): (u32, u32)) -> failure::Result<Image> {
     unsafe {
         let premultiplied = |bitmap: &IWICBitmapSource| -> windows::core::Result<IWICBitmapSource> {
             let converter = source.factory.CreateFormatConverter()?;
@@ -1253,18 +1469,19 @@ fn fitted(source: &Source, (w, h): (u32, u32)) -> windows::core::Result<Image> {
             scaler.Initialize(&source.frame, w, h, WICBitmapInterpolationModeFant)?;
             premultiplied(&to_srgb(source, scaler.cast()?)?)?
         };
-        let mut pixels = vec![0u8; w as usize * h as usize * 4];
+        let mut pixels = pixels(w, h, 4)?;
         out.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
         Ok(Image { width: w, height: h, pixels })
     }
 }
 
-fn full(source: &Source) -> windows::core::Result<Image> {
+fn full(source: &Source) -> failure::Result<Image> {
+    let (w, h) = source.size;
+    check(w.into(), h.into())?;
     unsafe {
         let converter = source.factory.CreateFormatConverter()?;
         converter.Initialize(&to_srgb(source, source.frame.cast()?)?, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None::<&IWICPalette>, 0.0, WICBitmapPaletteTypeCustom)?;
-        let (w, h) = source.size;
-        let mut pixels = vec![0u8; w as usize * h as usize * 4];
+        let mut pixels = pixels(w, h, 4)?;
         converter.CopyPixels(std::ptr::null(), w * 4, &mut pixels)?;
         Ok(Image { width: w, height: h, pixels })
     }

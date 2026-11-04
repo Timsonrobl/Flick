@@ -208,13 +208,31 @@ fn manifest(text: &str) -> Option<Manifest> {
     Some(Manifest { version: version?, url: url?, size: size?, sha256: sha? })
 }
 
-/// Whether `version` (major.minor.patch) is newer than this build.
+/// Whether `version` is newer than this build.
 fn newer(version: &str) -> bool {
-    let parse = |v: &str| -> Option<(u32, u32, u32)> {
-        let mut parts = v.split('.').map(|p| p.parse().ok());
-        Some((parts.next()??, parts.next()??, parts.next()??))
+    is_newer(version, VERSION)
+}
+
+/// Whether `theirs` is newer than `ours`, as semver orders them:
+/// major.minor.patch, then a pre-release ("1.1.0-dev", a local build of
+/// what will be 1.1.0) before its release, pre-releases of one version by
+/// their labels. Anything unparsable is never newer.
+fn is_newer(theirs: &str, ours: &str) -> bool {
+    // (major, minor, patch, released, pre-release label): false < true, so 1.1.0-dev < 1.1.0.
+    let parse = |v: &str| -> Option<(u32, u32, u32, bool, String)> {
+        let (numbers, pre) = match v.split_once('-') {
+            Some((numbers, pre)) if !pre.is_empty() => (numbers, Some(pre)),
+            Some(_) => return None,
+            None => (v, None),
+        };
+        let mut parts = numbers.split('.').map(|p| p.parse().ok());
+        let parsed = (parts.next()??, parts.next()??, parts.next()??);
+        if parts.next().is_some() {
+            return None;
+        }
+        Some((parsed.0, parsed.1, parsed.2, pre.is_none(), pre.unwrap_or("").to_string()))
     };
-    matches!((parse(version), parse(VERSION)), (Some(theirs), Some(ours)) if theirs > ours)
+    matches!((parse(theirs), parse(ours)), (Some(theirs), Some(ours)) if theirs > ours)
 }
 
 fn hex(text: &str) -> Option<Vec<u8>> {
@@ -329,5 +347,18 @@ mod tests {
         // SHA-256 of "abc" (FIPS 180-2's example).
         assert_eq!(sha256(b"abc").map(|d| d.iter().map(|b| format!("{b:02x}")).collect::<String>()).as_deref(), Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
         assert!(newer("99.0.0") && !newer(VERSION) && !newer("0.0.1") && !newer("x.y.z"));
+    }
+
+    /// A local build of the next version (1.1.0-dev) takes that version's
+    /// release as an update, but not the release it was made after.
+    #[test]
+    fn a_pre_release_sorts_below_its_release() {
+        assert!(is_newer("1.1.0", "1.1.0-dev"), "the release replaces its dev build");
+        assert!(!is_newer("1.0.0", "1.1.0-dev"), "the release before doesn't");
+        assert!(!is_newer("1.1.0-dev", "1.1.0"));
+        assert!(is_newer("1.1.0-dev", "1.0.0"), "1.1.0-dev is past 1.0.0");
+        assert!(is_newer("1.1.1", "1.1.0-dev") && is_newer("1.1.0-rc2", "1.1.0-rc1"));
+        assert!(!is_newer("1.1.0-dev", "1.1.0-dev") && !is_newer("1.1.0", "1.1.0"));
+        assert!(!is_newer("1.1.0-", "1.0.0") && !is_newer("1.1.0.4", "1.0.0") && !is_newer("1.x.0", "1.0.0"));
     }
 }

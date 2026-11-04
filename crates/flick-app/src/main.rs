@@ -29,6 +29,7 @@ mod clock;
 mod debug;
 mod decode;
 mod elevation;
+mod failure;
 mod folder;
 mod formats;
 mod gpu;
@@ -257,7 +258,7 @@ impl App {
     /// window uses, placed `beside` the window it comes from (else where
     /// windows were last). It shows once its picture is drawn (`try_show`).
     fn new_window(&mut self, event_loop: &ActiveEventLoop, tab: Tab, beside: Option<ViewerId>) -> Option<ViewerId> {
-        let placement = beside.and_then(|v| self.viewers.get(&v)).and_then(|v| v.hwnd()).and_then(placement::beside);
+        let placement = beside.and_then(|v| self.viewers.get(&v)).and_then(Viewer::beside);
         let viewer = Viewer::new(self.new_id(), tab, placement.or_else(|| self.cascade()), self.prefs, self.global, self.free_color(None));
         self.add_window(event_loop, viewer)
     }

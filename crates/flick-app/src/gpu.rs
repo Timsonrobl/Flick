@@ -129,6 +129,11 @@ impl Gpu {
     }
 
     pub fn upload(&self, image: &Image) -> Result<ID2D1Bitmap1, String> {
+        // Direct2D reads width × height × 4 bytes from the pointer: never past the buffer.
+        let needed = (image.width as usize).checked_mul(image.height as usize).and_then(|n| n.checked_mul(4));
+        if image.width == 0 || image.height == 0 || needed.is_none_or(|n| image.pixels.len() < n) || image.width > u32::MAX / 4 {
+            return Err(format!("{} × {} picture with {} bytes of pixels", image.width, image.height, image.pixels.len()));
+        }
         unsafe {
             self.uploads
                 .CreateBitmap(

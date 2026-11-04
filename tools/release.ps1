@@ -30,11 +30,15 @@ $root = Split-Path $PSScriptRoot
 $keyFile = Join-Path $env:USERPROFILE '.flick\update-signing.key'
 if (-not (Test-Path $keyFile)) { throw "No signing key ($keyFile): tools\update-key.ps1 makes one" }
 
-& (Join-Path $PSScriptRoot 'installer.ps1') -NoBuild:$NoBuild
 $manifest = Get-Content (Join-Path $root 'crates\flick-app\Cargo.toml') -Raw
 if ($manifest -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'no version in crates\flick-app\Cargo.toml' }
 $version = $Matches[1]
+# Between releases the version is the next one's pre-release ("1.1.0-dev"):
+# drop the suffix in Cargo.toml to release. (A local update test, -BaseUrl,
+# may sign a pre-release.)
+if ($version -match '-' -and -not $BaseUrl) { throw "$version is a pre-release: set the release version in crates\flick-app\Cargo.toml first" }
 if (-not $BaseUrl) { $BaseUrl = "https://github.com/Timsonrobl/Flick/releases/download/v$version" }
+& (Join-Path $PSScriptRoot 'installer.ps1') -NoBuild:$NoBuild
 
 $out = Join-Path $root 'target\release-upload'
 New-Item -ItemType Directory -Force $out | Out-Null

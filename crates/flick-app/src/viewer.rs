@@ -130,6 +130,8 @@ pub struct Screen {
     pub preview: bool,
     /// A preview preloading stops at (`Picture::heavy`).
     pub heavy: bool,
+    /// Damaged: shown as far as it could be read (`Picture::damaged`).
+    damaged: bool,
 }
 
 impl Screen {
@@ -142,6 +144,7 @@ impl Screen {
             frames: picture.frames,
             preview: picture.preview,
             heavy: picture.heavy,
+            damaged: picture.damaged,
         })
     }
 
@@ -383,8 +386,12 @@ fn star_text(stars: u32) -> String {
     if stars > 10 { format!("★ {stars}") } else { "★".repeat(stars as usize) }
 }
 
+/// A file's name as shown (titles, tabs, notices, the delete dialog): with
+/// no control or bidirectional-override characters, so it reads in the
+/// order it is stored (`meta::displayable`).
 fn file_name(path: &Path) -> String {
-    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+    let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
+    meta::displayable(&name, 1024)
 }
 
 pub type TabId = u64;
@@ -709,6 +716,14 @@ pub struct Viewer {
     tab_random: bool,
     /// Preferences ▸ Load Full Resolution Ahead (`PREFETCH_AFTER`).
     prefetch: bool,
+    /// A Ctrl+C copy is being decoded (one at a time).
+    copying: bool,
+    /// Full screen (F11, Enter): the placement it came from, which closing
+    /// saves and the close history keeps.
+    fullscreen_from: Option<Option<Placement>>,
+    /// In full screen, the cursor hides once still for CURSOR_HIDE (`cursor_due`).
+    cursor_moved: Option<Instant>,
+    cursor_hidden: bool,
 }
 
 /// A running slideshow. Each picture stays `Prefs::slide_ms` from when it
@@ -726,6 +741,11 @@ struct Slideshow {
 
 /// How long a note stays.
 const NOTE_FOR: Duration = Duration::from_millis(1200);
+/// How long the note on a damaged picture stays: long enough to read.
+const DAMAGED_NOTE_FOR: Duration = Duration::from_secs(4);
+const DAMAGED_NOTE: &str = "Damaged file: shown as far as it could be read";
+/// In full screen, the cursor hides once it has been still this long.
+const CURSOR_HIDE: Duration = Duration::from_millis(1500);
 
 /// When a right-click menu (of any window) last closed.
 static MENU_CLOSED: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
@@ -794,6 +814,10 @@ impl Viewer {
             slideshow: None,
             tab_random: false,
             prefetch: global.prefetch,
+            copying: false,
+            fullscreen_from: None,
+            cursor_moved: None,
+            cursor_hidden: false,
         }
     }
 
@@ -1112,6 +1136,7 @@ impl Viewer {
             self.render(shared)?;
             self.tab.timeline.mark("picture");
             self.start_animation();
+            self.note_if_damaged();
         } else {
             target.parked = Some(Instant::now());
         }
@@ -1170,8 +1195,9 @@ impl Viewer {
     /// picture, then show the window with it. Returns true when it did.
     pub fn try_show(&mut self, shared: &mut Shared) -> Result<bool, String> {
         // A first picture just decoded, or a tab moved here already showing
-        // one, or a reopened window's whose file is gone (just the background).
-        let ready = self.tab.picture.is_some() || self.tab.current.is_some() || self.tab.unavailable;
+        // one, or a reopened window's whose file is gone (just the
+        // background), or a file that can't be shown (why, in words).
+        let ready = self.tab.picture.is_some() || self.tab.current.is_some() || self.tab.unavailable || self.tab.notice.is_some();
         if self.surface.is_some() || !ready || shared.gpu.is_none() || self.window.is_none() {
             return Ok(false);
         }
@@ -1217,17 +1243,31 @@ impl Viewer {
         window.focus_window();
         self.tab.timeline.mark("picture");
         self.start_animation();
+        self.note_if_damaged();
         Ok(true)
+    }
+
+    /// Where the window is, as it would be reopened: a full-screen one's
+    /// placement from before full screen.
+    fn placement_now(&self) -> Option<Placement> {
+        match (self.hwnd, self.surface.is_some()) {
+            _ if self.is_fullscreen() => self.fullscreen_from.flatten(),
+            (Some(hwnd), true) => placement::current(hwnd),
+            _ => self.placement,
+        }
+    }
+
+    /// Where a window opened from this one goes (Move to New Window): beside
+    /// it, or where a full-screen one was before.
+    pub fn beside(&self) -> Option<Placement> {
+        if self.is_fullscreen() { self.fullscreen_from.flatten() } else { self.hwnd.and_then(placement::beside) }
     }
 
     /// The window as the close history keeps it.
     pub fn saved(&self) -> SavedWindow {
         let mut tabs: Vec<SavedTab> = self.others.iter().map(saved_tab).collect();
         tabs.insert(self.active_at, saved_tab(&self.tab));
-        let placement = match (self.hwnd, self.surface.is_some()) {
-            (Some(hwnd), true) => placement::current(hwnd),
-            _ => self.placement,
-        };
+        let placement = self.placement_now();
         SavedWindow {
             placement: placement.map(|p| p.parts()),
             color: self.color,
@@ -1243,7 +1283,66 @@ impl Viewer {
         if self.tab.request.size.is_some() || self.surface.is_none() {
             return None;
         }
+        if self.is_fullscreen() {
+            return placement::write(self.fullscreen_from.flatten()?);
+        }
         placement::save(self.hwnd?)
+    }
+
+    pub fn is_fullscreen(&self) -> bool {
+        self.window.as_ref().is_some_and(|w| w.fullscreen().is_some())
+    }
+
+    /// F11, Enter: full screen on the window's monitor, borderless (the
+    /// taskbar covered), black around the picture, the cursor hidden while
+    /// still; the hover bar still shows at the top. Off again (also Esc, the
+    /// maximize button, a double click on the bar) back to where it was.
+    fn set_fullscreen(&mut self, on: bool) -> Action {
+        let Some(window) = self.window.clone() else { return Action::None };
+        if on == self.is_fullscreen() {
+            return Action::None;
+        }
+        if on {
+            self.fullscreen_from = Some(self.hwnd.and_then(placement::current));
+            window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+            self.cursor_moved = Some(Instant::now());
+        } else {
+            window.set_fullscreen(None);
+            self.fullscreen_from = None;
+            self.cursor_moved = None;
+            self.show_cursor();
+        }
+        self.redraw();
+        Action::None
+    }
+
+    fn show_cursor(&mut self) {
+        if std::mem::take(&mut self.cursor_hidden)
+            && let Some(window) = &self.window
+        {
+            window.set_cursor_visible(true);
+        }
+    }
+
+    /// When a still cursor hides (full screen only).
+    fn cursor_due(&self) -> Option<Instant> {
+        self.cursor_moved.filter(|_| !self.cursor_hidden).map(|t| t + CURSOR_HIDE)
+    }
+
+    /// The cursor has been still for CURSOR_HIDE: hidden, unless it rests on
+    /// the hover bar or a button is held.
+    fn hide_cursor(&mut self) {
+        self.cursor_moved = None;
+        let busy = self.panning.is_some() || self.pressed.is_some() || self.right_press.is_some();
+        let on_bar = self.chrome.hit(self.cursor_f32(), self.width()).is_some();
+        if self.is_fullscreen()
+            && !busy
+            && !on_bar
+            && let Some(window) = &self.window
+        {
+            window.set_cursor_visible(false);
+            self.cursor_hidden = true;
+        }
     }
 
     /// The sort order this window's folder listing should use.
@@ -1409,6 +1508,9 @@ impl Viewer {
             self.note = None;
             self.redraw();
         }
+        if self.cursor_due().is_some_and(|due| due <= Instant::now()) {
+            self.hide_cursor();
+        }
         let slid = self.slide_due().is_some_and(|due| due <= Instant::now()) && self.slide(shared);
         self.cool_tabs(shared);
         self.next_frame(shared);
@@ -1439,7 +1541,7 @@ impl Viewer {
         let step = self.tab.folder.as_ref().filter(|f| f.index != self.tab.target).and_then(|_| self.tab.shown_at).map(|t| t + DWELL);
         let cool = self.others.iter().filter_map(|t| t.parked).min().map(|t| t + cool_after());
         let note = self.note.as_ref().map(|(_, until)| *until);
-        [frame, step, cool, self.chrome.reveal_deadline(), self.chrome.tip_deadline(), note, self.slide_due(), self.prefetch_due()].into_iter().flatten().min()
+        [frame, step, cool, self.chrome.reveal_deadline(), self.chrome.tip_deadline(), note, self.slide_due(), self.prefetch_due(), self.cursor_due()].into_iter().flatten().min()
     }
 
     /// When Load Full Resolution Ahead decodes the picture's sharpest level:
@@ -1645,6 +1747,7 @@ impl Viewer {
             self.redraw();
         }
         self.start_animation();
+        self.note_if_damaged();
         if let Some(started) = self.tab.turn_started.take() {
             let presented_wall = clock::wall_ms();
             self.tab.last_turn = Some((started.elapsed().as_secs_f64() * 1000.0, how));
@@ -1745,8 +1848,11 @@ impl Viewer {
     }
 
     /// A new tab's file couldn't be decoded: the tab shows why (or nothing,
-    /// a reopened tab's). False if this leaves a window still to be shown
-    /// with nothing to show: the app drops it.
+    /// a reopened tab's). A window opened for it is still shown, with the
+    /// reason in place of the picture, and pages through its folder as any
+    /// other (a damaged file among good ones shouldn't leave just an error
+    /// box). False if the tab is gone and the window was never shown: the
+    /// app drops it.
     pub fn on_decode_failed(&mut self, tab: TabId, error: &str) -> bool {
         let (shown, active) = (self.is_shown(), self.tab.id == tab);
         let Some(t) = self.tab_mut(tab) else { return shown };
@@ -1758,9 +1864,6 @@ impl Viewer {
             }
             return true;
         }
-        if !shown {
-            return false;
-        }
         if active {
             self.show_notice(&path, error);
         } else {
@@ -1770,13 +1873,12 @@ impl Viewer {
         true
     }
 
+    /// The window shows why `path` can't be shown (`Osd::draw_notice`):
+    /// "Can't show name", the reason, the decoder's detail.
     fn show_notice(&mut self, path: &Path, error: &str) {
         self.tab.current = None;
         self.tab.notice = Some(format!("Can't show {}\n{error}", file_name(path)));
         self.tab.shown_at = Some(Instant::now());
-        if self.debug.is_none() {
-            self.debug = DebugText::new().ok();
-        }
         self.redraw();
     }
 
@@ -1822,7 +1924,7 @@ impl Viewer {
         let position = self.tab.folder.as_ref().map(|f| format!("   [{}/{}]", f.index + 1, f.files.len())).unwrap_or_default();
         if self.others.is_empty() {
             // The whole path (cut short in the middle if it must be: chrome.rs).
-            format!("{}{position}", path.display())
+            format!("{}{position}", meta::displayable(&path.display().to_string(), 4096))
         } else {
             // In a tab of the strip: no room for the folder.
             format!("{}{position}", file_name(path))
@@ -1851,6 +1953,9 @@ impl Viewer {
         }
         if current.screen.animated() {
             image += &format!(", {} frames", current.screen.frames);
+        }
+        if current.screen.damaged {
+            image += ", damaged (shown as far as it reads)";
         }
         // A long name may break after every "-" and "_" (a zero-width space):
         // Unicode's rules don't break "-" before a digit ("img-2025-02-16" held
@@ -1933,10 +2038,15 @@ impl Viewer {
     /// Ctrl+C: the picture at full resolution and upright, decoded on a
     /// worker thread, then put on the clipboard (`on_copy`).
     fn copy(&mut self, shared: &Shared) -> Action {
+        // One at a time: each holds a full-size picture (up to 1 GiB) twice.
+        if self.copying {
+            return Action::None;
+        }
         let Some(current) = &self.tab.current else { return Action::None };
+        self.copying = true;
         let (viewer, path, orientation, proxy) = (self.id, current.path.clone(), current.orientation, shared.proxy.clone());
         std::thread::spawn(move || {
-            let image = decode::decode_full(&path).map(|image| decode::oriented(image, orientation));
+            let image = decode::decode_full(&path).and_then(|image| decode::oriented(image, orientation));
             let _ = proxy.send_event(Event::Copy { viewer, image });
         });
         self.show_note("Copying…".into());
@@ -1944,19 +2054,29 @@ impl Viewer {
     }
 
     pub fn on_copy(&mut self, image: Result<Image, String>) {
+        self.copying = false;
         let hwnd = self.hwnd;
         let result = image.and_then(|image| hwnd.ok_or_else(|| "no window".to_string()).and_then(|hwnd| clipboard::put(hwnd, &image)));
         self.show_note(match result {
             Ok(()) => "Copied to clipboard".into(),
-            Err(e) => format!("Couldn't copy: {}", e.rsplit(": ").next().unwrap_or(&e)),
+            Err(e) => format!("Couldn't copy: {}", crate::failure::parts(&e).0),
         });
     }
 
-    /// Ctrl+Enter: Explorer opens the file's folder with the file selected.
+    /// Ctrl+Enter: Explorer opens the file's folder with the file selected,
+    /// through the shell (no command line for a file name to break out of).
     fn show_in_explorer(&mut self) -> Action {
-        use std::os::windows::process::CommandExt;
         if let Some(path) = self.shown_file() {
-            let _ = std::process::Command::new("explorer.exe").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
+            std::thread::spawn(move || unsafe {
+                use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+                use windows::Win32::UI::Shell::{ILCreateFromPathW, ILFree, SHOpenFolderAndSelectItems};
+                let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                let item = ILCreateFromPathW(&windows::core::HSTRING::from(path.as_os_str()));
+                if !item.is_null() {
+                    let _ = SHOpenFolderAndSelectItems(item, None, 0);
+                    ILFree(Some(item));
+                }
+            });
         }
         Action::None
     }
@@ -2266,6 +2386,15 @@ impl Viewer {
         self.redraw();
     }
 
+    /// The picture just shown is damaged (shown as far as it reads): a note
+    /// says so, for longer than most.
+    fn note_if_damaged(&mut self) {
+        if self.tab.current.as_ref().is_some_and(|c| c.screen.damaged) {
+            self.note = Some((DAMAGED_NOTE.into(), Instant::now() + DAMAGED_NOTE_FOR));
+            self.redraw();
+        }
+    }
+
     /// The zoom level, as a brief note after any zoom, named by the mode
     /// when it is the mode's: "Fill window · 47 %", "Zoom · 150 %".
     fn show_zoom(&mut self) {
@@ -2291,11 +2420,13 @@ impl Viewer {
         }
         let mut paths: Vec<PathBuf> = self.others.iter().map(|t| t.file().to_path_buf()).collect();
         paths.insert(self.active_at, self.tab.file().to_path_buf());
-        let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
+        let fullscreen = self.is_fullscreen();
+        // In full screen the maximize button shows "restore" and leaves it.
+        let maximized = fullscreen || self.window.as_ref().is_some_and(|w| w.is_maximized());
         let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor() as f32);
         let info = if self.prefs.info { self.info_lines(shared) } else { None };
         let note = self.note.as_ref().filter(|(_, until)| *until > Instant::now()).map(|(text, _)| text.clone());
-        if (info.is_some() || note.is_some()) && self.osd.as_ref().is_none_or(|osd| osd.scale() != scale) {
+        if (info.is_some() || note.is_some() || self.tab.notice.is_some()) && self.osd.as_ref().is_none_or(|osd| osd.scale() != scale) {
             self.osd = Osd::new(scale).ok();
         }
         let Some(surface) = &mut self.surface else { return Ok(()) };
@@ -2371,7 +2502,8 @@ impl Viewer {
         let (debug, notice, osd, chrome) = (self.debug.as_ref(), self.tab.notice.as_deref(), self.osd.as_ref(), &mut self.chrome);
         let mut info_rect = None;
         let fading = chrome.animate();
-        let grey = chrome::BACKGROUNDS[self.color % chrome::BACKGROUNDS.len()];
+        // Full screen is black around the picture; a window, its own grey.
+        let grey = if fullscreen { 0.0 } else { chrome::BACKGROUNDS[self.color % chrome::BACKGROUNDS.len()] };
         let background = D2D1_COLOR_F { r: grey, g: grey, b: grey, a: 1.0 };
         surface.frame(background, |context| unsafe {
             for ((draws, interpolation), opacity) in picture.iter().flatten() {
@@ -2405,8 +2537,8 @@ impl Viewer {
                     context.PopLayer();
                 }
             }
-            if let (Some(debug), Some(notice)) = (debug, notice) {
-                debug.draw(context, notice, window.1 / 2.0 - 30.0);
+            if let (Some(osd), Some(notice)) = (osd, notice) {
+                osd.draw_notice(context, notice, window);
             }
             if let (Some(debug), Some(text)) = (debug, &debug_text) {
                 debug.draw(context, text, 48.0 * scale);
@@ -2493,7 +2625,7 @@ impl Viewer {
     /// Which window edge the cursor is on, for frameless resizing.
     fn edge(&self) -> Option<ResizeDirection> {
         let window = self.window.as_ref()?;
-        if window.is_maximized() {
+        if window.is_maximized() || window.fullscreen().is_some() {
             return None;
         }
         let size = window.inner_size();
@@ -2572,6 +2704,9 @@ impl Viewer {
         if let Some(hit) = self.chrome.hit(cursor, self.width()) {
             match hit {
                 chrome::Hit::Lock => self.set_locked(false),
+                chrome::Hit::Title | chrome::Hit::Tab(_) if double && self.is_fullscreen() => {
+                    self.set_fullscreen(false);
+                }
                 chrome::Hit::Title | chrome::Hit::Tab(_) if double => window.set_maximized(!window.is_maximized()),
                 chrome::Hit::Title => self.pressed = Some(Press::Move(self.cursor)),
                 chrome::Hit::Tab(i) if self.modifiers.control_key() => self.pressed = Some(self.reorder_press(i, false)),
@@ -2761,6 +2896,9 @@ impl Viewer {
         match button {
             chrome::Hit::Close => return Action::Close,
             chrome::Hit::Minimize => window.set_minimized(true),
+            chrome::Hit::Maximize if self.is_fullscreen() => {
+                self.set_fullscreen(false);
+            }
             chrome::Hit::Maximize => window.set_maximized(!window.is_maximized()),
             chrome::Hit::Title | chrome::Hit::Tab(_) | chrome::Hit::Lock => {}
         }
@@ -2806,7 +2944,7 @@ impl Viewer {
         let lock = (self.tab_count() > 1).then_some(self.locked);
         let starred = library::starred_folder();
         let turn = self.turn_of(&self.tab);
-        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, starred.as_deref(), turn, self.slideshow.is_some(), shared.update.as_deref());
+        let chosen = menu::show(hwnd, self.prefs, &targets, can_split, lock, global, starred.as_deref(), turn, self.slideshow.is_some(), self.is_fullscreen(), shared.update.as_deref());
         // Whatever the clicks that closed the menu left half-done (a press
         // without its release) is dropped, and presses queued while it was
         // open are ignored when they arrive just after (`fresh_press`).
@@ -2902,6 +3040,8 @@ impl Viewer {
             C::Slideshow => self.toggle_slideshow(),
             C::SlideShorter => self.adjust_slide(false),
             C::SlideLonger => self.adjust_slide(true),
+            C::FullScreen => self.set_fullscreen(!self.is_fullscreen()),
+            C::LeaveFullScreen => self.set_fullscreen(false),
             C::Menu => Action::Menu,
             C::DebugInfo => {
                 self.toggle_debug();
@@ -3049,6 +3189,11 @@ impl Viewer {
     }
 
     pub fn window_event(&mut self, event: WindowEvent, shared: &Shared) -> Result<Action, String> {
+        // A click shows a cursor hidden in full screen (the wheel and keys don't).
+        if matches!(event, WindowEvent::MouseInput { state: ElementState::Pressed, .. }) && self.cursor_hidden {
+            self.show_cursor();
+            self.cursor_moved = Some(Instant::now());
+        }
         Ok(match event {
             WindowEvent::CloseRequested => Action::Close,
             WindowEvent::RedrawRequested => {
@@ -3082,8 +3227,16 @@ impl Viewer {
             WindowEvent::CursorMoved { position, .. } => {
                 let previous = self.cursor;
                 self.cursor = (position.x, position.y);
+                // Moved (Windows also reports the cursor where it stood, when
+                // windows change under it): in full screen it shows again.
+                if self.is_fullscreen() && previous != self.cursor {
+                    self.show_cursor();
+                    self.cursor_moved = Some(Instant::now());
+                }
                 self.drop_released_drags();
-                if let (Some(Press::Move(from) | Press::Tab(_, from)), Some(window)) = (self.pressed, &self.window) {
+                // A full-screen window stays put: dragging the bar does nothing.
+                let fixed = self.is_fullscreen();
+                if let (Some(Press::Move(from) | Press::Tab(_, from)), Some(window), false) = (self.pressed, &self.window, fixed) {
                     if beyond_drag_threshold(from, self.cursor) {
                         self.pressed = None;
                         let _ = window.drag_window();

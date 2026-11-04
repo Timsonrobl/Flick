@@ -60,7 +60,9 @@ pub fn contents(path: &Path) -> Option<Contents> {
     }
     candidates.sort_unstable();
     candidates.dedup();
-    found.jpegs = candidates.into_iter().filter_map(|(offset, len)| Some(Jpeg { offset, len, size: jpeg_size(&file, offset, len)? })).collect();
+    // Each JPEG's length within the file, whatever its tag claims.
+    let within = |(offset, len): (u64, u64)| Some((offset, len.min(file.len.checked_sub(offset)?)));
+    found.jpegs = candidates.into_iter().filter_map(within).filter_map(|(offset, len)| Some(Jpeg { offset, len, size: jpeg_size(&file, offset, len)? })).collect();
     Some(found)
 }
 
@@ -282,13 +284,26 @@ impl<'a> Tiff<'a> {
 /// track's first sample (the first is the full-size JPEG), the PRVW
 /// preview, and the orientation from CMT1 (a TIFF IFD0).
 fn cr3(file: &Bytes, start: u64, end: u64, out: &mut Vec<(u64, u64)>, orientation: &mut Option<u16>, depth: u32) {
+    let mut budget = CR3_BOXES;
+    cr3_boxes(file, start, end, out, orientation, depth, &mut budget);
+}
+
+/// Boxes a CR3 walk reads at most (a real one has a few dozen): a file of
+/// tiny boxes shouldn't cost millions of reads.
+const CR3_BOXES: u32 = 10_000;
+
+fn cr3_boxes(file: &Bytes, start: u64, end: u64, out: &mut Vec<(u64, u64)>, orientation: &mut Option<u16>, depth: u32, budget: &mut u32) {
     const CANON: [u8; 16] = [0x85, 0xc0, 0xb6, 0x87, 0x82, 0x0f, 0x11, 0xe0, 0x81, 0x11, 0xf4, 0xce, 0x46, 0x2b, 0x6a, 0x48];
     const PREVIEW: [u8; 16] = [0xea, 0xf4, 0x2b, 0x5e, 0x1c, 0x98, 0x4b, 0x88, 0xb9, 0xfb, 0xb7, 0xdc, 0x40, 0x6e, 0x4d, 0x16];
     if depth > 6 {
         return;
     }
     let (mut at, mut size, mut offset) = (start, None, None);
-    while at + 8 <= end {
+    while at.saturating_add(8) <= end {
+        if *budget == 0 {
+            return;
+        }
+        *budget -= 1;
         let Some(head) = file.read(at, 16.min((end - at) as usize)) else { return };
         let (mut len, kind, mut data) = (u64::from(be32(&head, 0)), [head[4], head[5], head[6], head[7]], at + 8);
         if len == 1 && head.len() >= 16 {
@@ -297,15 +312,14 @@ fn cr3(file: &Bytes, start: u64, end: u64, out: &mut Vec<(u64, u64)>, orientatio
         } else if len == 0 {
             len = end - at;
         }
-        if len < 8 || at + len > end {
-            return;
-        }
-        let box_end = at + len;
+        // A box shorter than its own header, or past its parent's end (a
+        // 64-bit size that would wrap the sum to the start and loop).
+        let Some(box_end) = at.checked_add(len).filter(|&e| len >= data - at && e <= end) else { return };
         match &kind {
-            b"moov" | b"trak" | b"mdia" | b"minf" | b"stbl" => cr3(file, data, box_end, out, orientation, depth + 1),
+            b"moov" | b"trak" | b"mdia" | b"minf" | b"stbl" => cr3_boxes(file, data, box_end, out, orientation, depth + 1, budget),
             b"uuid" => match file.read(data, 16) {
-                Some(id) if id == CANON => cr3(file, data + 16, box_end, out, orientation, depth + 1),
-                Some(id) if id == PREVIEW => cr3(file, data + 24, box_end, out, orientation, depth + 1),
+                Some(id) if id == CANON => cr3_boxes(file, data + 16, box_end, out, orientation, depth + 1, budget),
+                Some(id) if id == PREVIEW => cr3_boxes(file, data + 24, box_end, out, orientation, depth + 1, budget),
                 _ => {}
             },
             b"CMT1" => {

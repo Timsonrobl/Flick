@@ -678,13 +678,16 @@ dependencies = [
 
 [[package]]
 name = "flick-app"
-version = "1.0.0"
+version = "1.1.0-dev"
 dependencies = [
  "embed-resource",
+ "flate2",
  "gif",
  "image",
  "jxl-oxide",
+ "png",
  "resvg",
+ "roxmltree 0.21.2",
  "rusqlite",
  "serde",
  "serde_json",

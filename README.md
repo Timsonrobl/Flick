@@ -74,7 +74,8 @@ sharp one fades in over it. Decoding never happens on the UI thread.
 
 - **Frameless windows** that still move, resize and snap like any other. A
   hover bar and a tab strip fade in over the picture when the mouse needs
-  them, then get out of the way.
+  them, then get out of the way. **Full screen** with F11 or Enter: black
+  around the picture, the cursor hidden while still, Esc to leave.
 - **Tabs**, many windows, Move to Window, and a close history: Ctrl+Shift+T
   brings back a closed tab or a whole window, and windows left open by a
   crash or a shutdown come back the same way.
@@ -98,6 +99,11 @@ sharp one fades in over it. Decoding never happens on the UI thread.
   delete to the Recycle Bin.
 - **Quiet updates:** a new version downloads in the background, is checked
   against a signing key built into Flick, and waits for you to relaunch.
+- **Safe with bad files:** a damaged JPEG or PNG is shown as far as it
+  reads; a file that can't be shown says why in its window, and you page on.
+  A malformed or crafted file fails on its own: sizes are checked before
+  anything is allocated, a decoder's crash stays with its file, and an SVG
+  can't reach outside itself (details in ARCHITECTURE.md §7a).
 
 ## How it opens so fast
 
@@ -153,11 +159,14 @@ You need Rust (stable, MSVC toolchain) on Windows 10 or 11.
 ```powershell
 .\tools\build.ps1 -p flick-app        # release build; works while Flick is running
 cargo test --release -p flick-app     # unit tests
+.\tools\install-local.ps1             # install this build over your installed Flick
 ```
 
-`tools/` also has scripts to register a build for *Open with*, run the
-benchmark and make the installer; `bench/README.md` covers the benchmark
-method and every measurement so far.
+Between releases the version is the next one's pre-release (`1.1.0-dev`),
+so a local build never passes for a release, and the release replaces it
+as an update once it is out. `tools/` also has scripts to register a build
+for *Open with*, run the benchmark and make the installer;
+`bench/README.md` covers the benchmark method and every measurement so far.
 
 ## Licence
 

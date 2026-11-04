@@ -193,6 +193,7 @@ const STARRED_FOLDER: usize = 904;
 const PREFETCH: usize = 905;
 const UPDATES: usize = 906;
 const RELAUNCH: usize = 907;
+const FULL_SCREEN: usize = 908;
 /// Rotate ▸ 910 + quarter turns, flips, persist.
 const TURN: usize = 910;
 const FLIP_H: usize = 914;
@@ -257,8 +258,9 @@ unsafe fn swatch(color: usize) -> HBITMAP {
 /// new window (not when it is the window's only tab, nor with tabs off);
 /// `lock` this window's Tab Lock (None: one tab, greyed); `starred` the
 /// starred folder, if chosen; `turn` this tab's Rotate ▸ choice;
-/// `slideshow` whether one is running; `update` the version of an update
-/// ready to relaunch into, first in the menu.
+/// `slideshow` whether one is running; `fullscreen` whether the window is;
+/// `update` the version of an update ready to relaunch into, first in the
+/// menu.
 #[allow(clippy::too_many_arguments)]
 pub fn show(
     hwnd: HWND,
@@ -270,6 +272,7 @@ pub fn show(
     starred: Option<&Path>,
     turn: Turn,
     slideshow: bool,
+    fullscreen: bool,
     update: Option<&str>,
 ) -> Option<Choice> {
     let (main, sort, filter, info) = (main_items(), sort_items(), filter_items(), info_items());
@@ -284,6 +287,9 @@ pub fn show(
             let _ = AppendMenuW(menu, MF_STRING, RELAUNCH, &HSTRING::from(format!("Relaunch to Update Flick ({version})")));
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         }
+        let full_screen = label("Full Screen", Some(Command::FullScreen));
+        let _ = AppendMenuW(menu, if fullscreen { MF_STRING | MF_CHECKED } else { MF_STRING }, FULL_SCREEN, &full_screen);
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
         // Settings items take ids from 1 in this order: main, sort, filter, info.
         let after_main = append(menu, &main, &prefs, 1);
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, None);
@@ -436,6 +442,7 @@ pub fn show(
             PREFETCH => Some(Choice::Global(Global { prefetch: !global.prefetch, ..global })),
             UPDATES => Some(Choice::Global(Global { updates: !global.updates, ..global })),
             RELAUNCH => Some(Choice::Relaunch),
+            FULL_SCREEN => Some(Choice::Command(Command::FullScreen)),
             STARRED_FOLDER => Some(Choice::ChooseStarredFolder),
             id if (TURN..TURN + 4).contains(&id) => Some(Choice::Turn(Turn { quarter: (id - TURN) as u8, ..turn })),
             FLIP_H => Some(Choice::Turn(Turn { flip_h: !turn.flip_h, ..turn })),

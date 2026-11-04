@@ -51,7 +51,7 @@ impl Placement {
     /// `parts` back, if still usable and on a connected monitor.
     pub fn from_parts(((left, top, right, bottom), maximized): ((i32, i32, i32, i32), bool)) -> Option<Placement> {
         let normal = RECT { left, top, right, bottom };
-        let usable = right - left >= 200 && bottom - top >= 150;
+        let usable = i64::from(right) - i64::from(left) >= 200 && i64::from(bottom) - i64::from(top) >= 150;
         let on_screen = !unsafe { MonitorFromRect(&normal, MONITOR_DEFAULTTONULL) }.is_invalid();
         (usable && on_screen).then_some(Placement { normal, maximized })
     }
@@ -77,7 +77,11 @@ pub fn current(hwnd: HWND) -> Option<Placement> {
 
 /// Saves the window's placement and returns it.
 pub fn save(hwnd: HWND) -> Option<Placement> {
-    let placement = current(hwnd)?;
+    write(current(hwnd)?)
+}
+
+/// Saves `placement` (a full-screen window's: where it was before) and returns it.
+pub fn write(placement: Placement) -> Option<Placement> {
     let (r, path) = (placement.normal, path()?);
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);

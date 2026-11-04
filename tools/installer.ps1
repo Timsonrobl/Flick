@@ -28,8 +28,10 @@ if (-not $NoBuild) {
 $manifest = Get-Content (Join-Path $root 'crates\flick-app\Cargo.toml') -Raw
 if ($manifest -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'no version in crates\flick-app\Cargo.toml' }
 $version = $Matches[1]
+# "1.1.0-dev" (a local build) -> "1.1.0" for the numeric version resource.
+$numbers = ($version -split '-', 2)[0]
 
-& $iscc /Qp "/DVersion=$version" (Join-Path $root 'installer\flick.iss')
+& $iscc /Qp "/DVersion=$version" "/DVersionNumbers=$numbers" (Join-Path $root 'installer\flick.iss')
 if ($LASTEXITCODE) { throw "ISCC failed (exit $LASTEXITCODE)" }
 $setup = Get-Item (Join-Path $root "target\installer\Flick-$version-setup.exe")
 Write-Host ("{0} ({1:N1} MB)" -f $setup.FullName, ($setup.Length / 1MB))

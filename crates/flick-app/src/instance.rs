@@ -14,17 +14,23 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_MORE_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE,
+    CloseHandle, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_MORE_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, HLOCAL,
+    LocalFree,
 };
-use windows::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_NONE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile};
+use windows::Win32::Security::Authorization::{ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1};
+use windows::Win32::Security::{EqualSid, GetTokenInformation, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser};
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_SHARE_NONE, FlushFileBuffers, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
+    WriteFile,
+};
 use windows::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId, PIPE_READMODE_MESSAGE, PIPE_TYPE_MESSAGE,
+    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId, PIPE_READMODE_MESSAGE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_MESSAGE,
     PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
 };
 use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
-use windows::Win32::System::Threading::{CreateMutexW, GetCurrentProcessId};
+use windows::Win32::System::Threading::{CreateMutexW, GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION};
 use windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
-use windows::core::HSTRING;
+use windows::core::{HSTRING, PWSTR};
 
 use crate::clock::trace;
 
@@ -40,9 +46,20 @@ pub struct Request {
     pub quit: bool,
 }
 
+/// A path as one field of a request: the characters that separate fields
+/// (and `%`) escaped, so a file name with a line break in it (possible on a
+/// network share, not on NTFS) can't add lines such as `quit`.
+fn escape(path: &std::path::Path) -> String {
+    path.display().to_string().replace('%', "%25").replace('\n', "%0A").replace('\r', "%0D").replace('\t', "%09")
+}
+
+fn unescape(field: &str) -> PathBuf {
+    PathBuf::from(field.replace("%09", "\t").replace("%0D", "\r").replace("%0A", "\n").replace("%25", "%"))
+}
+
 impl Request {
     fn encode(&self) -> String {
-        let mut text = format!("file\t{}\nbuild\t{}\n", self.file.display(), self.build);
+        let mut text = format!("file\t{}\nbuild\t{}\n", escape(&self.file), self.build);
         if self.quit {
             text += "quit\t1\n";
         }
@@ -50,7 +67,7 @@ impl Request {
             text += &format!("size\t{w}x{h}\n");
         }
         if let Some(path) = &self.timeline_out {
-            text += &format!("timeline\t{}\n", path.display());
+            text += &format!("timeline\t{}\n", escape(path));
         }
         text
     }
@@ -59,10 +76,10 @@ impl Request {
         let mut request = Request::default();
         for line in text.lines() {
             match line.split_once('\t')? {
-                ("file", v) => request.file = PathBuf::from(v),
+                ("file", v) => request.file = unescape(v),
                 ("build", v) => request.build = v.parse().unwrap_or(0),
                 ("size", v) => request.size = v.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))),
-                ("timeline", v) => request.timeline_out = Some(PathBuf::from(v)),
+                ("timeline", v) => request.timeline_out = Some(unescape(v)),
                 ("quit", _) => request.quit = true,
                 _ => {}
             }
@@ -148,7 +165,9 @@ pub fn send(request: &Request) -> Result<Handoff, String> {
     trace(format_args!("send: build {}", request.build));
     let mut last_error = None;
     let pipe = loop {
-        let opened = unsafe { CreateFileW(&name, GENERIC_READ.0 | GENERIC_WRITE.0, FILE_SHARE_NONE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) };
+        // Identification only: the server may learn who we are, never act as us.
+        let flags = SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION;
+        let opened = unsafe { CreateFileW(&name, GENERIC_READ.0 | GENERIC_WRITE.0, FILE_SHARE_NONE, None, OPEN_EXISTING, flags, None) };
         if let Err(e) = &opened {
             if last_error != Some(e.code()) {
                 trace(format_args!("send: +{:.0} ms open failed: {e}", started.elapsed().as_secs_f64() * 1000.0));
@@ -173,9 +192,13 @@ pub fn send(request: &Request) -> Result<Handoff, String> {
     };
     let reply = unsafe {
         let mut server = 0;
-        if GetNamedPipeServerProcessId(pipe, &mut server).is_ok() {
-            let _ = AllowSetForegroundWindow(server);
+        // Flick's pipe name is guessable: another account's program could
+        // take it first. Nothing goes to a server that isn't this user's.
+        if GetNamedPipeServerProcessId(pipe, &mut server).is_err() || !same_user(server) {
+            let _ = CloseHandle(pipe);
+            return Err("Flick's pipe is held by another user's program; Flick can't hand files to itself.".into());
         }
+        let _ = AllowSetForegroundWindow(server);
         let written = WriteFile(pipe, Some(request.encode().as_bytes()), None, None);
         let _ = FlushFileBuffers(pipe);
         let reply = written.ok().and_then(|()| read_message(pipe));
@@ -237,9 +260,21 @@ pub fn quit(wait: Duration) -> bool {
 pub fn serve(on_request: impl Fn(Request) + Send + 'static, on_superseded: impl FnOnce() + Send + 'static) {
     std::thread::spawn(move || {
         let name = pipe_name();
+        let security = owner_only();
         loop {
+            // Only this user may connect, never from another computer, and
+            // the name must be free (not another account's pipe to join).
             let pipe = unsafe {
-                CreateNamedPipeW(&name, PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 4096, 64 * 1024, 0, None)
+                CreateNamedPipeW(
+                    &name,
+                    PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
+                    PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                    PIPE_UNLIMITED_INSTANCES,
+                    4096,
+                    64 * 1024,
+                    0,
+                    security.as_ref().map(|s| &raw const s.0),
+                )
             };
             if pipe.is_invalid() {
                 let error = windows::core::Error::from_thread();
@@ -278,6 +313,9 @@ pub fn serve(on_request: impl Fn(Request) + Send + 'static, on_superseded: impl 
     });
 }
 
+/// A request is a few lines; anything longer isn't one.
+const MESSAGE_MAX: usize = 64 * 1024;
+
 fn read_message(pipe: HANDLE) -> Option<String> {
     let mut message = Vec::new();
     let mut chunk = [0u8; 4096];
@@ -285,6 +323,9 @@ fn read_message(pipe: HANDLE) -> Option<String> {
         let mut read = 0;
         let result = unsafe { ReadFile(pipe, Some(&mut chunk), Some(&mut read), None) };
         message.extend_from_slice(&chunk[..read as usize]);
+        if message.len() > MESSAGE_MAX {
+            return None;
+        }
         match result {
             Ok(()) => break,
             // The message continues; anything else ends it.
@@ -294,4 +335,74 @@ fn read_message(pipe: HANDLE) -> Option<String> {
         }
     }
     String::from_utf8(message).ok()
+}
+
+/// A security descriptor for the pipe: this user (by SID) only, protected
+/// from inheritance. None if it can't be made (the default then applies).
+struct Security(SECURITY_ATTRIBUTES);
+
+// The descriptor is made once and never freed (it lives with the listener).
+unsafe impl Send for Security {}
+
+fn owner_only() -> Option<Security> {
+    unsafe {
+        let user = token_user(GetCurrentProcess())?;
+        let mut text = PWSTR::null();
+        ConvertSidToStringSidW(user_sid(&user), &mut text).ok()?;
+        let sid = text.to_string().ok();
+        let _ = LocalFree(Some(HLOCAL(text.0.cast())));
+        let sddl = HSTRING::from(format!("D:P(A;;GA;;;{})", sid?));
+        let mut descriptor = PSECURITY_DESCRIPTOR::default();
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(&sddl, SDDL_REVISION_1, &mut descriptor, None).ok()?;
+        Some(Security(SECURITY_ATTRIBUTES { nLength: size_of::<SECURITY_ATTRIBUTES>() as u32, lpSecurityDescriptor: descriptor.0, bInheritHandle: false.into() }))
+    }
+}
+
+/// A process's TOKEN_USER (in u64s, for its alignment).
+fn token_user(process: HANDLE) -> Option<Vec<u64>> {
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(process, TOKEN_QUERY, &mut token).ok()?;
+        let mut len = 0;
+        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len);
+        let mut buffer = vec![0u64; (len as usize).div_ceil(8)];
+        let read = GetTokenInformation(token, TokenUser, Some(buffer.as_mut_ptr().cast()), len, &mut len);
+        let _ = CloseHandle(token);
+        read.ok()?;
+        Some(buffer)
+    }
+}
+
+fn user_sid(token_user: &[u64]) -> PSID {
+    // SAFETY: the buffer holds a TOKEN_USER (from `token_user`).
+    unsafe { (*token_user.as_ptr().cast::<TOKEN_USER>()).User.Sid }
+}
+
+/// Whether process `pid` runs as this process's user.
+fn same_user(pid: u32) -> bool {
+    unsafe {
+        let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return false };
+        let theirs = token_user(process);
+        let _ = CloseHandle(process);
+        match (theirs, token_user(GetCurrentProcess())) {
+            (Some(theirs), Some(ours)) => EqualSid(user_sid(&theirs), user_sid(&ours)).is_ok(),
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A file name with line breaks (possible on a network share) stays one
+    /// field: it can't add a `quit` or `timeline` line.
+    #[test]
+    fn requests_keep_odd_names_in_their_field() {
+        let file = PathBuf::from(r"\\server\share\a".to_string() + "\nquit\t1\ntimeline\t" + r"C:\x 100%.jpg");
+        let request = Request { file: file.clone(), build: 7, ..Request::default() };
+        let back = Request::decode(&request.encode()).unwrap();
+        assert_eq!(back.file, file);
+        assert!(!back.quit && back.timeline_out.is_none());
+    }
 }

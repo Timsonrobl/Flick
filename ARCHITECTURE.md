@@ -241,6 +241,7 @@ Rules that keep this honest:
 | `view.rs` | Zoom/pan state, view modes, orientation (`Turn`), the bitmap-to-window transform |
 | `gpu.rs` | The device, per-window surfaces, uploads, device-loss detection |
 | `decode.rs`, `formats.rs`, `raw.rs`, `tiles.rs` | Decoding: WIC; the formats WIC doesn't cover; RAW's embedded JPEGs; tiles for pictures over one bitmap |
+| `failure.rs` | Why a file can't be shown, in words; the size limits and panic containment every decode runs under (§7a) |
 | `pool.rs` | Preload queue and urgent decodes |
 | `folder.rs`, `watch.rs`, `history.rs` | Folder listing, sorting and shuffling; folder change watching; a tab's Back/Forward history |
 | `chrome.rs`, `osd.rs`, `debug.rs`, `menu.rs` | Hover bar and tab strip; info panel and notes; F12 overlay; the right-click menu |
@@ -404,6 +405,112 @@ and Ctrl+C only). JPEG XL renders to sRGB already. Not converted:
 APNG/animated WebP and GIF. The display's own profile isn't applied (sRGB
 output assumed).
 
+## 7a. Damaged and hostile files
+
+Flick opens whatever a folder holds: a download cut short, a file damaged
+on a card, or one made to attack image viewers (from a zip, a share, a USB
+stick). Decoding runs inside the resident process, beside every open
+window, so a file may fail but must never take the process down, hang the
+UI thread, reach outside itself, or leave the user with only an error box.
+
+**What the user sees.**
+
+- A file that can't be shown gets its window or tab all the same: in the
+  middle, "Can't show *name*", the reason in words, and the decoder's own
+  message dimmer (`osd::draw_notice`). The arrows and the wheel page on
+  from it as from any picture. Opening one from Explorer used to give a
+  message box and no window. Reasons come from the error and a look at
+  the file (`failure::message`): the file is gone, can't be read, is
+  locked or empty; it is online-only and didn't download; it is damaged
+  or incomplete; it is too large (its size); a HEIC/AVIF/RAW file needs a
+  Microsoft Store extension that isn't installed (by its brand bytes);
+  its contents don't match its name.
+- A JPEG or PNG that WIC refuses is shown as far as it can be read
+  (`decode::salvage`): zune-jpeg goes past bad or missing data (the rest
+  grey); a PNG keeps its rows up to the damage (the rest transparent),
+  through the `png` crate row by row. A note says "Damaged file: shown as
+  far as it could be read" for 4 s, and the info panel says so. A
+  baseline JPEG cut short needs none of this: WIC itself shows its top and
+  fills the rest grey. An animation damaged part way plays the frames
+  before the damage.
+
+**What keeps the process up.**
+
+- *Panics* in any decoder (the crates', Flick's own parsers) are caught
+  per file (`failure::guarded`, around every public decode) and become
+  that file's error. Release builds unwind; nothing decodes on the UI
+  thread.
+- *Allocation failure* aborts a Rust process, so sizes are checked from
+  headers before anything is allocated, and Flick's own pixel buffers are
+  allocated fallibly (`failure::pixels`, zeroed pages as `vec!` makes).
+  Whole-picture CPU decodes stop at `MAX_PIXELS` (2²⁸, ~268 MP, 1 GiB as
+  BGRA, what the tiles hold); zune-jpeg at half that (it holds ~12 bytes a
+  pixel while it runs); animations at a quarter (each frame is a canvas);
+  a DCT-scaled screen level over 64 MP goes to the Fant scaler, which
+  streams (a 65 535 px JPEG at 1/8 is still 8192 px square). From the
+  headers: GIF's logical screen and each frame, APNG's IHDR, animated
+  WebP's VP8X canvas, JPEG XL's size header (and jxl-oxide's own
+  allocation tracker at 2 GiB), WIC's frame size before `full`, `scaled`
+  and `bands`, zune's limits set to the size WIC read. The image crate's
+  decoders get explicit limits (`PngDecoder::new` has none by default).
+  Each later read (detail, tiles, Ctrl+C) checks the size it reads
+  itself: a file on a share can change between reads.
+- *SVG* is read as an image, as a browser's `<img>` reads one: only
+  pictures embedded in it (`data:` URLs) load. usvg's default would read
+  any path in an `href`, and a `\\server\share` path would make Windows
+  connect to that server and offer it the user's NTLM credentials. Before
+  usvg sees a drawing, it must be at most 64 MB of XML (SVGZ inflated
+  with that limit: deflate reaches ~1000:1), nested at most 256 deep, and
+  at most 2 million elements with every `<use>` expanded (references to
+  references double at each step); usvg and resvg then run on a thread
+  with 64 MB of stack (reserved, not committed), since they recurse per
+  level and a stack overflow ends the process. Entities are bounded by
+  roxmltree.
+- *Flick's own parsers* (`raw.rs`'s TIFF and CR3 walkers, the APNG/WebP
+  chunk counters, ICC descriptions, EXIF text) use checked arithmetic and
+  budgets: 64 IFDs, 10 000 CR3 boxes (a 64-bit box size once wrapped the
+  walk back to the start, for ever), 100 000 WebP chunks; an embedded
+  JPEG's length is clamped to the file.
+- *Strings from files* (EXIF text, file names) are shown without control
+  characters or bidirectional overrides (a right-to-left override can make
+  a name ending "gpj.exe" read as "exe.jpg"), and EXIF values are cut at
+  300 characters (`meta::displayable`). Buffers handed to Direct2D and the
+  clipboard are checked against their stated size first.
+
+**Around the decoders.**
+
+- Flick never decodes as administrator (§3, `elevation.rs`).
+- The single-instance pipe takes only this user (a DACL with the user's
+  SID), never a remote client, and refuses to join a pipe another account
+  made first; a launcher sends nothing to a pipe server that isn't its
+  own user, and connects for identification only (the server can't act
+  as it). Requests are at most 64 KB, their path fields escaped.
+- Ctrl+Enter selects the file through the shell
+  (`SHOpenFolderAndSelectItems`), not an Explorer command line; the
+  elevation relaunch quotes its arguments by the C runtime's rules.
+- Folder change notifications are taken only as plain names in their
+  folder (a share's server writes them).
+- Updates were already signed and hashed (§17).
+
+**Not covered.** WIC's codecs (JPEG, PNG, TIFF, GIF, BMP, ICO, JPEG XR,
+WebP, and HEIF/AVIF/RAW through Store extensions) are Windows' own native
+code, run in Flick's process; their safety is Windows Update's. Isolating
+them (decoding in a low-privilege child process) would cost the open path
+a process start and a copy of every picture, against §1's first goal; not
+built. A file can still cost CPU: a decode can't be stopped once started,
+so a crafted file may keep one worker busy for seconds (a 65 000 px JPEG
+with no data: ~5 s in the Fant scaler; SVG filters at 16 384 px) while the
+UI and the other workers go on. SVG markers on many vertices aren't
+counted by the `<use>` check. A picture embedded in an SVG is decoded by
+resvg within its crates' own limits (up to 16 384 px square).
+
+Tests: crafted files for each limit (`decode::tests`, `formats::tests`,
+`failure::tests`: a GIF and a JPEG claiming 65 535 px, APNG and WebP
+canvases, deep, self-referencing and `<use>`-bomb SVGs, an SVGZ bomb, an
+SVG pointing at a file beside it, truncated JPEG and PNG, garbage, empty
+and missing files, a panicking decoder), request fields with line breaks,
+argument quoting.
+
 ## 8. Memory
 
 - **One cache** (`Shared::cache`): screen levels on the GPU, by path. After
@@ -524,6 +631,19 @@ output assumed).
   sight. Windows keeps to it on resizes and display changes (winit's min
   inner size, at each display's scaling); a saved placement or a picture's
   size is grown to it.
+- **Full screen** (`F11` or `Enter`, the menu's first item; `Esc`, `F11`,
+  `Enter`, the maximize button or a double click on the bar leave it):
+  borderless on the window's own monitor, covering the taskbar (winit's
+  borderless full screen: no display mode change, so entering and leaving
+  is one resize and one frame). Black around the picture instead of the
+  window's grey; the hover bar still shows at the top, its maximize button
+  as "restore". The cursor hides after 1.5 s still (not over the bar, not
+  while a button is held; the viewer's deadline timer, nothing runs
+  otherwise) and shows again on a move or a click, not on the wheel or the
+  keys, so paging by wheel keeps it hidden. Per window, not saved: the
+  window's placement from before full screen is what closing saves, the
+  close history keeps and Move to New Window opens at. The bar doesn't
+  move the window, nor do its edges resize it.
 - Each window holds its own tabs; the cache and pool are shared. Closing
   the last window leaves the process resident (§3).
 
@@ -746,13 +866,15 @@ original plan and is set aside by principle 9.
   and ↑/W step forward and back in the window's random order (§12);
   Home/End; `[` `]` folders; Back/Forward history; +/− zoom; `Tab` the info
   panel; F12 the debug overlay; Del / Shift+Del delete; Ctrl+C copy;
-  Ctrl+Enter shows the file in Explorer; tab keys in §10a. Esc does
-  nothing. A plain hotkey works on its own only: with Ctrl or Alt, keys
+  Ctrl+Enter shows the file in Explorer; F11 / Enter full screen (§10);
+  tab keys in §10a. Esc leaves full screen and otherwise does nothing.
+  A plain hotkey works on its own only: with Ctrl or Alt, keys
   without a Ctrl/Alt binding do nothing. The wheel pages without modifiers
   only (Ctrl+wheel zooms).
 - **Right-click menu** (`menu.rs`; also the Menu key). A native popup menu
   (no code runs until it opens): Honeyview's View items minus the
-  double-page modes — Stretch Small Images (`Z`), and the view modes in
+  double-page modes — Full Screen (`F11`, first, checked while on),
+  Stretch Small Images (`Z`), and the view modes in
   middle click's order: Fit in Window (`9`), Fill Window (`6`: whichever of
   Fit to Width and Fit to Height fills the window, so the picture overflows
   one way), Fit to Width (`8`), Fit to Height (`7`), Original Size (`0`);
@@ -862,7 +984,8 @@ original plan and is set aside by principle 9.
 - **Tests:** unit tests in `flick-app` for the view math, folder sorting
   and change application, shuffles, hotkeys, the close history, the
   library, decode paths (pixels from zune vs WIC, CMYK colours, RAW
-  JPEG finding, tiles) and update manifest signatures. Ignored tests double
+  JPEG finding, tiles), crafted and damaged files (§7a) and update
+  manifest signatures. Ignored tests double
   as measuring tools over a folder of samples (`formats_report`,
   `inspect_jpegs`, `decode_contention`, RAW memory per decode step).
 
@@ -994,9 +1117,29 @@ Open:
     as downloaded (Mark of the Web); Flick's own download carries no mark,
     and a per-user folder needs no admin, so only the first setup.exe is
     ever warned about.
-- **Releasing:** bump `crates/flick-app/Cargo.toml`'s version, run
+- **Versions between releases.** Right after a release, flick-app's
+  version becomes the next one's pre-release (`1.1.0` → `1.2.0-dev`), so
+  every build from the working tree says what it is: in its version
+  resource, the installer, Settings ▸ Apps and the uninstall entry.
+  `update.rs` orders versions as semver does: `1.2.0-dev` is past 1.1.0
+  and takes no update to it, and the 1.2.0 release, once published,
+  replaces it. `tools\release.ps1` refuses a pre-release version.
+- **Testing a build as installed:** `tools\install-local.ps1` builds the
+  installer from the working tree and runs it silently over this PC's
+  installed copy (it quits Flick first), checks that the installed exe is
+  the one just built and carries the pre-release version, then starts it
+  as an update would: `--reopen` if Flick had windows open (they come
+  back), else `--tray` (resident, so the next open is warm). It refuses a
+  release version (`-AllowRelease` to install the release build itself
+  before publishing). `-NoBuild` installs what is built; `-NoStart` leaves
+  Flick closed. A dev build run from `target\release` instead (with
+  `tools\register.ps1`) doesn't update itself and isn't the installed
+  layout; benchmarks use that one (`bench\quick.ps1` builds it).
+- **Releasing:** set `crates/flick-app/Cargo.toml`'s version to the
+  release (drop `-dev`), run
   `tools\release.ps1` (installer, exe and signed manifest in
-  `target\release-upload`), then `gh release create v<version> …`. The
+  `target\release-upload`), then `gh release create v<version> …`, then
+  set the version to the next pre-release. The
   signing key's private half is DPAPI-encrypted for one Windows account in
   `%USERPROFILE%\.flick` (`tools\update-key.ps1`); **back it up with
   `-Backup`**: without it no installed Flick takes another update.
@@ -1029,9 +1172,12 @@ sections above.
   scRGB/HDR10 swap chain and tone mapping in a shader.
 - [ ] **Format gaps:** multi-page TIFF (first page only), animated AVIF/HEIC
   sequences and animated JPEG XL (first frame), SVG detail only up to
-  16 384 px, colour conversion for APNG/animated WebP and GIF, and a
-  pixel-count limit (a huge JPEG XL or EXR is decoded whole before being
-  scaled down; reject absurd headers before allocating).
+  16 384 px, and colour conversion for APNG/animated WebP and GIF.
+  (Absurd headers are refused before allocating, §7a.)
+- [ ] **Stopping a decode.** A decode runs to the end once started (§6,
+  §7a), so a crafted file can hold a worker for seconds. Cancelling would
+  need a check inside every decoder's loop (WIC has none to call), or
+  decoding in a child process that can be killed.
 - [ ] **Decode memory admission.** A progressive JPEG decode holds ~300 MB
   while it runs, so three preloads peak near 0.9 GB. Admission by
   estimated peak bytes (run jobs together only while their sum fits a

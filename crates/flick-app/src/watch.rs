@@ -155,8 +155,13 @@ fn parse(dir: &Path, buffer: &[u32], written: usize) -> Vec<Change> {
         let (next, action, length) = (u32_at(at) as usize, u32_at(at + 4), u32_at(at + 8) as usize);
         let name_bytes = &bytes[(at + 12).min(bytes.len())..(at + 12 + length).min(bytes.len())];
         let name: Vec<u16> = name_bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-        let path = dir.join(String::from_utf16_lossy(&name));
+        let name = String::from_utf16_lossy(&name);
+        // One name in this folder (a network share's server writes these):
+        // never a path that would put another folder's file in the list.
+        let plain = !name.is_empty() && name != "." && name != ".." && !name.contains(['\\', '/', ':']);
+        let path = dir.join(&name);
         match FILE_ACTION(action) {
+            _ if !plain => {}
             FILE_ACTION_ADDED => changes.push(Change::Added(path)),
             FILE_ACTION_REMOVED => changes.push(Change::Removed(path)),
             FILE_ACTION_MODIFIED => changes.push(Change::Modified(path)),

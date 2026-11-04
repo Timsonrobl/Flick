@@ -15,6 +15,13 @@ const LCS_SRGB: u32 = 0x7352_4742;
 
 pub fn put(hwnd: HWND, image: &Image) -> Result<(), String> {
     let (w, h) = (image.width as usize, image.height as usize);
+    // The rows below are taken as w × h × 4 bytes: anything else is a decoder's bug, not a crash.
+    if w == 0 || h == 0 || w > i32::MAX as usize || h > i32::MAX as usize || w.checked_mul(h).and_then(|n| n.checked_mul(4)) != Some(image.pixels.len()) {
+        return Err("the picture's pixels don't match its size".into());
+    }
+    if w * h * 4 > u32::MAX as usize - size_of::<BITMAPV5HEADER>() {
+        return Err("the picture is too large for the clipboard".into());
+    }
     let header = BITMAPV5HEADER {
         bV5Size: size_of::<BITMAPV5HEADER>() as u32,
         bV5Width: w as i32,

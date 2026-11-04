@@ -51,6 +51,10 @@ pub enum Command {
     Slideshow,
     SlideShorter,
     SlideLonger,
+    /// Full screen on or off (F11, Enter).
+    FullScreen,
+    /// Esc: out of full screen (nothing otherwise).
+    LeaveFullScreen,
     Menu,
     DebugInfo,
     /// Debugging: the next frame finds the graphics device lost.
@@ -199,6 +203,9 @@ pub const BINDINGS: &[(Chord, Command)] = &[
     (ctrl(Code(K::BracketLeft)), C::SlideShorter),
     (ctrl(Code(K::BracketRight)), C::SlideLonger),
     // The rest.
+    (plain(Named(N::F11)), C::FullScreen),
+    (plain(Named(N::Enter)), C::FullScreen),
+    (plain(Named(N::Escape)), C::LeaveFullScreen),
     (plain(Named(N::ContextMenu)), C::Menu),
     (plain(Named(N::F12)), C::DebugInfo),
     (shift(Named(N::F12)), C::SimulateLoss),
@@ -246,6 +253,7 @@ fn key_name(on: On) -> String {
             N::PageDown => "PgDn",
             N::PageUp => "PgUp",
             N::Delete => "Del",
+            N::Escape => "Esc",
             N::ContextMenu => "Menu",
             N::BrowserBack => "Browser Back",
             N::BrowserForward => "Browser Forward",
@@ -318,5 +326,6 @@ mod tests {
         assert_eq!(keys(C::Fit(Fit::Original)), "0");
         assert_eq!(keys(C::Info), "Tab");
         assert_eq!(keys(C::Turn(0)), "Alt+↑");
+        assert_eq!(keys(C::FullScreen), "F11, Enter");
     }
 }

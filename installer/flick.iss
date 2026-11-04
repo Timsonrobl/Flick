@@ -8,8 +8,10 @@
 ; uninstall, so a reinstall picks them up.
 
 #ifndef Version
-  #error Build with tools\installer.ps1 (it passes /DVersion)
+  #error Build with tools\installer.ps1 (it passes /DVersion and /DVersionNumbers)
 #endif
+; Version: Cargo's, "1.1.0" or a local build's "1.1.0-dev". VersionNumbers:
+; its numeric part, as setup.exe's own version resource must be.
 
 [Setup]
 ; Never change: Windows knows the installed Flick by it.
@@ -20,7 +22,9 @@ AppVerName=Flick {#Version}
 AppPublisher=Timsonrobl
 AppPublisherURL=https://github.com/Timsonrobl/Flick
 AppSupportURL=https://github.com/Timsonrobl/Flick
-VersionInfoVersion={#Version}
+VersionInfoVersion={#VersionNumbers}
+VersionInfoTextVersion={#Version}
+VersionInfoProductTextVersion={#Version}
 PrivilegesRequired=lowest
 DefaultDirName={autopf}\Flick
 DisableDirPage=auto

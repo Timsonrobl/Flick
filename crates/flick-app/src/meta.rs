@@ -105,9 +105,26 @@ fn get(reader: &IWICMetadataQueryReader, name: &str) -> Option<Value> {
 
 fn text(reader: &IWICMetadataQueryReader, names: &[&str]) -> Option<String> {
     names.iter().find_map(|name| match get(reader, name)? {
-        Value::Text(t) => Some(t.trim().trim_end_matches('\0').trim().to_string()).filter(|t| !t.is_empty()),
+        Value::Text(t) => Some(displayable(t.trim().trim_end_matches('\0').trim(), TEXT_MAX)).filter(|t| !t.is_empty()),
         Value::Number(_) => None,
     })
+}
+
+/// The longest metadata text shown (characters): a field can be megabytes,
+/// and the panel lays it out on every frame.
+const TEXT_MAX: usize = 300;
+
+/// `text` as safe to show: control characters as spaces, bidirectional
+/// overrides and isolates dropped (a right-to-left override can make a
+/// name ending "gpj.exe" read as ending "exe.jpg"), cut at `max` characters
+/// with an ellipsis.
+pub fn displayable(text: &str, max: usize) -> String {
+    let bidi = |c: char| matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}' | '\u{061C}');
+    let mut out: String = text.chars().filter(|&c| !bidi(c)).map(|c| if c.is_control() { ' ' } else { c }).take(max + 1).collect();
+    if out.chars().count() > max {
+        out = out.chars().take(max).collect::<String>() + "…";
+    }
+    out
 }
 
 fn number(reader: &IWICMetadataQueryReader, name: &str) -> Option<f64> {
@@ -336,7 +353,7 @@ fn exif(reader: &IWICMetadataQueryReader, lines: &mut Vec<(&'static str, String)
     }
     // The camera's own "2026:10:22 17:20:57", as written, with its time zone if recorded.
     let taken = text(reader, &["/app1/ifd/exif/{ushort=36867}", "/ifd/exif/{ushort=36867}"]);
-    if let Some(taken) = taken.filter(|t| t.len() >= 19) {
+    if let Some(taken) = taken.filter(|t| t.len() >= 19 && t.is_char_boundary(10)) {
         let (date, time) = taken.split_at(10);
         let zone = text(reader, &["/app1/ifd/exif/{ushort=36881}", "/ifd/exif/{ushort=36881}"]).map(|z| format!(" ({z})")).unwrap_or_default();
         lines.push(("Taken", format!("{}{}{zone}", date.replace(':', "-"), time)));

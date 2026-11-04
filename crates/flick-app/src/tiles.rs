@@ -54,7 +54,7 @@ fn layout((w, h): (u32, u32)) -> Vec<((u32, u32, u32, u32), (u32, u32, u32, u32)
 pub fn build(path: &Path, uploader: &Uploader) -> Result<(Tiles, (u32, u32)), String> {
     let mut tiles: Vec<(Tile, (u32, u32, u32, u32))> = Vec::new();
     let mut size = (0, 0);
-    decode::bands(path, BAND, |picture, y, rows, pixels| {
+    decode::bands(path, BAND, MAX_BYTES, |picture, y, rows, pixels| {
         if tiles.is_empty() {
             size = picture;
             for (rect, cell) in layout(picture) {
@@ -102,7 +102,7 @@ mod tests {
             }
         }
         let t = std::time::Instant::now();
-        decode::bands(&file, BAND, |_, _, _, _| Ok(())).unwrap();
+        decode::bands(&file, BAND, MAX_BYTES, |_, _, _, _| Ok(())).unwrap();
         println!("full, bands only: {:.0} ms", ms(t));
         let gpu = crate::gpu::Gpu::create(&mut |_| {}).unwrap();
         let uploader = gpu.uploader().unwrap();

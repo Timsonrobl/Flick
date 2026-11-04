@@ -14,6 +14,7 @@ pub struct Osd {
     factory: IDWriteFactory,
     info: IDWriteTextFormat,
     note: IDWriteTextFormat,
+    title: IDWriteTextFormat,
     /// The display scale the formats were made for.
     scale: f32,
 }
@@ -31,6 +32,8 @@ const TEXT: f32 = 14.0;
 const PANEL_WIDTH: f32 = 400.0;
 /// A border beside the picture at least this wide holds the panel.
 const BORDER_MIN: f32 = 240.0;
+/// A notice (a file that can't be shown) wraps at this width.
+const NOTICE_WIDTH: f32 = 520.0;
 
 impl Osd {
     pub fn new(scale: f32) -> Result<Osd, String> {
@@ -46,7 +49,12 @@ impl Osd {
             info.SetWordWrapping(DWRITE_WORD_WRAPPING_EMERGENCY_BREAK).map_err(|e| e.to_string())?;
             // The info panel's font (its own line spacing: one line).
             let note = format(TEXT, DWRITE_FONT_WEIGHT_NORMAL)?;
-            Ok(Osd { factory, info, note, scale })
+            // A notice's first line ("Can't show …").
+            let title = format(TEXT * 1.3, DWRITE_FONT_WEIGHT_SEMI_BOLD)?;
+            for f in [&title, &info] {
+                let _ = f.SetWordWrapping(DWRITE_WORD_WRAPPING_EMERGENCY_BREAK);
+            }
+            Ok(Osd { factory, info, note, title, scale })
         }
     }
 
@@ -100,6 +108,36 @@ impl Osd {
             }
         }
         Some(panel)
+    }
+
+    /// Why a picture can't be shown, in the middle of the window: `text`'s
+    /// first line ("Can't show name") larger, then the reason, then the
+    /// decoder's detail dimmer (`failure::message`), wrapped to at most
+    /// NOTICE_WIDTH on a dark panel.
+    pub fn draw_notice(&self, context: &ID2D1DeviceContext, text: &str, window: (f32, f32)) {
+        let (s, padding) = (self.scale, 2.0 * PADDING * self.scale);
+        let mut lines = text.lines();
+        let (title, reason) = (lines.next().unwrap_or(""), lines.next().unwrap_or(""));
+        let detail: Vec<&str> = lines.collect();
+        let width = (window.0 - 2.0 * (MARGIN * s + padding)).min(NOTICE_WIDTH * s).max(1.0);
+        let parts = [(title, &self.title, 1.0), (reason, &self.info, 1.0), (&detail.join("\n")[..], &self.info, 0.6)];
+        let laid: Vec<_> = parts.iter().filter(|(t, _, _)| !t.is_empty()).filter_map(|(t, format, alpha)| Some((self.layout(t, format, width)?, *alpha))).collect();
+        let gap = 6.0 * s;
+        let height = laid.iter().map(|((_, _, h), _)| h).sum::<f32>() + gap * laid.len().saturating_sub(1) as f32;
+        let inner = laid.iter().map(|((_, w, _), _)| *w).fold(0.0, f32::max);
+        let (left, top) = ((window.0 - inner) / 2.0, ((window.1 - height) / 2.0).max(TOP * s));
+        let panel = D2D_RECT_F { left: left - padding, top: top - padding, right: left + inner + padding, bottom: top + height + padding };
+        unsafe {
+            let Ok(fill) = context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.45 }, None) else { return };
+            context.FillRoundedRectangle(&D2D1_ROUNDED_RECT { rect: panel, radiusX: 8.0 * s, radiusY: 8.0 * s }, &fill);
+            let mut y = top;
+            for ((layout, w, h), alpha) in &laid {
+                let Ok(ink) = context.CreateSolidColorBrush(&D2D1_COLOR_F { r: 0.95, g: 0.95, b: 0.95, a: *alpha }, None) else { return };
+                // Each part centred on its own.
+                context.DrawTextLayout(Vector2 { X: left + (inner - w) / 2.0, Y: y }, layout, &ink, D2D1_DRAW_TEXT_OPTIONS_NONE);
+                y += h + gap;
+            }
+        }
     }
 
     /// A brief note at the top right, in the info panel's lettering.
